@@ -1,0 +1,5 @@
+time,event,station_id,ch_op_id,vid,op_id,veh_type,current_soc,socket_id,socket_power,initial_soc,transferred_power,connection_duration
+2605.435210201862,detach,0,op_0,3,0,low_range_vehtype,1.0,0,15,0.479,2.605980042507758,625.435210201862
+3600,detach,0,op_0,4,0,low_range_vehtype,-2.232,0,15,-2.582,1.7499999999999938,420
+8198.621572160006,detach,0,op_0,2,0,low_range_vehtype,1.0,0,15,-2.782,18.910923217333355,4538.621572160006
+8548.172133887754,detach,2,0,4,0,low_range_vehtype,1.0,2,15,-2.798,18.987890498044806,4557.093719530754

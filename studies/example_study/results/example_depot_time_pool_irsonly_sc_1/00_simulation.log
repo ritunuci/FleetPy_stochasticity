@@ -1,0 +1,337 @@
+15020-src.FleetSimulationBase-INFO-Initialization of network and routing engine...
+15020-src.routing.NetworkBasic-INFO-... no network dynamics file given -> read folder structure
+15020-src.FleetSimulationBase-INFO-Initialization of line-based public transportation...
+15020-src.FleetSimulationBase-INFO-Initialization of travelers...
+15020-src.demand.demand-INFO-init(): 13/495 requests removed (rq_time not in simulation time)
+15020-src.demand.demand-INFO-init(): 0/482 requests removed (start == end)
+15020-src.FleetSimulationBase-INFO-Initialization of MoD fleets...
+15020-src.fleetctrl.FleetControlBase-INFO-Scenario example_depot_time_pool_irsonly_sc_1
+Operator 0 control strategy: PoolingInsertionHeuristicOnly
+	 control function: {'func_key': 'distance_and_user_times_with_walk', 'vot': 0.45}
+Operator 0 additional strategies:
+	 RV Heuristics: {}
+	 Stop-Insert Heuristics: {}
+	 Charging: None
+	 On-Street Parking: True
+	 Repositioning: None
+	 Dynamic Pricing: None
+	 Dynamic Fleet Sizing: TimeBasedFS
+
+15020-src.FleetSimulationBase-INFO-Simulation environment specific initializations...
+15020-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 0 at pos (19, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x00000187F9B46988> (plan time: 25200)
+15020-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 1 at pos (8, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x00000187F9B466C8> (plan time: 25200)
+15020-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 2 at pos (19, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x00000187F9B46988> (plan time: 25200)
+15020-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 3 at pos (1990, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x00000187F9B46548> (plan time: 25200)
+15020-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 4 at pos (8, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x00000187F9B466C8> (plan time: 25200)
+15020-src.fleetctrl.fleetsizing.TimeBasedFS-INFO-Loaded nr-of-active-vehicles curve from D:\Ritun\Currently Developing\FleetPy_sto_tt_can_no_show_CALIBRATION_ver_sto_pudo_final\data\fleetctrl\elastic_fleet_size\example_active_fleetsize.csv.
+15020-src.FleetSimulationBase-INFO-Creating or loading initial vehicle states...
+15020-src.FleetSimulationBase-INFO-Initialization of scenario example_depot_time_pool_irsonly_sc_1 successful.
+15020-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 25200
+15020-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 27000
+15020-src.simulation.Vehicles-INFO-No show leg is being overwritten at 27870
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3691 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 2311 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 2311 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 2311 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 2311 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 2311 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 1827 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 1827 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 1827 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 1827 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 1827 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 1827 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 1827 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3416 to 606yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3416 -> end 606 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 28800
+15020-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 30600
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3970 -> end 177 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3970 to 177yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3970 -> end 177 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3970 to 177yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3970 -> end 177 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3970 to 177yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3970 -> end 177 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3483 -> end 177 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3567 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 3567yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3567 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2121 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2404 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 1814 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3699 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 190 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 427 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3771 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3111 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3807 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 1564 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2311 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 351 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3328 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 1014 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 427yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 427 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2502 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 4068 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3448 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2439 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 736 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 1235 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 865 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 1587 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 1827 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 815 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2091 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2816 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2425 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3796 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2862 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 427yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 427 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 32400
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 430 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 430yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 430 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 2404yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2404 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 1814yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 1814 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 3699yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3699 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 190yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 190 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 427yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 427 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 3771yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3771 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 3111yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3111 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 3807yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3807 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 1564yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 1564 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3627 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2077 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 3328yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3328 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 1014yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 1014 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3562 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 427yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 427 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 2502yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2502 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 4068yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 4068 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 3448yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3448 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 2439yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2439 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 736yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 736 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 3562yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3562 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3350 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 1587yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 1587 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 1827yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 1827 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 815yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 815 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 2091yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2091 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 2816yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2816 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 2425yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2425 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 3796yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3796 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 2862yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2862 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 477 to 427yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 427 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 3483 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2403 | no ch
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 477 -> end 2679 | no ch
+15020-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 34200
+15020-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 36000
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3970 to 177yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3970 -> end 177 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 3970 to 177yields s=(inf, inf, inf)
+15020-src.routing.routing_imports.Router-WARNING-routebase no route found!
+15020-src.routing.routing_imports.Router-WARNING-start 3970 -> end 177 | no ch
+15020-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+15020-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 37800

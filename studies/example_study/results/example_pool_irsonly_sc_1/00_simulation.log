@@ -1,0 +1,556 @@
+26768-src.FleetSimulationBase-INFO-Initialization of network and routing engine...
+26768-src.routing.NetworkBasic-INFO-... load network dynamics file: D:\Ritun\Currently Developing\FleetPy_NO_SHOW_ver_4_sm_check - Copy\data\networks\example_network\network_dynamics.csv
+26768-src.FleetSimulationBase-INFO-Initialization of line-based public transportation...
+26768-src.FleetSimulationBase-INFO-Initialization of travelers...
+26768-src.demand.demand-INFO-init(): 14/1168 requests removed (rq_time not in simulation time)
+26768-src.demand.demand-INFO-init(): 5/1154 requests removed (start == end)
+26768-src.FleetSimulationBase-INFO-Initialization of MoD fleets...
+26768-src.fleetctrl.FleetControlBase-INFO-Scenario example_pool_irsonly_sc_1
+Operator 0 control strategy: PoolingInsertionHeuristicOnly
+	 control function: {'func_key': 'distance_and_user_times_with_walk', 'vot': 0.45}
+Operator 0 additional strategies:
+	 RV Heuristics: {}
+	 Stop-Insert Heuristics: {}
+	 Charging: None
+	 On-Street Parking: True
+	 Repositioning: None
+	 Dynamic Pricing: None
+	 Dynamic Fleet Sizing: None
+
+26768-src.FleetSimulationBase-INFO-Simulation environment specific initializations...
+26768-src.FleetSimulationBase-INFO-Creating or loading initial vehicle states...
+26768-src.FleetSimulationBase-INFO-Initialization of scenario example_pool_irsonly_sc_1 successful.
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 21600
+26768-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 21660
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 22980
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 23400
+26768-src.demand.TravelerModels-INFO-CANCELLED RIGHT AWAY
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 25200
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 25620
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 27000
+26768-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 27600
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15349 -> end 29866 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15349 to 29866yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15349 -> end 29866 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15349 to 29866yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15349 -> end 29866 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15349 to 29866yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15349 -> end 29866 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13466 -> end 29866 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15349 to 29866yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15349 -> end 29866 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15349 to 29866yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15349 -> end 29866 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15349 to 29866yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15349 -> end 29866 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 20091 -> end 29866 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15349 to 29866yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15349 -> end 29866 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 28800
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 28589 -> end 20801 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28589 to 20801yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 28589 -> end 20801 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 25014 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 25014 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 25014 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 25014 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 25014 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 30460
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 30600
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 30650
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32060
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32070
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32080
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32090
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32100
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32110
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32120
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32130
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32140
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32150
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32160
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32170
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32180
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32190
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32200
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32210
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 32220
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 165 -> vid 21 at 32220
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 44342 -> end 34329 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44342 to 34329yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 44342 -> end 34329 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 32400
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17906 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 27725 to 17906yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17906 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 20574 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 27725 to 17906yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17906 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 27725 to 17906yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17906 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 30098 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 26379 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 27725 to 17906yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17906 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 20800 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 28550 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 27725 to 17906yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17906 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 33780
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 34200
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 36000
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED RIGHT AWAY
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 37800
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28008 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13769 to 28008yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28008 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 21484 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 16470 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28327 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13769 to 28008yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28008 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28514 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 23175 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 9460 -> end 12589 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 9460 to 12589yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 9460 -> end 12589 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 39600
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 40050
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 25652 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 41100
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 41200
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 41400
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 22356 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 22356 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 28649 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 22356 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28649 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 28649 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 43200
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 43410
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 24599 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 27698 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 16735 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 15415 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17000 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 29840 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 14723 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13769 -> end 29079 | no ch
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 45000
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 45020
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44276 to 44342yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44276 to 44342yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 52012 -> end 44342 | no ch
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 46800
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 47090
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 52634 -> end 46879 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 52634 to 46879yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 52634 -> end 46879 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED RIGHT AWAY
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 48010
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 48600
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED RIGHT AWAY
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 49730
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 28006 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28006 to 29334yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 28006 -> end 29334 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 45710 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 9614 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 38198 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 9275 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12621 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12595 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12108 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 8844 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 50400
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 52200
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 39096 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 11634 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 3128 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 674 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 8970 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 11991 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12135 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12105 | no ch
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 13286 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 52830
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 52960
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 53890
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 54000
+26768-src.demand.TravelerModels-INFO-CANCELLED RIGHT AWAY
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 54830
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED RIGHT AWAY
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 55660
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 55800
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 57570
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 57600
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 57870
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 58330
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 59400
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 59490
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 60070
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 60360
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 60630
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 60960
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 61120
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 61190
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 61200
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 61660
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 61920
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 61930
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 61940
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 61950
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 61960
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 61970
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 61980
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 61990
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 62000
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 62010
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 62020
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 62030
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 62040
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 62040
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 62050
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 62060
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 62070
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 62080
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 990 -> vid 5 at 62080
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED RIGHT AWAY
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 63000
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED RIGHT AWAY
+26768-src.demand.TravelerModels-INFO-CANCELLED RIGHT AWAY
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63710
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63720
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63730
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63740
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63750
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63760
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63770
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63780
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63790
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63800
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63810
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63820
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63830
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63840
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63850
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63860
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 63870
+26768-src.demand.demand-WARNING-waiting rq boarding warning : rid 1022 -> vid 1 at 63870
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 64190
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 64800
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 65430
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 66600
+26768-src.simulation.Vehicles-INFO-No show leg is being overwritten at 66820
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 8976 -> end 9349 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 8976 to 9349yields s=(inf, inf, inf)
+26768-src.routing.routing_imports.Router-WARNING-routebase no route found!
+26768-src.routing.routing_imports.Router-WARNING-start 8976 -> end 9349 | no ch
+26768-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 68400
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 70200
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 72000
+26768-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 73800
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.demand.TravelerModels-INFO-CANCELLED RIGHT AWAY
+26768-src.demand.TravelerModels-INFO-CANCELLED LATER
+26768-src.FleetSimulationBase-INFO-Saving final simulation state.
+26768-src.FleetSimulationBase-INFO-record_remaining_assignments()
+26768-src.FleetSimulationBase-INFO-	 time 75600, remaining tasks 6
+26768-src.FleetSimulationBase-INFO-	 time 75610, remaining tasks 6
+26768-src.FleetSimulationBase-INFO-	 time 75620, remaining tasks 5
+26768-src.FleetSimulationBase-INFO-	 time 75630, remaining tasks 5
+26768-src.FleetSimulationBase-INFO-	 time 75640, remaining tasks 5
+26768-src.FleetSimulationBase-INFO-	 time 75650, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75660, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75670, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75680, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75690, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75700, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75710, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75720, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75730, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75740, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75750, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75760, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75770, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75780, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75790, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75800, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75810, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75820, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75830, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75840, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75850, remaining tasks 4
+26768-src.FleetSimulationBase-INFO-	 time 75860, remaining tasks 3
+26768-src.FleetSimulationBase-INFO-	 time 75870, remaining tasks 3
+26768-src.FleetSimulationBase-INFO-	 time 75880, remaining tasks 3
+26768-src.FleetSimulationBase-INFO-	 time 75890, remaining tasks 2
+26768-src.FleetSimulationBase-INFO-	 time 75900, remaining tasks 2
+26768-src.FleetSimulationBase-INFO-	 time 75910, remaining tasks 1
+26768-src.FleetSimulationBase-INFO-	 time 75920, remaining tasks 1
+26768-src.FleetSimulationBase-INFO-	 time 75930, remaining tasks 1
+26768-src.FleetSimulationBase-INFO-	 time 75940, remaining tasks 0
+26768-src.FleetSimulationBase-INFO-Scenario example_pool_irsonly_sc_1 finished:
+      initialization : 0:00:21 h
+          simulation : 0:10:44 h
+          evaluation : 0:00:00 h
+

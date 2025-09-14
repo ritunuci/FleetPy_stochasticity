@@ -1,0 +1,158 @@
+18556-src.FleetSimulationBase-INFO-Initialization of network and routing engine...
+18556-src.routing.NetworkBasic-INFO-... no network dynamics file given -> read folder structure
+18556-src.FleetSimulationBase-INFO-Initialization of line-based public transportation...
+18556-src.FleetSimulationBase-INFO-Initialization of travelers...
+18556-src.demand.demand-INFO-init(): 1167/1168 requests removed (rq_time not in simulation time)
+18556-src.demand.demand-INFO-init(): 0/1 requests removed (start == end)
+18556-src.FleetSimulationBase-INFO-Initialization of MoD fleets...
+18556-src.fleetctrl.FleetControlBase-INFO-Scenario example_depot_ch_time_pool_irsonly_sc_1
+Operator 0 control strategy: PoolingInsertionHeuristicOnly
+	 control function: {'func_key': 'distance_and_user_times_with_walk', 'vot': 0.45}
+Operator 0 additional strategies:
+	 RV Heuristics: {}
+	 Stop-Insert Heuristics: {}
+	 Charging: ChargingThresholdPublicInfrastructure
+	 On-Street Parking: True
+	 Repositioning: None
+	 Dynamic Pricing: None
+	 Dynamic Fleet Sizing: TimeBasedFS
+
+18556-src.FleetSimulationBase-INFO-Simulation environment specific initializations...
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 0 at pos (2980, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x00000284680B5A88> (plan time: 0)
+18556-src.fleetctrl.fleetsizing.TimeBasedFS-INFO-Loaded nr-of-active-vehicles curve from D:\Ritun\FleetPy-main\data\fleetctrl\elastic_fleet_size\example_active_fleetsize.csv.
+18556-src.FleetSimulationBase-INFO-Creating or loading initial vehicle states...
+18556-src.FleetSimulationBase-INFO-Initialization of scenario example_depot_ch_time_pool_irsonly_sc_1 successful.
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 3
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 1 at pos (31763, None, None) with soc 0.8575946831862098 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 1800.
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 2 at pos (21800, None, None) with soc 0.8229470565333281 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x00000284680B5B08> (plan time: 1800)
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 3 at pos (33878, None, None) with soc 0.7724415914984484 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x00000284680B5B08> (plan time: 1800)
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 4 at pos (22263, None, None) with soc 0.9458865003910399 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x00000284680B5B08> (plan time: 1800)
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 3 at pos (2966, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9999005.435210202 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x00000284680B5B08> (plan time: 3600)
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 4 at pos (2966, None, None) with soc -2.2320971996089622 leg status VRL_STATES.CHARGING remaining time 3878.5166395307533 number remaining legs: 2 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x00000284680B5B08> (plan time: 3600)
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 2 at pos (2966, None, None) with soc -2.7821846434666724 leg status VRL_STATES.OUT_OF_SERVICE remaining time 3878.5166395307533 number remaining legs: 3 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x00000284680B5B08> (plan time: 3600)
+18556-src.fleetctrl.FleetControlBase-WARNING-charging task ('op_0', '0_0_2_7478_12017') no longer assigned! -> cancel booking!
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 0 at pos (2980, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996399 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x00000284680B5A88> (plan time: 3600)
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 2
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 0 at pos (2980, None, None) with soc 1.0 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x00000284680B5A88> (plan time: 5400)
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 1 at pos (31763, None, None) with soc 0.8575946831862098 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 5400.
+18556-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 3 at pos (2966, None, None) with soc 1.0 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x00000284680B5B08> (plan time: 5400)
+18556-src.FleetSimulationBase-INFO-Saving final simulation state.
+18556-src.FleetSimulationBase-INFO-record_remaining_assignments()
+18556-src.FleetSimulationBase-INFO-	 time 7200, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7260, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7320, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7380, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7440, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7500, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7560, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7620, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7680, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7740, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7800, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7860, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7920, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 7980, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 8040, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 8100, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 8160, remaining tasks 2
+18556-src.FleetSimulationBase-INFO-	 time 8220, remaining tasks 1
+18556-src.FleetSimulationBase-INFO-	 time 8280, remaining tasks 1
+18556-src.FleetSimulationBase-INFO-	 time 8340, remaining tasks 1
+18556-src.FleetSimulationBase-INFO-	 time 8400, remaining tasks 1
+18556-src.FleetSimulationBase-INFO-	 time 8460, remaining tasks 1
+18556-src.FleetSimulationBase-INFO-	 time 8520, remaining tasks 1
+18556-src.FleetSimulationBase-INFO-	 time 8580, remaining tasks 0
+18556-src.FleetSimulationBase-INFO-Scenario example_depot_ch_time_pool_irsonly_sc_1 finished:
+      initialization : 0:00:19 h
+          simulation : 0:00:05 h
+          evaluation : 0:00:00 h
+

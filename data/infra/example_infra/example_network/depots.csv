@@ -1,0 +1,5 @@
+charging_station_id,max_nr_parking,charging_units,node_index
+0,20,7.5:0;15.0:1,19
+1,25,7.5:0;15.0:1,8
+2,25,7.5:0;15.0:1,1990
+3,25,7.5:0;15.0:1,2009

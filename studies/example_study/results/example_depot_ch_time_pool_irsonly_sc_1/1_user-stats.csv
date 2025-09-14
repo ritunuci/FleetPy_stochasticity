@@ -1,0 +1,2 @@
+request_id,rq_type,number_passenger,rq_time,earliest_pickup_time,start,end,pickup_location,dropoff_location,access_time,egress_time,direct_route_travel_time,direct_route_distance,offers,decision_time,chosen_operator_id,operator_id,vehicle_id,pickup_time,dropoff_time,fare,modal_state
+0,BasicRequest,1,720,720,21914;-1;-1,18434;-1;-1,,,,,358.306282954,6451.442,0:,,,,,,,,0

@@ -1,0 +1,1548 @@
+47224-src.FleetSimulationBase-INFO-Initialization of network and routing engine...
+47224-src.routing.NetworkBasic-INFO-... load network dynamics file: D:\Ritun\FleetPy-main\data\networks\example_network\network_dynamics.csv
+47224-src.FleetSimulationBase-INFO-Initialization of line-based public transportation...
+47224-src.FleetSimulationBase-INFO-Initialization of travelers...
+47224-src.demand.demand-INFO-init(): 14/1168 requests removed (rq_time not in simulation time)
+47224-src.demand.demand-INFO-init(): 5/1154 requests removed (start == end)
+47224-src.FleetSimulationBase-INFO-Initialization of MoD fleets...
+47224-src.fleetctrl.FleetControlBase-INFO-Scenario example_depot_time_pool_irsonly_sc_1
+Operator 0 control strategy: PoolingInsertionHeuristicOnly
+	 control function: {'func_key': 'distance_and_user_times_with_walk', 'vot': 0.45}
+Operator 0 additional strategies:
+	 RV Heuristics: {}
+	 Stop-Insert Heuristics: {}
+	 Charging: None
+	 On-Street Parking: True
+	 Repositioning: None
+	 Dynamic Pricing: None
+	 Dynamic Fleet Sizing: TimeBasedFS
+
+47224-src.FleetSimulationBase-INFO-Simulation environment specific initializations...
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 0 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 1 at pos (650, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 2 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 3 at pos (650, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 4 at pos (650, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 5 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 6 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 7 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 8 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 9 at pos (650, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 10 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 11 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 12 at pos (650, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 13 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 14 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 15 at pos (650, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 16 at pos (650, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 17 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 18 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 19 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 20 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 21 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 22 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 23 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 24 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 25 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 26 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 27 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 28 at pos (650, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 29 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 30 at pos (650, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 31 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 32 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 33 at pos (4132, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 34 at pos (2280, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 35 at pos (650, None, None) with soc 1.0 leg status 0 remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 21600)
+47224-src.fleetctrl.fleetsizing.TimeBasedFS-INFO-Loaded nr-of-active-vehicles curve from D:\Ritun\FleetPy-main\data\fleetctrl\elastic_fleet_size\example_active_fleetsize.csv.
+47224-src.FleetSimulationBase-INFO-Creating or loading initial vehicle states...
+47224-src.FleetSimulationBase-INFO-Initialization of scenario example_depot_time_pool_irsonly_sc_1 successful.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 21660
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 22980
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 0 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 5 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 2 at pos (2280, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 6 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 7 at pos (2280, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 8 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 1 at pos (650, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 10 at pos (2280, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 11 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 3 at pos (650, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 13 at pos (2280, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 14 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9996340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 25200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 25620
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 27600
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15349 -> end 29866 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15349 to 29866yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15349 -> end 29866 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28589 -> end 20801 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28589 to 20801yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28589 -> end 20801 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 25014 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 25014 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 25014 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44342 -> end 34329 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44342 to 34329yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44342 -> end 34329 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17906 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 27725 to 17906yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17906 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 30098 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 26379 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 27725 to 17906yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17906 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 23175 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 19141 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 4 at pos (650, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9985540 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 36000)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 17 at pos (2280, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9985540 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 36000)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 19 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9985540 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 36000)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 9 at pos (650, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9985540 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 36000)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28008 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13769 to 28008yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28008 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 31293 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 31294 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13769 to 28008yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28008 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13769 to 28008yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28008 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 16470 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 50610 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13769 to 28008yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28008 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 20801 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 26708 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 12508 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 12581 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 29060 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 15997 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 45836 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28327 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13769 to 28008yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28008 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 9460 -> end 12589 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 9460 to 12589yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 9460 -> end 12589 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 29358 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28081 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28081 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 22356 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 22356 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 22356 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 22356 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 22356 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 22356 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28649 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 22356 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 22356 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 28649 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 28649 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 18 at pos (2280, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9978340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 43200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 20 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9978340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 43200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 12 at pos (650, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9978340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 43200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 21 at pos (2280, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9978340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 43200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 25 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9978340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 43200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 15 at pos (650, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9978340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 43200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Activating vehicle veh 22 at pos (2280, None, None) with soc 1.0 leg status VRL_STATES.OUT_OF_SERVICE remaining time 9978340 number remaining legs: 1 ob : [] from depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 43200)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 14642 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 18586 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 20091 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 29399 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 24599 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28493 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13769 to 28493yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28493 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 34264 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 27698 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 25680 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 23403 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 16735 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 28516 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 16735 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 15415 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17000 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 27725 to 17000yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 17000 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 29840 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 18782 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 29840 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 14723 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 14723 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 39090 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 43231 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 11637 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 29079 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 29079 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 2387 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 33828 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 9225 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 24295 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 38767 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 47526 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 35037 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 9015 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13769 -> end 39641 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 27725 -> end 39641 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44276 to 44342yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44276 to 44342yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44276 to 44342yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44276 to 44342yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44276 to 44342yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 52012 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44276 to 44342yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 52012 to 44342yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 52012 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44276 to 44342yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44276 to 44342yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 2435 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 44276 to 44342yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 44276 -> end 44342 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 4
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 2 at pos (13769, None, None) with soc 0.9779891746999999 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 46800.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 5 at pos (8970, None, None) with soc 0.9833790396000002 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 46800)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 8 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 46800)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 11 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 46800)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 14 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 46800)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 52634 -> end 46879 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 52634 to 46879yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 52634 -> end 46879 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 23960 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 22940 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 15986 to 29334yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 15986 -> end 29334 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 43845 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12621 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12595 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 38210 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 16780 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 13588 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 44752 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 38190 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 3096 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 43477 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 6669 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 18787 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 25664 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 45831 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 50243 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12380 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12781 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 9614 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 41723 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 47425 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 22229 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12552 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 2
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 1 at pos (12595, None, None) with soc 0.9700778946000002 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 50400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 2 at pos (13769, None, None) with soc 0.9779891746999999 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 50400.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 3 at pos (33619, None, None) with soc 0.9673710720999986 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 50400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 54368 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 20305 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12135 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12105 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 13286 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 13298 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 23403 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 22441 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 688 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 40974 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 39096 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 3350 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 43884 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 37045 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 530 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 7741 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 51789 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 45482 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 33277 | no ch
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 11991 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 13044 to 12082yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 12082 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 13044 -> end 16053 | no ch
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 4
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 2 at pos (13769, None, None) with soc 0.9779891746999999 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 54000.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 20 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 54000)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 25 at pos (4132, None, None) with soc 1.0 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9C7B746C8> (plan time: 54000)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 38 at pos (31763, None, None) with soc 0.8575946831862098 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 54000.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 39 at pos (27725, None, None) with soc 0.7948029018333276 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 54000.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 0 at pos (43785, 45481, 0.5203683452185243) with soc 0.9722156693446838 leg status VRL_STATES.ROUTE remaining time None number remaining legs: 2 ob : [696, 734] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 54000)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 4 at pos (33427, 33426, 0.377095890206926) with soc 0.977890506686566 leg status VRL_STATES.ROUTE remaining time None number remaining legs: 14 ob : [699] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 54000)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 2
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 2 at pos (13769, None, None) with soc 0.9779891746999999 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 57600.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 38 at pos (31763, None, None) with soc 0.8575946831862098 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 57600.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 39 at pos (27725, None, None) with soc 0.7948029018333276 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 57600.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 6 at pos (31120, None, None) with soc 0.9679707654999995 leg status VRL_STATES.BOARDING remaining time 13.409564523397421 number remaining legs: 3 ob : [841] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 57600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 7 at pos (2394, 46946, 0.9332981923687753) with soc 0.9561010097248976 leg status VRL_STATES.ROUTE remaining time None number remaining legs: 4 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 57600)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 8976 -> end 9349 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-in return_travel_costs_1to1, travel_time_infos from nodes 8976 to 9349yields s=(inf, inf, inf)
+47224-src.routing.routing_imports.Router-WARNING-routebase no route found!
+47224-src.routing.routing_imports.Router-WARNING-start 8976 -> end 9349 | no ch
+47224-src.routing.NetworkBasicWithStore-WARNING-after recalculation of the routes, s=(inf, inf, inf)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 11
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 2 at pos (13769, None, None) with soc 0.9779891746999999 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 68400.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 9 at pos (19040, None, None) with soc 0.9575835865999999 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 68400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 12 at pos (43380, None, None) with soc 0.9642294441000007 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 68400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 38 at pos (31763, None, None) with soc 0.8575946831862098 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 68400.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 39 at pos (27725, None, None) with soc 0.7948029018333276 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 68400.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 10 at pos (23170, 23169, 0.8243044940246348) with soc 0.9426793714548616 leg status VRL_STATES.ROUTE remaining time None number remaining legs: 4 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 68400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 13 at pos (1179, 3488, 0.16129690888990256) with soc 0.9361164627220045 leg status VRL_STATES.ROUTE remaining time None number remaining legs: 8 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 68400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 15 at pos (19180, 17036, 0.30922912941246794) with soc 0.9665893533441208 leg status VRL_STATES.ROUTE remaining time None number remaining legs: 8 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 68400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 17 at pos (52299, 52297, 0.02819536402619642) with soc 0.9594150928770359 leg status VRL_STATES.ROUTE remaining time None number remaining legs: 6 ob : [1104] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 68400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 18 at pos (51449, 52848, 0.05854790755302186) with soc 0.9650354736564354 leg status VRL_STATES.ROUTE remaining time None number remaining legs: 2 ob : [1108] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 68400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 19 at pos (53408, None, None) with soc 0.9655693723999996 leg status VRL_STATES.IDLE remaining time None number remaining legs: 4 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 68400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 21 at pos (44003, None, None) with soc 0.9658041527000003 leg status VRL_STATES.BOARDING remaining time 6.535768516318058 number remaining legs: 1 ob : [1086] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE3A988> (plan time: 68400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 22 at pos (33667, 40975, 0.9377933778601717) with soc 0.9652908683308801 leg status VRL_STATES.ROUTE remaining time None number remaining legs: 8 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 68400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 36 at pos (21886, 20126, 0.31371985579117706) with soc 0.8895333760826805 leg status VRL_STATES.ROUTE remaining time None number remaining legs: 2 ob : [1091] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 68400)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 0
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-to deactivate: 2
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 2 at pos (13769, None, None) with soc 0.9779891746999999 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 72000.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 38 at pos (31763, None, None) with soc 0.8575946831862098 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 72000.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Could not find a free depot for vehicle veh 39 at pos (27725, None, None) with soc 0.7948029018333276 leg status VRL_STATES.IDLE remaining time None number remaining legs: 0 ob : [] at time 72000.
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-INFO-Deactivating vehicle veh 37 at pos (20060, None, None) with soc 0.6973136204984492 leg status VRL_STATES.IDLE remaining time None number remaining legs: 4 ob : [] at depot <src.infra.ChargingInfrastructure.Depot object at 0x000001F9CFE24FC8> (plan time: 72000)
+47224-src.fleetctrl.fleetsizing.DynamicFleetSizingBase-WARNING-Depot-Management of Operator <src.fleetctrl.PoolingIRSOnly.PoolingInsertionHeuristicOnly object at 0x000001F9CFE46FC8>: could not deactivate as many vehicles as planned.1 de-activations could not be conducted.
+47224-src.FleetSimulationBase-INFO-Saving final simulation state.
+47224-src.FleetSimulationBase-INFO-record_remaining_assignments()
+47224-src.FleetSimulationBase-INFO-	 time 75600, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 75660, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 75720, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 75780, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 75840, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 75900, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 75960, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76020, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76080, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76140, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76200, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76260, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76320, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76380, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76440, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76500, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76560, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76620, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76680, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76740, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76800, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76860, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76920, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 76980, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77040, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77100, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77160, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77220, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77280, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77340, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77400, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77460, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77520, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77580, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77640, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77700, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77760, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77820, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77880, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 77940, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 78000, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 78060, remaining tasks 2
+47224-src.FleetSimulationBase-INFO-	 time 78120, remaining tasks 0
+47224-src.FleetSimulationBase-INFO-Scenario example_depot_time_pool_irsonly_sc_1 finished:
+      initialization : 0:00:24 h
+          simulation : 0:56:32 h
+          evaluation : 0:00:00 h
+
