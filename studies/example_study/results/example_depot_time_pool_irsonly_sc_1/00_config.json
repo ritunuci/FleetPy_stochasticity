@@ -6,7 +6,7 @@
         "network_name": "example_network",
         "demand_name": "example_demand",
         "infra_structure_name": "example_infra",
-        "rq_file": "2024-04-30.csv",
+        "rq_file": "2023-01-03.csv",
         "random_seed": 0,
         "start_time": 25200,
         "end_time": 68400,
@@ -113,10 +113,10 @@
         "column_PUDO_duration_boarding": "pudo_boarding_duration",
         "column_PUDO_duration_alighting": "pudo_alighting_duration",
         "insertion_with_heterogenous_PUDO_duration": true,
-        "max_rel_error_black_box_PUDO_duration": 79.9526596069336,
+        "max_rel_error_black_box_PUDO_duration": 79.95265961,
         "upper_bound_black_box_PUDO_dur": 300,
         "lower_bound_black_box_PUDO_dur": 15,
-        "no_show_wait_time": 35.92498016357422,
+        "no_show_wait_time": 35.92498016,
         "morning_hr_start": 32400,
         "morning_hr_end": 39600,
         "afternoon_hr_start": null,
@@ -167,13 +167,13 @@
         }
     ],
     "directories": {
-        "main": "D:\\Ritun\\Currently Developing\\FleetPy_sto_tt_can_no_show_CALIBRATION_ver_sto_pudo_final",
-        "data": "D:\\Ritun\\Currently Developing\\FleetPy_sto_tt_can_no_show_CALIBRATION_ver_sto_pudo_final\\data",
-        "output": "D:\\Ritun\\Currently Developing\\FleetPy_sto_tt_can_no_show_CALIBRATION_ver_sto_pudo_final\\studies\\example_study\\results\\example_depot_time_pool_irsonly_sc_1",
-        "network": "D:\\Ritun\\Currently Developing\\FleetPy_sto_tt_can_no_show_CALIBRATION_ver_sto_pudo_final\\data\\networks\\example_network",
-        "vehicles": "D:\\Ritun\\Currently Developing\\FleetPy_sto_tt_can_no_show_CALIBRATION_ver_sto_pudo_final\\data\\vehicles",
-        "fleetctrl": "D:\\Ritun\\Currently Developing\\FleetPy_sto_tt_can_no_show_CALIBRATION_ver_sto_pudo_final\\data\\fleetctrl",
-        "demand": "D:\\Ritun\\Currently Developing\\FleetPy_sto_tt_can_no_show_CALIBRATION_ver_sto_pudo_final\\data\\demand\\example_demand\\matched\\example_network\\tuesday",
-        "infra": "D:\\Ritun\\Currently Developing\\FleetPy_sto_tt_can_no_show_CALIBRATION_ver_sto_pudo_final\\data\\infra\\example_infra\\example_network"
+        "main": "D:\\Ritun\\FleetPy_stochasticity",
+        "data": "D:\\Ritun\\FleetPy_stochasticity\\data",
+        "output": "D:\\Ritun\\FleetPy_stochasticity\\studies\\example_study\\results\\example_depot_time_pool_irsonly_sc_1",
+        "network": "D:\\Ritun\\FleetPy_stochasticity\\data\\networks\\example_network",
+        "vehicles": "D:\\Ritun\\FleetPy_stochasticity\\data\\vehicles",
+        "fleetctrl": "D:\\Ritun\\FleetPy_stochasticity\\data\\fleetctrl",
+        "demand": "D:\\Ritun\\FleetPy_stochasticity\\data\\demand\\example_demand\\matched\\example_network\\tuesday",
+        "infra": "D:\\Ritun\\FleetPy_stochasticity\\data\\infra\\example_infra\\example_network"
     }
 }
