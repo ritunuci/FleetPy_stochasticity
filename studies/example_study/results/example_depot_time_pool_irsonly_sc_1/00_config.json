@@ -167,13 +167,13 @@
         }
     ],
     "directories": {
-        "main": "D:\\Ritun\\FleetPy_stochasticity",
-        "data": "D:\\Ritun\\FleetPy_stochasticity\\data",
-        "output": "D:\\Ritun\\FleetPy_stochasticity\\studies\\example_study\\results\\example_depot_time_pool_irsonly_sc_1",
-        "network": "D:\\Ritun\\FleetPy_stochasticity\\data\\networks\\example_network",
-        "vehicles": "D:\\Ritun\\FleetPy_stochasticity\\data\\vehicles",
-        "fleetctrl": "D:\\Ritun\\FleetPy_stochasticity\\data\\fleetctrl",
-        "demand": "D:\\Ritun\\FleetPy_stochasticity\\data\\demand\\example_demand\\matched\\example_network\\tuesday",
-        "infra": "D:\\Ritun\\FleetPy_stochasticity\\data\\infra\\example_infra\\example_network"
+        "main": "d:\\Ritun\\FleetPy_stochasticity",
+        "data": "d:\\Ritun\\FleetPy_stochasticity\\data",
+        "output": "d:\\Ritun\\FleetPy_stochasticity\\studies\\example_study\\results\\example_depot_time_pool_irsonly_sc_1",
+        "network": "d:\\Ritun\\FleetPy_stochasticity\\data\\networks\\example_network",
+        "vehicles": "d:\\Ritun\\FleetPy_stochasticity\\data\\vehicles",
+        "fleetctrl": "d:\\Ritun\\FleetPy_stochasticity\\data\\fleetctrl",
+        "demand": "d:\\Ritun\\FleetPy_stochasticity\\data\\demand\\example_demand\\matched\\example_network\\tuesday",
+        "infra": "d:\\Ritun\\FleetPy_stochasticity\\data\\infra\\example_infra\\example_network"
     }
 }
