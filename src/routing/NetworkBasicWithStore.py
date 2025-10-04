@@ -44,7 +44,7 @@ INPUT_PARAMETERS_NetworkBasicWithStore = {
 }
 
 class NetworkBasicWithStore(NetworkBasic):
-    def __init__(self, network_name_dir, network_dynamics_file_name=None, stochastic_tt_file_name=None, scenario_time=None, scenario_parameters=None):
+    def __init__(self, network_name_dir, network_dynamics_file_name=None, stochastic_tt=False, scenario_time=None, scenario_parameters=None):
         """
         The network will be initialized.
         This network stores routing results from return_travel_costs_1to1 in a database to retrieve them in case they are queried again
@@ -66,7 +66,7 @@ class NetworkBasicWithStore(NetworkBasic):
         #                  scenario_parameters=scenario_parameters)
 
         super().__init__(network_name_dir, network_dynamics_file_name=network_dynamics_file_name,
-                         stochastic_tt_file_name=stochastic_tt_file_name, scenario_time=scenario_time,
+                         stochastic_tt=stochastic_tt, scenario_time=scenario_time,
                          scenario_parameters=scenario_parameters)
 
         self.travel_time_infos = {} #(o,d) -> (tt, dis)

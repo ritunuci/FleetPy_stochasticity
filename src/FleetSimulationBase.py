@@ -249,11 +249,11 @@ class FleetSimulationBase:
         LOG.info("Initialization of network and routing engine...")
         network_type = self.scenario_parameters[G_NETWORK_TYPE]
         network_dynamics_file = self.scenario_parameters.get(G_NW_DYNAMIC_F, None)
-        stochastic_tt_file = self.scenario_parameters.get(G_NW_STOCHASTIC_F, None)  # Ritun added
+        stochastic_tt = self.scenario_parameters.get(G_NW_STOCHASTIC_F, False)  # Ritun added
         # TODO # check consistency of scenario inputs / another way to refactor add_init_data ?
         self.routing_engine: NetworkBase = load_routing_engine(network_type, self.dir_names[G_DIR_NETWORK],
                                                                network_dynamics_file_name=network_dynamics_file,
-                                                               stochastic_tt_file_name=stochastic_tt_file,
+                                                               stochastic_tt=stochastic_tt,
                                                                scenario_parameters=self.scenario_parameters)
         if network_type == "NetworkDynamicNFDClusters":
             self.routing_engine.add_init_data(self.start_time, self.time_step,

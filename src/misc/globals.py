@@ -77,7 +77,7 @@ G_NW_DENSITY_T_BIN_SIZE = "nw_density_temporal_bin_size"
 G_NW_DENSITY_AVG_DURATION = "nw_density_avg_duration"
 # network dynamic file
 G_NW_DYNAMIC_F = "nw_dynamic_f"
-G_NW_STOCHASTIC_F = "nw_stochastic_f"
+G_NW_STOCHASTIC_F = "stochastic_tt"
 
 # zone specific attributes
 G_PARK_COST_SCALE = "park_cost_scale"

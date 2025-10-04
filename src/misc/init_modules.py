@@ -175,7 +175,7 @@ def load_simulation_environment(scenario_parameters):
     return sim_env_class(scenario_parameters)
 
 
-def load_routing_engine(network_type, network_dir, network_dynamics_file_name=None, stochastic_tt_file_name=None, scenario_parameters=None):
+def load_routing_engine(network_type, network_dir, network_dynamics_file_name=None, stochastic_tt=False, scenario_parameters=None):
     """ This function loads the specific network defined in the config file
     routing_engine.add_init() is not called here! (TODO!?)
     :param network_type: str network_type defined by G_NETWORK_TYPE in config
@@ -188,7 +188,7 @@ def load_routing_engine(network_type, network_dir, network_dynamics_file_name=No
     # load routing engine instance
     re_class = load_module(re_dict, network_type, "Network module")
     return re_class(network_dir, network_dynamics_file_name=network_dynamics_file_name,
-                    stochastic_tt_file_name=stochastic_tt_file_name, scenario_parameters=scenario_parameters)
+                    stochastic_tt=stochastic_tt, scenario_parameters=scenario_parameters)
 
 
 def load_request_module(rq_type_string):

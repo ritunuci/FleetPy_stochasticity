@@ -1,117 +1,33 @@
-name: fleetpy
+name: fleetpy_linux
 channels:
   - conda-forge
-  - gurobi
-  - defaults
 dependencies:
-  # ---- core runtime ----
   - python=3.9
   - pip
 
-  # ---- scientific stack ----
+  # core scientific stack
   - numpy
   - pandas
   - scipy
   - scikit-learn
-  - matplotlib
-  - tqdm
-  - requests
-  - pyyaml
-  - pyzmq
+  - networkx
 
-  # ---- FleetPy-friendly libs ----
-  - flask
-  - flask-socketio
-  - networkx==2.6.*       # stable for older FleetPy code
-  - shapely<2.0           # keep 1.x API unless your code supports 2.x
-  - rtree
-
-  # ---- geospatial stack (unpinned so Linux solver can choose) ----
-  - gdal
-  - libgdal
-  - fiona
-  - rasterio
-  - geopandas
+  # geometry / routing deps
+  - shapely
   - pyproj
-  - proj
-  - geos
-  - geotiff
-  - kealib
-  - libkml
-  - cfitsio
-  - hdf4
-  - hdf5
-  - libnetcdf
-  - poppler
-  - poppler-data
-  - freetype
-  - freexl
-  - libiconv
-  - libpng
-  - libtiff
-  - libpq
-  - libsodium
   - libspatialindex
-  - libspatialite
-  - libssh2
-  - xerces-c
-  - xz
-  - yaml
-  - zlib
-  - zstd
-  - ca-certificates
-  - certifi
-  - charset-normalizer
-  - idna
-  - urllib3
+  - rtree
+  - osmnx
 
-  # ---- small utilities (safe to keep) ----
+  # utilities / plotting
+  - tqdm
+  - matplotlib
+  - geographiclib
+  - geopy
   - click
-  - click-plugins
-  - cligj
-  - colorama
-  - decorator
-  - dill
-  - itsdangerous
-  - jinja2
-  - joblib
-  - kiwisolver
-  - lcms2
-  - livereload
-  - markdown
-  - markupsafe
-  - mercantile
-  - mkdocs
-  - mkdocs-material
-  - mkdocs-material-extensions
-  - munch
-  - nltk
-  - olefile
-  - openjpeg
-  - parso
-  - pcre
-  - pickleshare
-  - pillow
-  - prompt-toolkit
-  - pycparser
-  - pygments
-  - pymdown-extensions
-  - pyopenssl
-  - pyparsing
-  - pysocks
-  - python-dateutil
-  - pytz
-  - regex
-  - scikit-learn
-  - setuptools
-  - six
-  - snuggs
-  - sqlite
-  - tbb
-  - threadpoolctl
-  - tk
-  - tornado
-  - traitlets
-  - wcwidth
-  - werkzeug
-  - wheel
+
+  # If your repo needs extra pip-only packages, add them here later
+  # - pip:
+  #     - ax-platform
+  #     - botorch
+  #     - gpytorch

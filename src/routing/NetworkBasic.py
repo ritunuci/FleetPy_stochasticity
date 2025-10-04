@@ -166,7 +166,7 @@ class Edge():
 
 
 class NetworkBasic(NetworkBase):
-    def __init__(self, network_name_dir, network_dynamics_file_name=None, stochastic_tt_file_name=None,
+    def __init__(self, network_name_dir, network_dynamics_file_name=None, stochastic_tt=False,
                  scenario_time=None, scenario_parameters=None):
         """
         The network will be initialized.
@@ -184,7 +184,7 @@ class NetworkBasic(NetworkBase):
         self.scenario_parameters = scenario_parameters
         self.sto_parameter_dict = {}  # This for storing the stochastic parameters from the network edge file
         self.loadNetwork(network_name_dir, network_dynamics_file_name=network_dynamics_file_name,
-                         stochastic_tt_file_name=stochastic_tt_file_name, scenario_time=scenario_time,
+                         stochastic_tt=stochastic_tt, scenario_time=scenario_time,
                          scenario_parameters=scenario_parameters)
         self.current_dijkstra_number = 1    # used in dijkstra-class
         self.sim_time = 0
@@ -192,7 +192,7 @@ class NetworkBasic(NetworkBase):
         with open(os.sep.join([self.network_name_dir, "base", "crs.info"]), "r") as f:
             self.crs = f.read()
 
-    def loadNetwork(self, network_name_dir, network_dynamics_file_name=None, stochastic_tt_file_name=None, scenario_time=None, scenario_parameters=None):         #TODO: UPDATING
+    def loadNetwork(self, network_name_dir, network_dynamics_file_name=None, stochastic_tt=False, scenario_time=None, scenario_parameters=None):         #TODO: UPDATING
         nodes_f = os.path.join(network_name_dir, "base", "nodes.csv")
         print(f"Loading nodes from {nodes_f} ...")
         nodes_df = pd.read_csv(nodes_f)
@@ -219,9 +219,9 @@ class NetworkBasic(NetworkBase):
                         break
                     latest_tt = tt
                 self.load_tt_file(latest_tt)
-        if stochastic_tt_file_name:
-            edges_f_sto = os.path.join(network_name_dir, "base", stochastic_tt_file_name)       # Ritun: This part is for loading the sto. params.
-            with open(edges_f_sto) as f:
+        if stochastic_tt:
+            # edges_f_sto = os.path.join(network_name_dir, "base", stochastic_tt)
+            with open(edges_f) as f:
                 csvreader = csv.DictReader(f)
                 for data in csvreader:
                     from_node = int(data["from_node"])

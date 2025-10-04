@@ -99,9 +99,9 @@ class ImmediateDecisionsSimulation(FleetSimulationBase):
                     rq_obj.receive_offer(op_id, amod_offer, sim_time)
             self._rid_chooses_offer(rid, rq_obj, sim_time)
         # 4)
-        # self._check_waiting_request_cancellations(sim_time)
+        self._check_waiting_request_cancellations(sim_time)
         # 4a) Ritun added: Extra step to check and remove "Cancel Later" requests
-        # self.cancel_later_request_removal(sim_time, self.time_step)
+        self.cancel_later_request_removal(sim_time, self.time_step)
         # 5)
         for op in self.operators:
             op.time_trigger(sim_time)
