@@ -20,7 +20,7 @@ rq_type,BasicRequest_no_show
 user_max_decision_time,0
 ##2,FleetControl
 op_min_wait_time,0
-op_max_wait_time,5400
+op_max_wait_time,1200
 op_max_wait_time_2,
 op_max_detour_time_factor,40
 op_offer_time_window,
@@ -42,3 +42,12 @@ op_n_charge_offer_per_station,5
 ##4,PublicTransport
 ##5,DynamicNetwork and PT Crowding
 ##6,Evaluation
+##7,Cancellation diffusion model
+waiting_time_lower_bound,400
+diffusion_model_time_step,0.05
+max_decision_time,180
+decision_feedback_rate,0.99
+random_term_variance,3
+decision_threshold_lower,-50
+decision_threshold_upper,50
+ETA_update_interval,30

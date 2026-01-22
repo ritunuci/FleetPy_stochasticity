@@ -418,6 +418,16 @@ G_RQ_TIME = "rq_time"
 G_RQ_ID = "request_id"
 G_RQ_NO_SHOW_STATUS = "no_show_status"
 
+# Passenger cancellation diffusion model parameters # Ritun added
+G_WAIT_LOWER_BOUND = "waiting_time_lower_bound"
+# G_WAIT_UPPER_BOUND = "waiting_time_upper_bound"
+G_DIFF_TIME_STEP = "diffusion_model_time_step"
+G_MAX_DEC_TIME = "max_decision_time"
+G_FEEDBACK_RATE = "decision_feedback_rate"
+G_RAND_TERM_VARIANCE = "random_term_variance"
+G_DECISION_THRESHOLD_UPPER = "decision_threshold_upper"
+G_DECISION_THRESHOLD_LOWER = "decision_threshold_lower"
+
 # optional input data (and output)
 # --------------------------------
 G_RQ_PAX = "number_passenger"
@@ -452,6 +462,8 @@ G_RQ_MODAL_STATE = "modal_state"        # (see traveler modal state -> indicates
 G_RQ_CANCELLATION_TYPE = "cancellation_type"
 G_RQ_EXPECTED_WAIT_TIME = "expected_wait_time"
 G_RQ_CANCEL_LATER_TIMESTAMP = "cancel_later_timestamp"
+G_RQ_DIFFUSION_CANCELLED = "diffusion_cancelled"    # Ritun added for diffusion model
+G_RQ_DIFFUSION_STATE_VALUES = "diffusion_state_values"
 G_RQ_NO_SHOW_OUTPUT = "no_show_stat"
 # output environment specific
 # ---------------------------

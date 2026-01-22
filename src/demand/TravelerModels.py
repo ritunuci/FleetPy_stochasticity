@@ -65,12 +65,18 @@ class RequestBase(metaclass=ABCMeta):
         self.no_show = False                        # Ritun change no_show
         # self.no_show_detected = False           # Ritun added    #
         # self.op_removed_no_show = False         # Ritun added
-        self.cancel_later_timestamp = None      # Ritun added
-        self.cancel_prob_calculated = False     # Ritun added
-        self.cancel_later_flag = False          # Ritun added
+        # self.cancel_later_timestamp = None      # Ritun added
+        # self.cancel_prob_calculated = False     # Ritun added
+        # self.cancel_later_flag = False          # Ritun added
         self.expected_wait_time = None          # Ritun added
-        self.cancellation_type = None           # Ritun added: For adding a new column in 1_user-stats.csv
-        self.expected_wait_time_for_cancel_later_rq = None   # Ritun added
+        # self.cancellation_type = None           # Ritun added: For adding a new column in 1_user-stats.csv
+        # self.expected_wait_time_for_cancel_later_rq = None   # Ritun added
+        self.cancellation_decision_in_progress = True  # Ritun added for diffusion model
+        self.diffusion_time_stamp = self.rq_time  # Ritun added for diffusion model
+        self.diffusion_state_t = 0.0          # Ritun added for diffusion model
+        self.diffusion_cancelled = False        # Ritun added for diffusion model
+        self.expected_pickup_time = None    # Ritun added for diffusion model
+        self.expected_pickup_time_calculated = False    # Ritun added for diffusion model
         if rq_row.get(G_RQ_EPT):
             self.earliest_start_time = rq_row.get(G_RQ_EPT)
         elif scenario_parameters.get(
@@ -186,9 +192,10 @@ class RequestBase(metaclass=ABCMeta):
         record_dict[G_RQ_DO] = self.do_time
         record_dict[G_RQ_FARE] = self.fare
         record_dict[G_RQ_MODAL_STATE] = self.modal_state
-        record_dict[G_RQ_CANCELLATION_TYPE] = self.cancellation_type
+        # record_dict[G_RQ_CANCELLATION_TYPE] = self.cancellation_type
         record_dict[G_RQ_EXPECTED_WAIT_TIME] = self.expected_wait_time
-        record_dict[G_RQ_CANCEL_LATER_TIMESTAMP] = self.cancel_later_timestamp
+        record_dict[G_RQ_DIFFUSION_CANCELLED] = self.diffusion_cancelled
+        # record_dict[G_RQ_CANCEL_LATER_TIMESTAMP] = self.cancel_later_timestamp
         record_dict[G_RQ_NO_SHOW_OUTPUT] = self.no_show
 
         return self._add_record(record_dict)
@@ -323,71 +330,108 @@ class RequestBase(metaclass=ABCMeta):
         else:
             return False
 
-    def calculate_cancellation_prob(self, rq_obj, request_time, expected_wait_time, scenario_parameters, sim_time):  # Ritun added
-        """This method can be used to model customer cancellations after they already accepted an offer once. Remember
-        to adapt self.leave_system_time if users are allowed to cancel a booking.
+    # def calculate_cancellation_prob(self, rq_obj, request_time, expected_wait_time, scenario_parameters, sim_time):  # Ritun added
+    #     """This method can be used to model customer cancellations after they already accepted an offer once. Remember
+    #     to adapt self.leave_system_time if users are allowed to cancel a booking.
 
-        :param sim_time: current simulation time
-        :return: True/False
+    #     :param sim_time: current simulation time
+    #     :return: True/False
+    #     """
+    #     # # Import estimated logit model parameters from scenario file
+    #     # value = scenario_parameters[G_LOGIT_MODEL_PARAMS]
+    #     # # x, y = value.split(';')
+    #     # x, y = value
+    #     # beta_1 = float(x)
+    #     # beta_0 = float(y)
+    #     # # Get estimated wait time for that request
+    #     # eta = expected_wait_time
+    #     # # Canelled = 1, Not cancelled = 0
+    #     # # Calculate probability of cancelling
+    #     # logit = beta_0 + beta_1 * eta
+    #     # prob_cancel = 1 / (1 + np.exp(-logit))
+    #     # random_draw = np.random.rand()
+    #     # if random_draw < prob_cancel:
+    #     #     self.leave_system_time = sim_time
+    #     #     return True
+    #     # else:
+    #     #     return False
+
+    #     # Import estimated logit model parameters from scenario file
+    #     # Get the distribution parameters for the cancel later timestamp from scenario params
+    #     value_one = scenario_parameters[G_LOGIT_MODEL_PARAMS_STAGE_ONE]
+    #     value_two = scenario_parameters[G_LOGIT_MODEL_PARAMS_STAGE_TWO]
+
+    #     # Stage one
+    #     x_1, y_1 = value_one
+    #     beta_1 = float(x_1)
+    #     beta_0 = float(y_1)
+
+    #     # Stage two
+    #     x_2, y_2 = value_two
+    #     alpha_1 = float(x_2)
+    #     alpha_0 = float(y_2)
+    #     # Get estimated wait time for that request
+    #     eta = expected_wait_time
+
+    #     # For first stage modeling (cancel right away)
+    #     p_cancel_ra = self.logistic_model(beta_0 + beta_1*eta)
+    #     u1 = np.random.uniform(0, 1)
+    #     if u1 < p_cancel_ra:
+    #         self.cancellation_type = "Cancelled RA"
+    #         self.expected_wait_time = eta
+    #         LOG.info("CANCELLED RIGHT AWAY")
+    #         return "Cancel_RA"
+    #     else:
+    #         # For second stage modeling (not cancel right away/not cancelling at all)
+    #         p_cancel_later = self.logistic_model(alpha_0 + alpha_1*eta)
+    #         u2 = np.random.uniform(0, 1)
+    #         if u2 < p_cancel_later:
+    #             self.cancellation_type = "Cancelled Later"
+    #             self.expected_wait_time = eta
+    #             LOG.info("CANCELLED LATER")
+    #             return "Cancel_Later"
+    #         else:
+    #             return "Not_Cancelled"
+
+    # def logistic_model(self, x):
+    #     return 1 / (1 + np.exp(-x))
+
+    def decision_model(self, rq_obj, request_time, expected_wait_time, scenario_parameters, sim_time):
         """
-        # # Import estimated logit model parameters from scenario file
-        # value = scenario_parameters[G_LOGIT_MODEL_PARAMS]
-        # # x, y = value.split(';')
-        # x, y = value
-        # beta_1 = float(x)
-        # beta_0 = float(y)
-        # # Get estimated wait time for that request
-        # eta = expected_wait_time
-        # # Canelled = 1, Not cancelled = 0
-        # # Calculate probability of cancelling
-        # logit = beta_0 + beta_1 * eta
-        # prob_cancel = 1 / (1 + np.exp(-logit))
-        # random_draw = np.random.rand()
-        # if random_draw < prob_cancel:
-        #     self.leave_system_time = sim_time
-        #     return True
-        # else:
-        #     return False
+        This method is the used to model the diffusion process for the request cancellation from the passenger side.
+        """
+        t_w_1 = scenario_parameters[G_WAIT_LOWER_BOUND]
+        t_w_2 = scenario_parameters[G_OP_MAX_WT]
+        t_w = expected_wait_time
+        sim_time_step = scenario_parameters[G_SIM_TIME_STEP]
+        diffusion_model_time_step = scenario_parameters[G_DIFF_TIME_STEP]
+        max_decision_time = scenario_parameters[G_MAX_DEC_TIME]
+        feed_back_rate = scenario_parameters[G_FEEDBACK_RATE]
+        random_term_variance = scenario_parameters[G_RAND_TERM_VARIANCE]
+        decision_threshold_upper = scenario_parameters[G_DECISION_THRESHOLD_UPPER]
+        decision_threshold_lower = scenario_parameters[G_DECISION_THRESHOLD_LOWER]
 
-        # Import estimated logit model parameters from scenario file
-        # Get the distribution parameters for the cancel later timestamp from scenario params
-        value_one = scenario_parameters[G_LOGIT_MODEL_PARAMS_STAGE_ONE]
-        value_two = scenario_parameters[G_LOGIT_MODEL_PARAMS_STAGE_TWO]
-
-        # Stage one
-        x_1, y_1 = value_one
-        beta_1 = float(x_1)
-        beta_0 = float(y_1)
-
-        # Stage two
-        x_2, y_2 = value_two
-        alpha_1 = float(x_2)
-        alpha_0 = float(y_2)
-        # Get estimated wait time for that request
-        eta = expected_wait_time
-
-        # For first stage modeling (cancel right away)
-        p_cancel_ra = self.logistic_model(beta_0 + beta_1*eta)
-        u1 = np.random.uniform(0, 1)
-        if u1 < p_cancel_ra:
-            self.cancellation_type = "Cancelled RA"
-            self.expected_wait_time = eta
-            LOG.info("CANCELLED RIGHT AWAY")
-            return "Cancel_RA"
+        if t_w <= t_w_1:
+            offer_quality = 1
+        elif t_w > t_w_1 and t_w <= t_w_2:
+            offer_quality = 1-2*((t_w - t_w_1)/(t_w_2 - t_w_1))
         else:
-            # For second stage modeling (not cancel right away/not cancelling at all)
-            p_cancel_later = self.logistic_model(alpha_0 + alpha_1*eta)
-            u2 = np.random.uniform(0, 1)
-            if u2 < p_cancel_later:
-                self.cancellation_type = "Cancelled Later"
-                self.expected_wait_time = eta
-                LOG.info("CANCELLED LATER")
-                return "Cancel_Later"
-            else:
-                return "Not_Cancelled"
-
-    def logistic_model(self, x):
-        return 1 / (1 + np.exp(-x))
+            offer_quality = -1
+        if self.diffusion_time_stamp < self.rq_time + max_decision_time:
+            while self.diffusion_time_stamp < sim_time + sim_time_step:
+                # Here insert the decision state function
+                rand_term = np.random.normal(loc=0.0, scale=np.sqrt(float(random_term_variance)))
+                diff_state = self.diffusion_state_t
+                self.diffusion_state_t = feed_back_rate * self.diffusion_state_t + offer_quality + rand_term
+                # if self.rid == 2:
+                #     print(f"{self.diffusion_state_t}={feed_back_rate}*{diff_state}+{offer_quality}+{rand_term}")
+                if self.diffusion_state_t == decision_threshold_upper or self.diffusion_state_t == decision_threshold_lower:
+                    self.cancellation_decision_in_progress = False
+                    break
+                else:
+                    self.diffusion_time_stamp += diffusion_model_time_step      # For example 0.01
+        else:
+            self.cancellation_decision_in_progress = False
 
 # -------------------------------------------------------------------------------------------------------------------- #
 INPUT_PARAMETERS_BasicRequest = {

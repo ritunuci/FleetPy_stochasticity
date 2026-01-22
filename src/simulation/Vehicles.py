@@ -461,8 +461,8 @@ class SimulationVehicle:
                     self.no_show_cleanup_happened = False
                     self.no_show_event = False
                     print(f"Vehicle {self.vid} MOVING-ON POS 1, SIM TIME {c_time}")
-            elif c_time - self.cl_first_start_time >= (self.cl_duration + self.scenario_parameters[G_OP_NO_SHOW_WAIT_TIME]):  # Ritun added
-                print(f"Total no show duration was: {self.cl_duration + self.scenario_parameters[G_OP_NO_SHOW_WAIT_TIME]}")
+            elif c_time - self.cl_first_start_time >= max(self.cl_duration, self.scenario_parameters[G_OP_NO_SHOW_WAIT_TIME]):  # Ritun added
+                print(f"Total no show duration:{max(self.cl_duration, self.scenario_parameters[G_OP_NO_SHOW_WAIT_TIME])} where CL duration:{self.cl_duration}")
                 #TODO: We have to remove the no-show id from pax here because it is being added here with the last call of start_next_leg
                 no_show_rids = list(no_show_dict.keys())
                 for rid in no_show_rids:

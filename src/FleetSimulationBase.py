@@ -765,67 +765,97 @@ class FleetSimulationBase:
                 pass
         return chosen_operator
 
-    def _check_waiting_request_cancellations(self, sim_time):
-        """This method builds the interface for traveler models, where users can cancel their booking after selecting
-        an operator.
+    def _check_request_cancellations_diffusion_model(self, sim_time):           # This based on the diffusion model
+        """This method builds the interface for traveler models, where users can cancel their booking as per the
+         diffusion model.
 
         :param sim_time: current simulation time
         :return: None
         """
-        # if not self.demand.waiting_rq:
-        #     LOG.info("No waiting requests to cancel: waiting_rq is empty.")
-        #     return
         for rid, rq_obj in list(self.demand.waiting_rq.items()):
             if not rq_obj.no_show:
                 chosen_operator = rq_obj.get_chosen_operator()
                 in_vehicle = rq_obj.get_service_vehicle()
                 request_time = rq_obj.rq_time
                 if in_vehicle is None and chosen_operator is not None:
-                    # if in_vehicle is None:
-                    expected_pickup_time = self.operators[chosen_operator]._return_expected_pickup_time(rid)
-                    expected_wait_time = (expected_pickup_time - request_time) / 60  # Converting it into minutes
-                    if not rq_obj.cancel_prob_calculated and rq_obj.no_show == False:
-                        # Calculate the cancellation probability
-                        booking_cancellaion_status = rq_obj.calculate_cancellation_prob(rq_obj, request_time,
-                                                                                        expected_wait_time,
-                                                                                        self.scenario_parameters,
-                                                                                        sim_time)
-                        rq_obj.cancel_prob_calculated = True
-                        if booking_cancellaion_status == "Cancel_RA":
+                    if not rq_obj.expected_pickup_time_calculated:
+                        rq_obj.expected_pickup_time = self.operators[chosen_operator]._return_expected_pickup_time(rid)
+                        rq_obj.expected_pickup_time_calculated = True
+                    expected_wait_time = (rq_obj.expected_pickup_time - request_time)  # TODO: Check if sec. to min. conversion needed
+                    rq_obj.expected_wait_time = expected_wait_time
+                    # if not rq_obj.cancellation_decision_in_progress:
+                    rq_obj.decision_model(rq_obj, request_time, expected_wait_time, self.scenario_parameters, sim_time)
+
+                    if not rq_obj.cancellation_decision_in_progress:
+                        if rq_obj.diffusion_state_t < 0:
+                            rq_obj.diffusion_cancelled = True
                             self.operators[chosen_operator].waiting_user_cancels_request(rid, sim_time)
                             rq_obj.leave_system_time = sim_time
                             self.demand.record_user(rid)
                             del self.demand.rq_db[rid]
                             del self.demand.waiting_rq[rid]
-                        elif booking_cancellaion_status == "Cancel_Later":
-                            rq_obj.cancel_later_flag = True
-                            rq_obj.expected_wait_time_for_cancel_later_rq = expected_wait_time
-                            rq_obj.cancel_later_timestamp = request_time + expected_wait_time * random.uniform(0, 1)
 
-    def cancel_later_request_removal(self, sim_time, time_step):
-        """This method is used for removing the travelers, for which the cancellation probability is calculated and
-        found to be cancelling the booking later in simulation time line.
+    # def _check_waiting_request_cancellations(self, sim_time):     # This based on the two stage binary logit model
+    #     """This method builds the interface for traveler models, where users can cancel their booking after selecting
+    #     an operator.
 
-        :param sim_time: current simulation time
-        :param time_step: simulation time-step
-        :return: None
-                """
-        for rid, rq_obj in list(self.demand.waiting_rq.items()):
-            chosen_operator = rq_obj.get_chosen_operator()
-            if rq_obj.cancel_later_flag:
-                if rq_obj.cancel_later_timestamp <= sim_time + time_step:
-                    # Skip cancellation if passenger already boarded
-                    if self.operators[chosen_operator].rq_dict[rid].status == G_PRQS_IN_VEH:
-                        LOG.info(f"[RID {rid}] Cancellation skipped: passenger already picked up.")
-                        continue
-                    # if rq_obj.get_service_vehicle() is not None and rq_obj.pu_time is not None:
-                    #     LOG.info(f"[RID {rid}] Cancellation skipped: passenger already picked up.") # TODO: Use self.status = G_PRQS_IN_VEH from PlanRequest
-                    #     continue
-                    self.operators[chosen_operator].waiting_user_cancels_request(rid, sim_time)
-                    rq_obj.leave_system_time = sim_time
-                    self.demand.record_user(rid)
-                    del self.demand.rq_db[rid]
-                    del self.demand.waiting_rq[rid]
+    #     :param sim_time: current simulation time
+    #     :return: None
+    #     """
+    #     # if not self.demand.waiting_rq:
+    #     #     LOG.info("No waiting requests to cancel: waiting_rq is empty.")
+    #     #     return
+    #     for rid, rq_obj in list(self.demand.waiting_rq.items()):
+    #         if not rq_obj.no_show:
+    #             chosen_operator = rq_obj.get_chosen_operator()
+    #             in_vehicle = rq_obj.get_service_vehicle()
+    #             request_time = rq_obj.rq_time
+    #             if in_vehicle is None and chosen_operator is not None:
+    #                 # if in_vehicle is None:
+    #                 expected_pickup_time = self.operators[chosen_operator]._return_expected_pickup_time(rid)
+    #                 expected_wait_time = (expected_pickup_time - request_time) / 60  # Converting it into minutes
+    #                 if not rq_obj.cancel_prob_calculated and rq_obj.no_show == False:
+    #                     # Calculate the cancellation probability
+    #                     booking_cancellaion_status = rq_obj.calculate_cancellation_prob(rq_obj, request_time,
+    #                                                                                     expected_wait_time,
+    #                                                                                     self.scenario_parameters,
+    #                                                                                     sim_time)
+    #                     rq_obj.cancel_prob_calculated = True
+    #                     if booking_cancellaion_status == "Cancel_RA":
+    #                         self.operators[chosen_operator].waiting_user_cancels_request(rid, sim_time)
+    #                         rq_obj.leave_system_time = sim_time
+    #                         self.demand.record_user(rid)
+    #                         del self.demand.rq_db[rid]
+    #                         del self.demand.waiting_rq[rid]
+    #                     elif booking_cancellaion_status == "Cancel_Later":
+    #                         rq_obj.cancel_later_flag = True
+    #                         rq_obj.expected_wait_time_for_cancel_later_rq = expected_wait_time
+    #                         rq_obj.cancel_later_timestamp = request_time + expected_wait_time * random.uniform(0, 1)
+
+    # def cancel_later_request_removal(self, sim_time, time_step):
+    #     """This method is used for removing the travelers, for which the cancellation probability is calculated and
+    #     found to be cancelling the booking later in simulation time line.
+
+    #     :param sim_time: current simulation time
+    #     :param time_step: simulation time-step
+    #     :return: None
+    #             """
+    #     for rid, rq_obj in list(self.demand.waiting_rq.items()):
+    #         chosen_operator = rq_obj.get_chosen_operator()
+    #         if rq_obj.cancel_later_flag:
+    #             if rq_obj.cancel_later_timestamp <= sim_time + time_step:
+    #                 # Skip cancellation if passenger already boarded
+    #                 if self.operators[chosen_operator].rq_dict[rid].status == G_PRQS_IN_VEH:
+    #                     LOG.info(f"[RID {rid}] Cancellation skipped: passenger already picked up.")
+    #                     continue
+    #                 # if rq_obj.get_service_vehicle() is not None and rq_obj.pu_time is not None:
+    #                 #     LOG.info(f"[RID {rid}] Cancellation skipped: passenger already picked up.") # TODO: Use self.status = G_PRQS_IN_VEH from PlanRequest
+    #                 #     continue
+    #                 self.operators[chosen_operator].waiting_user_cancels_request(rid, sim_time)
+    #                 rq_obj.leave_system_time = sim_time
+    #                 self.demand.record_user(rid)
+    #                 del self.demand.rq_db[rid]
+    #                 del self.demand.waiting_rq[rid]
 
     def run(self, tqdm_position=0):
         self._start_realtime_plot()
