@@ -765,7 +765,7 @@ class FleetSimulationBase:
                 pass
         return chosen_operator
 
-    def _check_request_cancellations_diffusion_model(self, sim_time):           # This based on the diffusion model
+    def _check_request_cancellations_diffusion_model(self, sim_time):           # With ETA update feature
         """This method builds the interface for traveler models, where users can cancel their booking as per the
          diffusion model.
 
@@ -778,13 +778,13 @@ class FleetSimulationBase:
                 in_vehicle = rq_obj.get_service_vehicle()
                 request_time = rq_obj.rq_time
                 if in_vehicle is None and chosen_operator is not None:
-                    if not rq_obj.expected_pickup_time_calculated:
+                    if sim_time >= rq_obj.ETA_update_time_stamp:
                         rq_obj.expected_pickup_time = self.operators[chosen_operator]._return_expected_pickup_time(rid)
-                        rq_obj.expected_pickup_time_calculated = True
+                        rq_obj.ETA_update_flag = True
+                        rq_obj.ETA_update_time_stamp = sim_time + self.scenario_parameters.get(G_ETA_UPDATE_INTERVAL, 60)
                     expected_wait_time = (rq_obj.expected_pickup_time - request_time)  # TODO: Check if sec. to min. conversion needed
                     rq_obj.expected_wait_time = expected_wait_time
-                    # if not rq_obj.cancellation_decision_in_progress:
-                    rq_obj.decision_model(rq_obj, request_time, expected_wait_time, self.scenario_parameters, sim_time)
+                    rq_obj.decision_model(expected_wait_time, self.scenario_parameters, sim_time)
 
                     if not rq_obj.cancellation_decision_in_progress:
                         if rq_obj.diffusion_state_t < 0:

@@ -48,6 +48,6 @@ diffusion_model_time_step,0.05
 max_decision_time,180
 decision_feedback_rate,0.99
 random_term_variance,3
-decision_threshold_lower,-50
 decision_threshold_upper,50
+decision_threshold_lower,-50
 ETA_update_interval,30

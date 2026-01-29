@@ -427,6 +427,7 @@ G_FEEDBACK_RATE = "decision_feedback_rate"
 G_RAND_TERM_VARIANCE = "random_term_variance"
 G_DECISION_THRESHOLD_UPPER = "decision_threshold_upper"
 G_DECISION_THRESHOLD_LOWER = "decision_threshold_lower"
+G_ETA_UPDATE_INTERVAL = "ETA_update_interval"
 
 # optional input data (and output)
 # --------------------------------
@@ -460,7 +461,7 @@ G_RQ_ACCESS = "access_time"
 G_RQ_EGRESS = "egress_time"
 G_RQ_MODAL_STATE = "modal_state"        # (see traveler modal state -> indicates monomodal/intermodal)
 G_RQ_CANCELLATION_TYPE = "cancellation_type"
-G_RQ_EXPECTED_WAIT_TIME = "expected_wait_time"
+G_RQ_EXPECTED_WAIT_TIME = "wait_time_at_cancellation"
 G_RQ_CANCEL_LATER_TIMESTAMP = "cancel_later_timestamp"
 G_RQ_DIFFUSION_CANCELLED = "diffusion_cancelled"    # Ritun added for diffusion model
 G_RQ_DIFFUSION_STATE_VALUES = "diffusion_state_values"

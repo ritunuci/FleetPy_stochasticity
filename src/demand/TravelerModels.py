@@ -77,6 +77,8 @@ class RequestBase(metaclass=ABCMeta):
         self.diffusion_cancelled = False        # Ritun added for diffusion model
         self.expected_pickup_time = None    # Ritun added for diffusion model
         self.expected_pickup_time_calculated = False    # Ritun added for diffusion model
+        self.ETA_update_time_stamp = self.rq_time    # Ritun added for diffusion model
+        self.ETA_update_flag = False            # Ritun added for diffusion model
         if rq_row.get(G_RQ_EPT):
             self.earliest_start_time = rq_row.get(G_RQ_EPT)
         elif scenario_parameters.get(
@@ -396,7 +398,7 @@ class RequestBase(metaclass=ABCMeta):
     # def logistic_model(self, x):
     #     return 1 / (1 + np.exp(-x))
 
-    def decision_model(self, rq_obj, request_time, expected_wait_time, scenario_parameters, sim_time):
+    def decision_model(self, expected_wait_time, scenario_parameters, sim_time):      # With ETA update feature
         """
         This method is the used to model the diffusion process for the request cancellation from the passenger side.
         """
@@ -417,15 +419,15 @@ class RequestBase(metaclass=ABCMeta):
             offer_quality = 1-2*((t_w - t_w_1)/(t_w_2 - t_w_1))
         else:
             offer_quality = -1
+        if self.ETA_update_flag:
+            self.diffusion_state_t = 0.0
+            self.ETA_update_flag = False
         if self.diffusion_time_stamp < self.rq_time + max_decision_time:
             while self.diffusion_time_stamp < sim_time + sim_time_step:
                 # Here insert the decision state function
                 rand_term = np.random.normal(loc=0.0, scale=np.sqrt(float(random_term_variance)))
-                diff_state = self.diffusion_state_t
                 self.diffusion_state_t = feed_back_rate * self.diffusion_state_t + offer_quality + rand_term
-                # if self.rid == 2:
-                #     print(f"{self.diffusion_state_t}={feed_back_rate}*{diff_state}+{offer_quality}+{rand_term}")
-                if self.diffusion_state_t == decision_threshold_upper or self.diffusion_state_t == decision_threshold_lower:
+                if self.diffusion_state_t >= decision_threshold_upper or self.diffusion_state_t <= decision_threshold_lower:
                     self.cancellation_decision_in_progress = False
                     break
                 else:
