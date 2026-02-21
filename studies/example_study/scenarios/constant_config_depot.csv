@@ -9,7 +9,7 @@ infra_structure_name,example_infra
 rq_file,
 random_seed,0
 start_time,25200
-end_time,68400
+end_time,82800
 time_step,10
 route_output_flag,TRUE
 replay_flag,TRUE
@@ -43,7 +43,7 @@ op_n_charge_offer_per_station,5
 ##5,DynamicNetwork and PT Crowding
 ##6,Evaluation
 ##7,Cancellation diffusion model
-waiting_time_lower_bound,400
+waiting_time_lower_bound,700
 diffusion_model_time_step,0.05
 max_decision_time,180
 decision_feedback_rate,0.99

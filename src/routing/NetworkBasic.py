@@ -955,4 +955,3 @@ class NetworkBasic(NetworkBase):
         depending on the class the function can be overwritten to store certain results in the database
         """
         pass
-

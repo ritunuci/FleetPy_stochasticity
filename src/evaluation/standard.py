@@ -129,7 +129,8 @@ def create_vehicle_type_db(vehicle_data_dir):
     veh_type_db = {}    # veh_type -> veh_type_data
     for f in list_veh_data_f:
         veh_type_name = os.path.basename(f)[:-4]
-        veh_type_data = pd.read_csv(f, index_col=0, squeeze=True)
+        # veh_type_data = pd.read_csv(f, index_col=0, squeeze=True)
+        veh_type_data = pd.read_csv(f, index_col=0).squeeze("columns")  # Ritun changed: Pandas error
         veh_type_db[veh_type_name] = {}
         for k, v in veh_type_data.items():
             try:
@@ -293,6 +294,7 @@ def standard_evaluation(output_dir, evaluation_start_time = None, evaluation_end
             op_frac_served_online_pax = 100.0
 
         result_dict = {"operator_id": op_id, 
+                       "total demand": number_users,        # If number operators >1, then this is not valid; becuase then tot. demand is shared between operators
                        "number users": op_number_users,
                        "number travelers": op_number_pax,
                        "modal split": op_modal_split,
@@ -321,6 +323,10 @@ def standard_evaluation(output_dir, evaluation_start_time = None, evaluation_end
         op_avg_detour_time = np.nan 
         op_avg_rel_detour = np.nan  
         op_shared_rids = np.nan
+
+        op_avg_wait_time_offer = np.nan
+        op_med_wait_time_offer = np.nan
+        op_90perquant_wait_time_offer = np.nan
 
         op_morning_avg_wait_time = np.nan
         op_med_morning_wait_time = np.nan
@@ -416,6 +422,18 @@ def standard_evaluation(output_dir, evaluation_start_time = None, evaluation_end
                     op_med_evening_wait_time = evening_wait_times.median()
                     op_90perquant_evening_wait_time = evening_wait_times.quantile(q=0.9)
 
+            if G_RQ_OFFERS in op_users.columns:
+                offers = op_users[G_RQ_OFFERS]
+                offer_list = []
+                for offer in offers:
+                    wait_time_offer = offer.split(';')[0]
+                    wait_time_offer = wait_time_offer.split(':')[2]
+                    offer_list.append(float(wait_time_offer))
+                op_users["wait time offered"] = offer_list
+                op_avg_wait_time_offer = np.mean(op_users["wait time offered"])
+                op_med_wait_time_offer = np.median(op_users["wait time offered"])
+                op_90perquant_wait_time_offer = np.quantile(op_users["wait time offered"], q=0.9)
+                
             # avg waiting time from earliest pickup time
             if G_RQ_PU in op_users.columns and G_RQ_EPT in op_users.columns:
                 op_avg_wait_from_ept = (op_users[G_RQ_PU].sum() - op_users[G_RQ_EPT].sum()) / op_number_users
@@ -597,6 +615,10 @@ def standard_evaluation(output_dir, evaluation_start_time = None, evaluation_end
         result_dict["waiting time from ept"] = op_avg_wait_from_ept
         result_dict["waiting time (median)"] = op_med_wait_time
         result_dict["waiting time (90% quantile)"] = op_90perquant_wait_time
+
+        result_dict["waiting time offered"] = op_avg_wait_time_offer
+        result_dict["waiting time offered (median)"] = op_med_wait_time_offer
+        result_dict["waiting time offered (90% quantile)"] = op_90perquant_wait_time_offer
 
         result_dict["waiting time for morning"] = op_morning_avg_wait_time
         result_dict["waiting time for morning (median)"] = op_med_morning_wait_time

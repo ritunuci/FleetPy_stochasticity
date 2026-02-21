@@ -1,0 +1,63 @@
+,deterministic_tt_can,stochastic_tt_can
+operator_id,0,0
+total demand,937,937
+number users,565,470
+number travelers,639,536
+modal split,0.593314763,0.497678737
+modal split rq,0.60298826,0.501600854
+reservation users,0,0
+reservation pax,0,0
+served reservation users [%],100,100
+served reservation pax [%],100,100
+online users,565,470
+online pax,639,536
+served online users [%],60.29882604,50.16008538
+served online pax [%],59.33147632,49.76787372
+% created offers,75.98719317,70.4375667
+number cancelled,147,190
+utility,,
+travel time,520.9550696,661.143623
+travel distance,,
+waiting time,563.1420434,607.6179038
+waiting time from ept,563.1420434,607.6179038
+waiting time (median),578.4809085,628.3289633
+waiting time (90% quantile),942.1308796,942.4904745
+waiting time offered,516.6993122,571.1935256
+waiting time offered (median),534.9825987,598.6102916
+waiting time offered (90% quantile),843.898817,878.2378701
+waiting time for morning,603.5490556,587.3186171
+waiting time for morning (median),606.2897,596.7565654
+waiting time for morning (90% quantile),987.7509033,962.1804325
+waiting time for afternoon,,
+waiting time for afternoon (median),,
+waiting time for afternoon (90% quantile),,
+waiting time for evening,605.0755268,638.3316191
+waiting time for evening (median),623.0524407,708.2444007
+waiting time for evening (90% quantile),998.1166251,936.5622399
+detour time,71.80444595,86.83982741
+rel detour,13.97507052,13.41444054
+% fleet utilization,71.67303075,73.39670468
+rides per veh rev hours,7.335108196,6.002568314
+rides per veh rev hours rq,6.485659046,5.263446097
+total vkm,2884.326459,2330.905577
+occupancy,1.089985354,1.139317252
+occupancy rq,0.957194833,0.978653275
+% empty vkm,28.29302593,27.81572469
+% repositioning vkm,0,0
+customer direct distance [km],2666.915464,2206.366508
+saved distance [%],-8.152151712,-5.644532241
+trip distance per fleet distance,0.924623305,0.946570522
+trip distance per fleet distance (no reloc),0.924623305,0.946570522
+avg driving velocity [km/h],38.24611807,29.3613749
+avg trip velocity [km/h],0.032618429,0.025561509
+vehicle revenue hours [Fzg h],87.11527941,89.29511035
+total toll,0,0
+mod revenue,304316,257465
+mod fix costs,22500,22500
+mod var costs,72108,58271
+total CO2 emissions [t],0.001615223,0.001305307
+total external emission costs,23,19
+parking cost,,
+toll,0,0
+customer in vehicle distance,4886.482097,4853.507185
+shared rides [%],53.45132743,58.08510638

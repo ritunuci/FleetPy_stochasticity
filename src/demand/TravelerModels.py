@@ -10,6 +10,7 @@ from abc import abstractmethod, ABCMeta
 # ------------------------------------------
 import numpy as np
 import pandas as pd
+import json
 
 pd.options.mode.chained_assignment = None  # TODO # disables warning when overwriting Dataframes
 
@@ -75,7 +76,10 @@ class RequestBase(metaclass=ABCMeta):
         self.diffusion_time_stamp = self.rq_time  # Ritun added for diffusion model
         self.diffusion_state_t = 0.0          # Ritun added for diffusion model
         self.diffusion_cancelled = False        # Ritun added for diffusion model
+        self.diffusion_state_values = []        # Ritun added for diffusion model
+        self.diffusion_decision_time = None        # Ritun added for diffusion model
         self.expected_pickup_time = None    # Ritun added for diffusion model
+        self.expected_pickup_time_list = []    # Ritun added for diffusion model
         self.expected_pickup_time_calculated = False    # Ritun added for diffusion model
         self.ETA_update_time_stamp = self.rq_time    # Ritun added for diffusion model
         self.ETA_update_flag = False            # Ritun added for diffusion model
@@ -93,7 +97,8 @@ class RequestBase(metaclass=ABCMeta):
         self.d_node = int(rq_row[G_RQ_DESTINATION])
         self.d_pos = routing_engine.return_node_position(self.d_node)
         # store miscellaneous custom values from demand file
-        for param, value in rq_row.drop([G_RQ_TIME, G_RQ_ID, G_RQ_ORIGIN, G_RQ_DESTINATION]).iteritems():
+        for param, value in rq_row.drop([G_RQ_TIME, G_RQ_ID, G_RQ_ORIGIN, G_RQ_DESTINATION]).items():   # Ritun changed: Pandas error
+        # for param, value in rq_row.drop([G_RQ_TIME, G_RQ_ID, G_RQ_ORIGIN, G_RQ_DESTINATION]).iteritems():
             setattr(self, str(param), value)
         # offer: operator_id > offer class entity
         self.offer = {}
@@ -197,8 +202,11 @@ class RequestBase(metaclass=ABCMeta):
         # record_dict[G_RQ_CANCELLATION_TYPE] = self.cancellation_type
         record_dict[G_RQ_EXPECTED_WAIT_TIME] = self.expected_wait_time
         record_dict[G_RQ_DIFFUSION_CANCELLED] = self.diffusion_cancelled
+        record_dict[G_RQ_DIFFUSION_DECISION_TIME] = self.diffusion_decision_time
+        # record_dict[G_RQ_EXPECTED_PICKUP_TIME_LIST] = self.expected_pickup_time_list
         # record_dict[G_RQ_CANCEL_LATER_TIMESTAMP] = self.cancel_later_timestamp
         record_dict[G_RQ_NO_SHOW_OUTPUT] = self.no_show
+        record_dict[G_RQ_DIFFUSION_STATE_VALUES] = self.diffusion_state_values
 
         return self._add_record(record_dict)
 
@@ -407,7 +415,7 @@ class RequestBase(metaclass=ABCMeta):
         t_w = expected_wait_time
         sim_time_step = scenario_parameters[G_SIM_TIME_STEP]
         diffusion_model_time_step = scenario_parameters[G_DIFF_TIME_STEP]
-        max_decision_time = scenario_parameters[G_MAX_DEC_TIME]
+        max_diffusion_decision_time = scenario_parameters[G_MAX_DEC_TIME]
         feed_back_rate = scenario_parameters[G_FEEDBACK_RATE]
         random_term_variance = scenario_parameters[G_RAND_TERM_VARIANCE]
         decision_threshold_upper = scenario_parameters[G_DECISION_THRESHOLD_UPPER]
@@ -419,21 +427,26 @@ class RequestBase(metaclass=ABCMeta):
             offer_quality = 1-2*((t_w - t_w_1)/(t_w_2 - t_w_1))
         else:
             offer_quality = -1
-        if self.ETA_update_flag:
-            self.diffusion_state_t = 0.0
-            self.ETA_update_flag = False
-        if self.diffusion_time_stamp < self.rq_time + max_decision_time:
+        # if self.ETA_update_flag:
+        #     self.diffusion_state_t = 0.0
+        #     self.ETA_update_flag = False
+        if self.diffusion_time_stamp < self.rq_time + max_diffusion_decision_time:
             while self.diffusion_time_stamp < sim_time + sim_time_step:
                 # Here insert the decision state function
                 rand_term = np.random.normal(loc=0.0, scale=np.sqrt(float(random_term_variance)))
                 self.diffusion_state_t = feed_back_rate * self.diffusion_state_t + offer_quality + rand_term
+                if self.rid in [110]:
+                    self.diffusion_state_values.append((self.diffusion_time_stamp, self.diffusion_state_t))   # For data collecttion and analysis, TBD
                 if self.diffusion_state_t >= decision_threshold_upper or self.diffusion_state_t <= decision_threshold_lower:
                     self.cancellation_decision_in_progress = False
+                    self.diffusion_decision_time = self.diffusion_time_stamp
                     break
                 else:
                     self.diffusion_time_stamp += diffusion_model_time_step      # For example 0.01
         else:
             self.cancellation_decision_in_progress = False
+
+        return self.diffusion_state_t
 
 # -------------------------------------------------------------------------------------------------------------------- #
 INPUT_PARAMETERS_BasicRequest = {
@@ -482,7 +495,10 @@ class BasicRequest_no_show(RequestBase):
 
     def __init__(self, rq_row, routing_engine, simulation_time_step, scenario_parameters):
         super().__init__(rq_row, routing_engine, simulation_time_step, scenario_parameters)
-        self.no_show = rq_row[G_RQ_NO_SHOW_STATUS]       # Add new column in request file True/False for each request
+        if scenario_parameters.get(G_OP_NO_SHOW_FEATURE, False):
+            self.no_show = rq_row[G_RQ_NO_SHOW_STATUS]       # Add new column in request file True/False for each request
+        else:
+            self.no_show = False
         # self.no_show_processing(rq_row)
         self.no_show_processing()
 

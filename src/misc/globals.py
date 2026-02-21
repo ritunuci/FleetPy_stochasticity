@@ -34,6 +34,7 @@ G_NR_OPERATORS = "nr_mod_operators"
 G_NR_CH_OPERATORS = "nr_charging_operators"
 G_LOG_GUROBI = "log_gurobi" # optional; if True gurobi output file written -> default False
 G_STO_TIME_STAMPS = "sto_time_stamps"        # Stochastic time stamps # Ritun added
+G_STO_TRAVEL_TIME = "sto_travel_time"
 G_OP_TT_BUFFER = "op_tt_buffer"             # Ritun added
 G_LOGIT_MODEL_PARAMS_STAGE_ONE = "logit_model_params_stage_one"
 G_LOGIT_MODEL_PARAMS_STAGE_TWO = "logit_model_params_stage_two"  # Ritun added   Format is: (co-efficient for ETA;ASC)
@@ -161,6 +162,7 @@ G_OP_ZONE_PRICE = "op_zone_price_scale_dict"
 G_OP_ELA_PRICE = "op_elastic_price_file"
 G_OP_FC_SUPPLY = "op_supply_fc_type"
 G_OP_NO_SHOW_WAIT_TIME = "no_show_wait_time"    # Ritun added
+G_OP_NO_SHOW_FEATURE = "no_show_feature"    # Ritun added
 # charging
 G_OP_DEPOT_F = "op_depot_file"
 G_OP_CH_N_STATION_QUERY = "op_n_charge_station_query"   # max number of stations to query charge offers from
@@ -464,7 +466,9 @@ G_RQ_CANCELLATION_TYPE = "cancellation_type"
 G_RQ_EXPECTED_WAIT_TIME = "wait_time_at_cancellation"
 G_RQ_CANCEL_LATER_TIMESTAMP = "cancel_later_timestamp"
 G_RQ_DIFFUSION_CANCELLED = "diffusion_cancelled"    # Ritun added for diffusion model
+G_RQ_DIFFUSION_DECISION_TIME = "diffusion_decision_time"    # Ritun added for diffusion model
 G_RQ_DIFFUSION_STATE_VALUES = "diffusion_state_values"
+G_RQ_EXPECTED_PICKUP_TIME_LIST = "expected_pickup_times"
 G_RQ_NO_SHOW_OUTPUT = "no_show_stat"
 # output environment specific
 # ---------------------------
