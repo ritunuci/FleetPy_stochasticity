@@ -344,7 +344,8 @@ class NetworkBasic(NetworkBase):
     #     d_node.travel_infos_stochastic_from[o_node_index] = (new_tt, dis)
 
     def _draw_stochastic_tt(self, shape, loc, scale):
-        sample = lognorm.rvs(s=shape, loc=loc, scale=scale, random_state=42)
+        # sample = lognorm.rvs(s=shape, loc=loc, scale=scale, random_state=42)
+        sample = lognorm.rvs(s=shape, loc=loc, scale=scale)
         return sample
 
     def get_node_list(self):

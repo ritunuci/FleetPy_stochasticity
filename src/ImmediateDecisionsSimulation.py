@@ -102,8 +102,10 @@ class ImmediateDecisionsSimulation(FleetSimulationBase):
         # self._check_waiting_request_cancellations(sim_time)
         # # 4a) Ritun added: Extra step to check and remove "Cancel Later" requests
         # self.cancel_later_request_removal(sim_time, self.time_step)
+
         # 4b) Ritun added: Diffusion model for passenger request cancellation
-        self._check_request_cancellations_diffusion_model(sim_time)
+        self._check_request_cancellations_diffusion_model(sim_time)   # Ritun: To activate/deactivate the diffusion model for passenger request cancellation, uncomment/comment this line.
+
         # list_passengers_cancelled = self._check_request_cancellations_diffusion_model(sim_time)
         # self.remove_cancelled_passengers(list_passengers_cancelled, sim_time)
         # 5)

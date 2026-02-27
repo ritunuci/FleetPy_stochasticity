@@ -66,18 +66,22 @@ class RequestBase(metaclass=ABCMeta):
         self.no_show = False                        # Ritun change no_show
         # self.no_show_detected = False           # Ritun added    #
         # self.op_removed_no_show = False         # Ritun added
-        # self.cancel_later_timestamp = None      # Ritun added
-        # self.cancel_prob_calculated = False     # Ritun added
-        # self.cancel_later_flag = False          # Ritun added
+        # self.cancel_later_timestamp = None      # Ritun: This is associated with the two stage binary logit model for cancellation
+        # self.cancel_prob_calculated = False     # Ritun: This is associated with the two stage binary logit model for cancellation
+        # self.cancel_later_flag = False          # Ritun: This is associated with the two stage binary logit model for cancellation
+        self.initial_exp_wait_time_calculated = False          # Ritun added
+        self.initial_exp_wait_time = None          # Ritun added
         self.expected_wait_time = None          # Ritun added
-        # self.cancellation_type = None           # Ritun added: For adding a new column in 1_user-stats.csv
-        # self.expected_wait_time_for_cancel_later_rq = None   # Ritun added
+        # self.cancellation_type = None           # Ritun: This is associated with the two stage binary logit model for cancellation
+        # self.expected_wait_time_for_cancel_later_rq = None    # Ritun: This is associated with the two stage binary logit model for cancellation
         self.cancellation_decision_in_progress = True  # Ritun added for diffusion model
         self.diffusion_time_stamp = self.rq_time  # Ritun added for diffusion model
         self.diffusion_state_t = 0.0          # Ritun added for diffusion model
         self.diffusion_cancelled = False        # Ritun added for diffusion model
         self.diffusion_state_values = []        # Ritun added for diffusion model
         self.diffusion_decision_time = None        # Ritun added for diffusion model
+        self.max_diffusion_decision_time_reached = False    # Ritun added for diffusion model
+        self.last_diffusion_state_t = None        # Ritun added for diffusion model
         self.expected_pickup_time = None    # Ritun added for diffusion model
         self.expected_pickup_time_list = []    # Ritun added for diffusion model
         self.expected_pickup_time_calculated = False    # Ritun added for diffusion model
@@ -107,6 +111,7 @@ class RequestBase(metaclass=ABCMeta):
         self.chosen_operator_id = None
         self.service_opid = None
         self.service_vid = None
+        self.service_vid_cancel_rq = None   # Ritun added: To capture the veh id in which the request is cancelled
         self.pu_time = None
         self.pu_pos = None
         self.t_access = None
@@ -195,16 +200,20 @@ class RequestBase(metaclass=ABCMeta):
         record_dict[G_RQ_CHOSEN_OP_ID] = self.chosen_operator_id  # TODO # be errors when evaluating
         record_dict[G_RQ_OP_ID] = self.service_opid
         record_dict[G_RQ_VID] = self.service_vid
+        record_dict[G_RQ_VID_CANCEL_RQ] = self.service_vid_cancel_rq
         record_dict[G_RQ_PU] = self.pu_time
         record_dict[G_RQ_DO] = self.do_time
         record_dict[G_RQ_FARE] = self.fare
         record_dict[G_RQ_MODAL_STATE] = self.modal_state
-        # record_dict[G_RQ_CANCELLATION_TYPE] = self.cancellation_type
+        # record_dict[G_RQ_CANCELLATION_TYPE] = self.cancellation_type    # Ritun: This is associated with the two stage binary logit model for cancellation
+        record_dict[G_RQ_INITIAL_EXPECTED_WAIT_TIME] = self.initial_exp_wait_time
         record_dict[G_RQ_EXPECTED_WAIT_TIME] = self.expected_wait_time
         record_dict[G_RQ_DIFFUSION_CANCELLED] = self.diffusion_cancelled
         record_dict[G_RQ_DIFFUSION_DECISION_TIME] = self.diffusion_decision_time
+        record_dict[G_RQ_MAX_DIFF_DEC_TIME_REACHED] = self.max_diffusion_decision_time_reached
+        record_dict[G_RQ_LAST_DIFFUSION_STATE_T] = self.last_diffusion_state_t
         # record_dict[G_RQ_EXPECTED_PICKUP_TIME_LIST] = self.expected_pickup_time_list
-        # record_dict[G_RQ_CANCEL_LATER_TIMESTAMP] = self.cancel_later_timestamp
+        # record_dict[G_RQ_CANCEL_LATER_TIMESTAMP] = self.cancel_later_timestamp    # Ritun: This is associated with the two stage binary logit model for cancellation
         record_dict[G_RQ_NO_SHOW_OUTPUT] = self.no_show
         record_dict[G_RQ_DIFFUSION_STATE_VALUES] = self.diffusion_state_values
 
@@ -403,15 +412,59 @@ class RequestBase(metaclass=ABCMeta):
     #         else:
     #             return "Not_Cancelled"
 
+
     # def logistic_model(self, x):
     #     return 1 / (1 + np.exp(-x))
+
+
+    # def decision_model(self, expected_wait_time, scenario_parameters, sim_time):      # With ETA update feature (Not being used anymore, but keeping it for reference)
+    #     """
+    #     This method is the used to model the diffusion process for the request cancellation from the passenger side.
+    #     """
+    #     t_w_1 = scenario_parameters[G_WAIT_LOWER_BOUND]
+    #     t_w_2 = scenario_parameters[G_OP_MAX_WT]
+    #     t_w = expected_wait_time
+    #     sim_time_step = scenario_parameters[G_SIM_TIME_STEP]
+    #     diffusion_model_time_step = scenario_parameters[G_DIFF_TIME_STEP]
+    #     max_diffusion_decision_time = scenario_parameters[G_MAX_DEC_TIME]
+    #     feed_back_rate = scenario_parameters[G_FEEDBACK_RATE]
+    #     random_term_variance = scenario_parameters[G_RAND_TERM_VARIANCE]
+    #     decision_threshold_upper = scenario_parameters[G_DECISION_THRESHOLD_UPPER]
+    #     decision_threshold_lower = scenario_parameters[G_DECISION_THRESHOLD_LOWER]
+
+    #     if t_w <= t_w_1:
+    #         offer_quality = 1
+    #     elif t_w > t_w_1 and t_w <= t_w_2:
+    #         offer_quality = 1-2*((t_w - t_w_1)/(t_w_2 - t_w_1))
+    #     else:
+    #         offer_quality = -1
+    #     # if self.ETA_update_flag:
+    #     #     self.diffusion_state_t = 0.0
+    #     #     self.ETA_update_flag = False
+    #     if self.diffusion_time_stamp < self.rq_time + max_diffusion_decision_time:
+    #         while self.diffusion_time_stamp < sim_time + sim_time_step:
+    #             # Here insert the decision state function
+    #             rand_term = np.random.normal(loc=0.0, scale=np.sqrt(float(random_term_variance)))
+    #             self.diffusion_state_t = feed_back_rate * self.diffusion_state_t + offer_quality + rand_term
+    #             # self.diffusion_state_values.append((self.diffusion_time_stamp, self.diffusion_state_t))   # For data collecttion and analysis, TBD
+    #             if self.diffusion_state_t >= decision_threshold_upper or self.diffusion_state_t <= decision_threshold_lower:
+    #                 self.cancellation_decision_in_progress = False
+    #                 self.diffusion_decision_time = self.diffusion_time_stamp
+    #                 break
+    #             else:
+    #                 self.diffusion_time_stamp += diffusion_model_time_step      # For example 0.01
+    #     else:
+    #         self.cancellation_decision_in_progress = False
+
+    #     return self.diffusion_state_t
+
 
     def decision_model(self, expected_wait_time, scenario_parameters, sim_time):      # With ETA update feature
         """
         This method is the used to model the diffusion process for the request cancellation from the passenger side.
         """
         t_w_1 = scenario_parameters[G_WAIT_LOWER_BOUND]
-        t_w_2 = scenario_parameters[G_OP_MAX_WT]
+        t_w_2 = scenario_parameters[G_WAIT_UPPER_BOUND]
         t_w = expected_wait_time
         sim_time_step = scenario_parameters[G_SIM_TIME_STEP]
         diffusion_model_time_step = scenario_parameters[G_DIFF_TIME_STEP]
@@ -435,8 +488,7 @@ class RequestBase(metaclass=ABCMeta):
                 # Here insert the decision state function
                 rand_term = np.random.normal(loc=0.0, scale=np.sqrt(float(random_term_variance)))
                 self.diffusion_state_t = feed_back_rate * self.diffusion_state_t + offer_quality + rand_term
-                if self.rid in [110]:
-                    self.diffusion_state_values.append((self.diffusion_time_stamp, self.diffusion_state_t))   # For data collecttion and analysis, TBD
+                # self.diffusion_state_values.append((self.diffusion_time_stamp, self.diffusion_state_t))   # For data collecttion and analysis, TBD
                 if self.diffusion_state_t >= decision_threshold_upper or self.diffusion_state_t <= decision_threshold_lower:
                     self.cancellation_decision_in_progress = False
                     self.diffusion_decision_time = self.diffusion_time_stamp
@@ -445,6 +497,7 @@ class RequestBase(metaclass=ABCMeta):
                     self.diffusion_time_stamp += diffusion_model_time_step      # For example 0.01
         else:
             self.cancellation_decision_in_progress = False
+            self.max_diffusion_decision_time_reached = True
 
         return self.diffusion_state_t
 

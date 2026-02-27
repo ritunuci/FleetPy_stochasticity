@@ -1008,13 +1008,21 @@ def run_complete_temporal_evaluation(output_dir, evaluation_start_time=None, eva
                                 evaluation_start_time=evaluation_start_time, evaluation_end_time=evaluation_end_time)
 
 
-if __name__ == "__main__":
-    # bugfix
-    # -> set up a bugfix configuration with output dir!
+# if __name__ == "__main__":
+#     # bugfix
+#     # -> set up a bugfix configuration with output dir!
 
-    # normal script call
-    # ------------------
+#     # normal script call
+#     # ------------------
+#     if len(sys.argv) == 2:
+#         run_complete_temporal_evaluation(sys.argv[1])
+#     else:
+#         print("Please provide the scenario output directory as additional input parameter.")
+
+if __name__ == "__main__":
     if len(sys.argv) == 2:
         run_complete_temporal_evaluation(sys.argv[1])
     else:
-        print("Please provide the scenario output directory as additional input parameter.")
+        # fallback for convenience
+        output_dir = r"D:/Ritun/FleetPy_stochasticity/studies/example_study/results/example_depot_time_pool_irsonly_sc_1"
+        run_complete_temporal_evaluation(output_dir)

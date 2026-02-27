@@ -799,7 +799,53 @@ class FleetSimulationBase:
     #                         del self.demand.rq_db[rid]
     #                         del self.demand.waiting_rq[rid]
 
-    def _check_request_cancellations_diffusion_model(self, sim_time):           # With ETA update feature copy
+    # def _check_request_cancellations_diffusion_model(self, sim_time):           # With ETA update feature copy
+    #     """This method builds the interface for traveler models, where users can cancel their booking as per the
+    #      diffusion model.
+
+    #     :param sim_time: current simulation time
+    #     :return: None
+    #     """
+    #     list_passengers_cancelled = []
+    #     for rid, rq_obj in self.demand.waiting_rq.items():
+    #         if not rq_obj.no_show:
+    #             chosen_operator = rq_obj.get_chosen_operator()
+    #             in_vehicle = rq_obj.get_service_vehicle()
+    #             request_time = rq_obj.rq_time
+    #             if not rq_obj.initial_exp_wait_time_calculated:
+    #                 rq_obj.initial_exp_wait_time = self.operators[chosen_operator]._return_expected_pickup_time(rid) - request_time
+    #                 rq_obj.initial_exp_wait_time_calculated = True
+    #             if in_vehicle is None and chosen_operator is not None:
+    #                 if rq_obj.cancellation_decision_in_progress:
+    #                     if sim_time >= rq_obj.ETA_update_time_stamp:
+    #                         rq_obj.expected_pickup_time = self.operators[chosen_operator]._return_expected_pickup_time(rid)
+    #                         # rq_obj.expected_pickup_time_list.append((sim_time, rq_obj.expected_pickup_time))    # For data collecttion and analysis, TBD
+    #                         # rq_obj.ETA_update_flag = True
+    #                         rq_obj.ETA_update_time_stamp = sim_time + self.scenario_parameters.get(G_ETA_UPDATE_INTERVAL, 60)
+    #                     expected_wait_time = (rq_obj.expected_pickup_time - request_time)  # TODO: Check if sec. to min. conversion needed
+    #                     rq_obj.expected_wait_time = expected_wait_time
+    #                     decision_state = rq_obj.decision_model(expected_wait_time, self.scenario_parameters, sim_time)
+    #                     # if rid in [110]:
+    #                     #     rq_obj.diffusion_state_values.append((sim_time, decision_state))
+
+    #                 if not rq_obj.cancellation_decision_in_progress:
+    #                     if rq_obj.diffusion_state_t < 0:
+    #                         rq_obj.diffusion_cancelled = True
+    #                         list_passengers_cancelled.append((rid, rq_obj))
+        
+    #     # return list_passengers_cancelled
+
+    #     for rid, rq_obj in list_passengers_cancelled:
+    #         chosen_operator = rq_obj.get_chosen_operator()
+    #         rq_obj.service_vid_cancel_rq = self.operators[chosen_operator].rid_to_assigned_vid.get(rid)
+    #         self.operators[chosen_operator].waiting_user_cancels_request(rid, sim_time)
+    #         rq_obj.leave_system_time = sim_time
+    #         self.demand.record_user(rid)
+    #         del self.demand.rq_db[rid]
+    #         del self.demand.waiting_rq[rid]
+
+
+    def _check_request_cancellations_diffusion_model(self, sim_time):           # With ETA update feature copy (This is the latest version)
         """This method builds the interface for traveler models, where users can cancel their booking as per the
          diffusion model.
 
@@ -822,19 +868,18 @@ class FleetSimulationBase:
                         expected_wait_time = (rq_obj.expected_pickup_time - request_time)  # TODO: Check if sec. to min. conversion needed
                         rq_obj.expected_wait_time = expected_wait_time
                         decision_state = rq_obj.decision_model(expected_wait_time, self.scenario_parameters, sim_time)
-                        # if rid in [110]:
-                        #     rq_obj.diffusion_state_values.append((sim_time, decision_state))
+                        
 
                     if not rq_obj.cancellation_decision_in_progress:
                         if rq_obj.diffusion_state_t < 0:
                             rq_obj.diffusion_cancelled = True
+                            rq_obj.last_diffusion_state_t = rq_obj.diffusion_state_t
                             list_passengers_cancelled.append((rid, rq_obj))
+                        else:
+                            rq_obj.last_diffusion_state_t = rq_obj.diffusion_state_t
         
-        # return list_passengers_cancelled
 
         for rid, rq_obj in list_passengers_cancelled:
-            if rid == 854:
-                print(f"Ritun: RID 854 is cancelled at time {sim_time}")
             chosen_operator = rq_obj.get_chosen_operator()
             self.operators[chosen_operator].waiting_user_cancels_request(rid, sim_time)
             rq_obj.leave_system_time = sim_time
@@ -842,22 +887,6 @@ class FleetSimulationBase:
             del self.demand.rq_db[rid]
             del self.demand.waiting_rq[rid]
 
-
-    # def remove_cancelled_passengers(self, list_passengers_cancelled, sim_time):       # Not being used currently
-    #     """
-    #     This method removes the passengers from the system, for which the cancellation 
-    #     decision is made as per the diffusion model.
-    #     """
-
-    #     for rid, rq_obj in list_passengers_cancelled:
-    #         if rid == 854:
-    #             print(f"Ritun: RID 854 is cancelled at time {sim_time}")
-    #         chosen_operator = rq_obj.get_chosen_operator()
-    #         self.operators[chosen_operator].waiting_user_cancels_request(rid, sim_time)
-    #         rq_obj.leave_system_time = sim_time
-    #         self.demand.record_user(rid)
-    #         del self.demand.rq_db[rid]
-    #         del self.demand.waiting_rq[rid]
 
 
     # def _check_request_cancellations_diffusion_model(self, sim_time):           # No ETA update feature
@@ -892,7 +921,7 @@ class FleetSimulationBase:
     #                         del self.demand.waiting_rq[rid]
 
 
-    # def _check_waiting_request_cancellations(self, sim_time):     # This based on the two stage binary logit model
+    # def _check_waiting_request_cancellations(self, sim_time):     # This based on the two stage binary logit model (Not in use anymore)
     #     """This method builds the interface for traveler models, where users can cancel their booking after selecting
     #     an operator.
 
@@ -929,7 +958,7 @@ class FleetSimulationBase:
     #                         rq_obj.expected_wait_time_for_cancel_later_rq = expected_wait_time
     #                         rq_obj.cancel_later_timestamp = request_time + expected_wait_time * random.uniform(0, 1)
 
-    # def cancel_later_request_removal(self, sim_time, time_step):
+    # def cancel_later_request_removal(self, sim_time, time_step):      # This based on the two stage binary logit model (Not in use anymore)
     #     """This method is used for removing the travelers, for which the cancellation probability is calculated and
     #     found to be cancelling the booking later in simulation time line.
 
