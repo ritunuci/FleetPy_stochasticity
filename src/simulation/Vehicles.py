@@ -426,196 +426,7 @@ class SimulationVehicle:
                 _not_shown_yet_rid_dict[rid] = rq_obj
         return _not_shown_yet_rid_dict
 
-    def update_veh_state(self, current_time:float, next_time:float)->tp.Tuple[tp.Dict[tp.Any, tp.Tuple[float, tuple]], tp.Dict[tp.Any, tp.Tuple[float, tuple]], tp.List[VehicleRouteLeg], tp.Dict[tp.Any, tp.Tuple[float, tuple]]]:     # Ritun: Main version (pushing it with the final diffusion cancellation model)
-        """This method updates the current state of a simulation vehicle. This includes moving, boarding etc.
-        The method updates the vehicle position, soc. Additionally, it triggers the end and start of VehicleRouteLegs.
-        It returns a list of boarding request, alighting requests.
-
-        :param current_time: this time corresponds to the current state of the vehicle
-        :type current_time: float
-        :param next_time: the time until which the state should be updated
-        :type next_time: float
-        :return:(dict of boarding requests -> (time, position), dict of alighting request objects -> (time, position), list of passed VRL, dict_start_alighting)
-        :rtype: list
-        """
-
-        LOG.debug(f"update veh state {current_time} -> {next_time} : {self}")
-        dict_boarding_requests = {}
-        dict_start_alighting = {}
-        dict_alighting_requests = {}
-        dict_boarding_no_show_rids = {}  # Ritun added
-        dict_no_show_rid_rq_obj = {}    # Ritun added
-        list_passed_VRL = []
-        c_time = current_time
-        remaining_step_time = next_time - current_time
-        if self.start_next_leg_first:
-            add_boarding_rids, start_alighting_rids = self.start_next_leg(c_time)   # Every time this is called the self.cl_start_time is set to simulation time
-            # Santi to Ritun
-            no_show_dict = self._not_shown_yet_rid(add_boarding_rids, c_time)
-            for rid, rq_obj in no_show_dict.items():
-                dict_no_show_rid_rq_obj[rid] = rq_obj
-            if not no_show_dict:
-                for rid in add_boarding_rids:
-                    # if rid == 990:
-                    #     print(f"Adding RID 990 at {c_time}")
-                    dict_boarding_requests[rid] = (c_time, self.pos)
-                for rid in start_alighting_rids:
-                    dict_start_alighting[rid] = (c_time, self.pos)
-                self.start_next_leg_first = False
-                if self.no_show_cleanup_happened:
-                    self.cl_remaining_time = 1
-                    self.no_show_cleanup_happened = False
-                    self.no_show_event = False
-                    print(f"Vehicle {self.vid} MOVING-ON POS 1, SIM TIME {c_time}")
-            elif c_time - self.cl_first_start_time >= max(self.cl_duration, self.scenario_parameters[G_OP_NO_SHOW_WAIT_TIME]):  # Ritun added
-                print(f"Total no show duration:{c_time - self.cl_first_start_time} where CL duration:{self.cl_duration}")
-                #TODO: We have to remove the no-show id from pax here because it is being added here with the last call of start_next_leg
-                no_show_rids = list(no_show_dict.keys())
-                for rid in no_show_rids:
-                    dict_boarding_no_show_rids[rid] = (c_time, self.pos)
-                    add_boarding_rids.remove(rid)
-                for rid in add_boarding_rids:
-                    dict_boarding_requests[rid] = (c_time, self.pos)
-                for rid in start_alighting_rids:
-                    dict_start_alighting[rid] = (c_time, self.pos)
-                no_show_rq_obj = list(no_show_dict.values())
-                for rq_obj in no_show_rq_obj:
-                    if rq_obj in self.pax:
-                        self.pax.remove(rq_obj)
-                self.assigned_route[0].no_show_leg = True          # Marking the leg to be unlocked
-                remaining_step_time = 0
-            else:
-                # print(f"No-show found 1, IDS: {list(no_show_dict.keys())} for Veh {self.vid} at {c_time}")
-                # no_show_rids = list(no_show_dict.keys())
-                for rid, rq_obj in no_show_dict.items():
-                    add_boarding_rids.remove(rid)
-                    if rid not in self.no_shows_store_for_veh:
-                        self.no_shows_store_for_veh[rid] = rq_obj
-                for rid in add_boarding_rids:
-                    dict_boarding_requests[rid] = (c_time, self.pos)
-                for rid in start_alighting_rids:
-                    dict_start_alighting[rid] = (c_time, self.pos)
-                no_show_rq_obj = list(no_show_dict.values())
-                for rq_obj in no_show_rq_obj:
-                    if rq_obj in self.pax:
-                        self.pax.remove(rq_obj)
-                # self.no_show_event_for_veh = True # TODO: Attention: Ritun added: this will make all the boarding legs to show "True" which have been repeated for no-show event
-                self.start_next_leg_first = True
-                remaining_step_time = 0
-                self.no_show_event = True
-        while remaining_step_time > 0:
-            if self.status in G_DRIVING_STATUS:
-                # 1) moving: update pos and soc (call move along route with record_node_times=replay_flag)
-                # LOG.debug(f"Vehicle {self.vid} is driving between {c_time} and {next_time}")
-                arrival_in_time_step = self._move(c_time, remaining_step_time, current_time)
-                if arrival_in_time_step == -1:
-                    #   a) move until next_time; do nothing
-                    remaining_step_time = 0
-                else:
-                    #   b) move up to destination [compute required time]
-                    #       end task, start next task; continue with remaining time
-                    remaining_step_time -= (arrival_in_time_step - c_time)
-                    c_time = arrival_in_time_step
-                    add_alighting_rq, passed_VRL = self.end_current_leg(c_time)
-                    for rid in add_alighting_rq:
-                        dict_alighting_requests[rid] = c_time
-                    if isinstance(passed_VRL, list):
-                        list_passed_VRL.extend(passed_VRL)
-                    else:
-                        list_passed_VRL.append(passed_VRL)
-                    if self.assigned_route:
-                        add_boarding_rids, start_alighting_rids = self.start_next_leg(c_time)
-                        no_show_dict = self._not_shown_yet_rid(add_boarding_rids, c_time)
-                        if not no_show_dict:
-                            for rid in add_boarding_rids:
-                                dict_boarding_requests[rid] = (c_time, self.pos)
-                            for rid in start_alighting_rids:
-                                dict_start_alighting[rid] = (c_time, self.pos)
-                        else:
-                            # print(f"No-show found 2, IDS: {list(no_show_dict.keys())} for Veh {self.vid} at {c_time}")
-                            # no_show_rids = list(no_show_dict.keys())
-                            for rid, rq_obj in no_show_dict.items():
-                                # if rid == 586:
-                                #     self.detector = True
-                                add_boarding_rids.remove(rid)
-                                # rq_obj.no_show_detected = True
-                                if rid not in self.no_shows_store_for_veh:
-                                    self.no_shows_store_for_veh[rid] = rq_obj
-                            for rid in add_boarding_rids:
-                                dict_boarding_requests[rid] = (c_time, self.pos)
-                            for rid in start_alighting_rids:
-                                dict_start_alighting[rid] = (c_time, self.pos)
-                            no_show_rq_obj = list(no_show_dict.values())
-                            for rq_obj in no_show_rq_obj:
-                                if rq_obj in self.pax:
-                                    self.pax.remove(rq_obj)
-                            # self.no_show_event_for_veh = True  # TODO: Attention: Ritun added: this will make all the boarding legs to show "True" which have been repeated for no-show event
-                            self.start_next_leg_first = True
-                            remaining_step_time = 0
-                            self.no_show_event = True
-            elif self.status != VRL_STATES.IDLE: #elif self.status != 0 and not self.status in G_IDLE_BUSY_STATUS:
-                # 2) non-moving:
-                if remaining_step_time < self.cl_remaining_time:
-                    #   a) duration is ongoing: do nothing
-                    self.cl_remaining_time -= remaining_step_time
-                    # if self.assigned_route:
-                    if self.assigned_route[0].stationary_process is not None:
-                        self.assigned_route[0].stationary_process.update_state(remaining_step_time)
-                    remaining_step_time = 0
-                else:
-                    #   b) duration is passed; end task, start next task; continue with remaining time
-                    c_time += self.cl_remaining_time
-                    remaining_step_time -= self.cl_remaining_time
-                    # if self.assigned_route:
-                    if self.assigned_route[0].stationary_process is not None:
-                        self.assigned_route[0].stationary_process.update_state(self.cl_remaining_time)
-                    add_alighting_rq, passed_VRL = self.end_current_leg(c_time)
-                    for rid in add_alighting_rq:
-                        dict_alighting_requests[rid] = c_time
-                    list_passed_VRL.append(passed_VRL)
-
-                    # for rid in add_alighting_rq:
-                    #     if rid == 41:
-                    #         print("ended leg having 41 and passed VRL")
-
-                    if self.assigned_route:
-                        add_boarding_rids, start_alighting_rids = self.start_next_leg(c_time)
-                        no_show_dict = self._not_shown_yet_rid(add_boarding_rids, c_time)
-                        if not no_show_dict:
-                            for rid in add_boarding_rids:
-                                dict_boarding_requests[rid] = (c_time, self.pos)
-                            for rid in start_alighting_rids:
-                                dict_start_alighting[rid] = (c_time, self.pos)
-                        else:  # This means that a boarding is late
-                            no_show_rq_obj = list(no_show_dict.values())
-                            # print(f"No-show found 3, IDS: {list(no_show_dict.keys())} for Veh {self.vid} at {c_time}")
-                            # no_show_rids = list(no_show_dict.keys())
-                            for rid, rq_obj in no_show_dict.items():
-                                add_boarding_rids.remove(rid)
-                                # if rid == 586:
-                                #     self.detector = True
-                                # rq_obj.no_show_detected = True
-                                if rid not in self.no_shows_store_for_veh:
-                                    self.no_shows_store_for_veh[rid] = rq_obj
-                            for rid in add_boarding_rids:
-                                dict_boarding_requests[rid] = (c_time, self.pos)
-                            for rid in start_alighting_rids:
-                                dict_start_alighting[rid] = (c_time, self.pos)
-                            no_show_rq_obj = list(no_show_dict.values())
-                            for rq_obj in no_show_rq_obj:
-                                if rq_obj in self.pax:
-                                    self.pax.remove(rq_obj)
-                            # self.no_show_event_for_veh = True  # TODO: Attention: Ritun added: this will make all the boarding legs to show "True" which have been repeated for no-show event
-                            self.start_next_leg_first = True
-                            remaining_step_time = 0
-                            self.no_show_event = True
-            else:
-                # 3) idle without VRL
-                remaining_step_time = 0
-        return dict_boarding_requests, dict_alighting_requests, list_passed_VRL, dict_start_alighting, dict_boarding_no_show_rids, dict_no_show_rid_rq_obj
-
-
-    # def update_veh_state(self, current_time:float, next_time:float)->tp.Tuple[tp.Dict[tp.Any, tp.Tuple[float, tuple]], tp.Dict[tp.Any, tp.Tuple[float, tuple]], tp.List[VehicleRouteLeg], tp.Dict[tp.Any, tp.Tuple[float, tuple]]]:   # TODO: Here trying to fix the PUDO time issue (keeping it to carry to the no-show update branch)
+    # def update_veh_state(self, current_time:float, next_time:float)->tp.Tuple[tp.Dict[tp.Any, tp.Tuple[float, tuple]], tp.Dict[tp.Any, tp.Tuple[float, tuple]], tp.List[VehicleRouteLeg], tp.Dict[tp.Any, tp.Tuple[float, tuple]]]:     # Ritun: Main version (pushing it with the final diffusion cancellation model)
     #     """This method updates the current state of a simulation vehicle. This includes moving, boarding etc.
     #     The method updates the vehicle position, soc. Additionally, it triggers the end and start of VehicleRouteLegs.
     #     It returns a list of boarding request, alighting requests.
@@ -645,8 +456,8 @@ class SimulationVehicle:
     #             dict_no_show_rid_rq_obj[rid] = rq_obj
     #         if not no_show_dict:
     #             for rid in add_boarding_rids:
-    #                 if rid == 847:
-    #                     LOG.info(f"RID {rid} IS BOARDING AT SIM TIME {c_time} AND LEG FIRST START TIME IS {self.cl_first_start_time}")
+    #                 # if rid == 990:
+    #                 #     print(f"Adding RID 990 at {c_time}")
     #                 dict_boarding_requests[rid] = (c_time, self.pos)
     #             for rid in start_alighting_rids:
     #                 dict_start_alighting[rid] = (c_time, self.pos)
@@ -655,26 +466,24 @@ class SimulationVehicle:
     #                 self.cl_remaining_time = 1
     #                 self.no_show_cleanup_happened = False
     #                 self.no_show_event = False
-    #                 # print(f"Vehicle {self.vid} MOVING-ON POS 1, SIM TIME {c_time}")
-    #                 LOG.info(f"VEHICLE {self.vid} MOVING-ON FROM POS 1, AT SIM TIME {c_time}")
+    #                 print(f"Vehicle {self.vid} MOVING-ON POS 1, SIM TIME {c_time}")
     #         elif c_time - self.cl_first_start_time >= max(self.cl_duration, self.scenario_parameters[G_OP_NO_SHOW_WAIT_TIME]):  # Ritun added
-    #             # print(f"Total no show duration:{c_time - self.cl_first_start_time} where CL duration:{self.cl_duration}")
-    #             LOG.info(f"VEHICLE {self.vid} TOTAL NO SHOW DURATION:{c_time - self.cl_first_start_time} AT SIM TIME {c_time}")
+    #             print(f"Total no show duration:{c_time - self.cl_first_start_time} where CL duration:{self.cl_duration}")
     #             #TODO: We have to remove the no-show id from pax here because it is being added here with the last call of start_next_leg
     #             no_show_rids = list(no_show_dict.keys())
     #             for rid in no_show_rids:
     #                 dict_boarding_no_show_rids[rid] = (c_time, self.pos)
     #                 add_boarding_rids.remove(rid)
-    #             # for rid in add_boarding_rids:
-    #             #     dict_boarding_requests[rid] = (c_time, self.pos)
-    #             # for rid in start_alighting_rids:
-    #             #     dict_start_alighting[rid] = (c_time, self.pos)
+    #             for rid in add_boarding_rids:
+    #                 dict_boarding_requests[rid] = (c_time, self.pos)
+    #             for rid in start_alighting_rids:
+    #                 dict_start_alighting[rid] = (c_time, self.pos)
     #             no_show_rq_obj = list(no_show_dict.values())
     #             for rq_obj in no_show_rq_obj:
     #                 if rq_obj in self.pax:
     #                     self.pax.remove(rq_obj)
     #             self.assigned_route[0].no_show_leg = True          # Marking the leg to be unlocked
-    #             remaining_step_time = 0                     #TODO: Remaining step should be 1 here, not 0, check
+    #             remaining_step_time = 0
     #         else:
     #             # print(f"No-show found 1, IDS: {list(no_show_dict.keys())} for Veh {self.vid} at {c_time}")
     #             # no_show_rids = list(no_show_dict.keys())
@@ -682,19 +491,17 @@ class SimulationVehicle:
     #                 add_boarding_rids.remove(rid)
     #                 if rid not in self.no_shows_store_for_veh:
     #                     self.no_shows_store_for_veh[rid] = rq_obj
-    #             if self.first_time_no_show_leg_attempted:
-    #                 for rid in add_boarding_rids:
-    #                     dict_boarding_requests[rid] = (c_time, self.pos)
-    #                 for rid in start_alighting_rids:
-    #                     dict_start_alighting[rid] = (c_time, self.pos)
-    #                 self.first_time_no_show_leg_attempted = False
+    #             for rid in add_boarding_rids:
+    #                 dict_boarding_requests[rid] = (c_time, self.pos)
+    #             for rid in start_alighting_rids:
+    #                 dict_start_alighting[rid] = (c_time, self.pos)
     #             no_show_rq_obj = list(no_show_dict.values())
     #             for rq_obj in no_show_rq_obj:
     #                 if rq_obj in self.pax:
     #                     self.pax.remove(rq_obj)
     #             # self.no_show_event_for_veh = True # TODO: Attention: Ritun added: this will make all the boarding legs to show "True" which have been repeated for no-show event
     #             self.start_next_leg_first = True
-    #             remaining_step_time = 0     #TODO: Should this be 0??   Probably it was done so that it cannot end the leg inside the while loop
+    #             remaining_step_time = 0
     #             self.no_show_event = True
     #     while remaining_step_time > 0:
     #         if self.status in G_DRIVING_STATUS:
@@ -735,11 +542,9 @@ class SimulationVehicle:
     #                             if rid not in self.no_shows_store_for_veh:
     #                                 self.no_shows_store_for_veh[rid] = rq_obj
     #                         for rid in add_boarding_rids:
-    #                             if rid == 847:
-    #                                 print(f"rid {847} boarding time getting updated at position 1")
-    #                             dict_boarding_requests[rid] = (c_time, self.pos)  # Ritun: changes from c_time
+    #                             dict_boarding_requests[rid] = (c_time, self.pos)
     #                         for rid in start_alighting_rids:
-    #                             dict_start_alighting[rid] = (c_time, self.pos)  # Ritun: changes from c_time
+    #                             dict_start_alighting[rid] = (c_time, self.pos)
     #                         no_show_rq_obj = list(no_show_dict.values())
     #                         for rq_obj in no_show_rq_obj:
     #                             if rq_obj in self.pax:
@@ -766,8 +571,6 @@ class SimulationVehicle:
     #                     self.assigned_route[0].stationary_process.update_state(self.cl_remaining_time)
     #                 add_alighting_rq, passed_VRL = self.end_current_leg(c_time)
     #                 for rid in add_alighting_rq:
-    #                     if rid == 195:
-    #                         print(f"rid {rid} alighting")
     #                     dict_alighting_requests[rid] = c_time
     #                 list_passed_VRL.append(passed_VRL)
 
@@ -795,8 +598,6 @@ class SimulationVehicle:
     #                             if rid not in self.no_shows_store_for_veh:
     #                                 self.no_shows_store_for_veh[rid] = rq_obj
     #                         for rid in add_boarding_rids:
-    #                             if rid == 847:
-    #                                 print(f"rid {847} boarding time getting uupdated at position 2")
     #                             dict_boarding_requests[rid] = (c_time, self.pos)
     #                         for rid in start_alighting_rids:
     #                             dict_start_alighting[rid] = (c_time, self.pos)
@@ -812,8 +613,212 @@ class SimulationVehicle:
     #             # 3) idle without VRL
     #             remaining_step_time = 0
     #     return dict_boarding_requests, dict_alighting_requests, list_passed_VRL, dict_start_alighting, dict_boarding_no_show_rids, dict_no_show_rid_rq_obj
-    
 
+
+    def update_veh_state(self, current_time:float, next_time:float)->tp.Tuple[tp.Dict[tp.Any, tp.Tuple[float, tuple]], tp.Dict[tp.Any, tp.Tuple[float, tuple]], tp.List[VehicleRouteLeg], tp.Dict[tp.Any, tp.Tuple[float, tuple]]]:   # Updated branch after fixing the alighting issue at no-show stop
+        """This method updates the current state of a simulation vehicle. This includes moving, boarding etc.
+        The method updates the vehicle position, soc. Additionally, it triggers the end and start of VehicleRouteLegs.
+        It returns a list of boarding request, alighting requests.
+
+        :param current_time: this time corresponds to the current state of the vehicle
+        :type current_time: float
+        :param next_time: the time until which the state should be updated
+        :type next_time: float
+        :return:(dict of boarding requests -> (time, position), dict of alighting request objects -> (time, position), list of passed VRL, dict_start_alighting)
+        :rtype: list
+        """
+
+        LOG.debug(f"update veh state {current_time} -> {next_time} : {self}")
+        dict_boarding_requests = {}
+        dict_start_alighting = {}
+        dict_alighting_requests = {}
+        dict_boarding_no_show_rids = {}  # Ritun added
+        dict_no_show_rid_rq_obj = {}    # Ritun added
+        list_passed_VRL = []
+        c_time = current_time
+        remaining_step_time = next_time - current_time
+        if self.start_next_leg_first:
+            add_boarding_rids, start_alighting_rids = self.start_next_leg(c_time)   # Every time this is called the self.cl_start_time is set to simulation time
+            # Santi to Ritun
+            no_show_dict = self._not_shown_yet_rid(add_boarding_rids, c_time)
+            for rid, rq_obj in no_show_dict.items():
+                dict_no_show_rid_rq_obj[rid] = rq_obj
+            if not no_show_dict:
+                for rid in add_boarding_rids:
+                    # if rid == 990:
+                    #     print(f"Adding RID 990 at {c_time}")
+                    dict_boarding_requests[rid] = (c_time, self.pos)
+                for rid in start_alighting_rids:
+                    # if rid == 535:
+                    #     print(f"rid {535} has started alighting here at {c_time}!!!")
+                    dict_start_alighting[rid] = (c_time, self.pos)
+                self.start_next_leg_first = False
+                if self.no_show_cleanup_happened:
+                    if self.status == VRL_STATES.BOARDING:
+                        self.cl_remaining_time = 1      # TODO: this can be set to one only if the no-show boarding leg is attempted for the last time, otherwise if it a route leg (becuase there was only one boarding rq which was no-show then the stop will bee dropped) and this should not be set to 1
+                    self.no_show_cleanup_happened = False
+                    self.no_show_event = False
+                    # print(f"Vehicle {self.vid} MOVING-ON POS 1, SIM TIME {c_time}")
+                    LOG.info(f"VEHICLE {self.vid} MOVING-ON FROM POS 1, AT SIM TIME {c_time}")
+            elif c_time - self.cl_first_start_time >= max(self.cl_duration, self.scenario_parameters[G_OP_NO_SHOW_WAIT_TIME]):  # Ritun added
+                # print(f"Total no show duration:{c_time - self.cl_first_start_time} where CL duration:{self.cl_duration}")
+                LOG.info(f"VEHICLE {self.vid}: TOTAL NO SHOW DURATION:{c_time - self.cl_first_start_time}, where CL duration:{self.cl_duration}, AT SIM TIME {c_time}")
+                #TODO: We have to remove the no-show id from pax here because it is being added here with the last call of start_next_leg
+                no_show_rids = list(no_show_dict.keys())
+                for rid in no_show_rids:
+                    dict_boarding_no_show_rids[rid] = (c_time, self.pos)
+                    if rid in add_boarding_rids:
+                        add_boarding_rids.remove(rid)
+                # for rid in add_boarding_rids:
+                #     dict_boarding_requests[rid] = (c_time, self.pos)
+                # for rid in start_alighting_rids:
+                #     dict_start_alighting[rid] = (c_time, self.pos)
+                no_show_rq_obj = list(no_show_dict.values())
+                for rq_obj in no_show_rq_obj:
+                    if rq_obj in self.pax:
+                        self.pax.remove(rq_obj)
+                self.assigned_route[0].no_show_leg = True          # Marking the leg to be unlocked
+                remaining_step_time = 0
+            else:
+                # print(f"No-show found 1, IDS: {list(no_show_dict.keys())} for Veh {self.vid} at {c_time}")
+                # no_show_rids = list(no_show_dict.keys())
+                for rid, rq_obj in no_show_dict.items():
+                    add_boarding_rids.remove(rid)
+                    if rid not in self.no_shows_store_for_veh:
+                        self.no_shows_store_for_veh[rid] = rq_obj
+                # for rid in add_boarding_rids:
+                #     dict_boarding_requests[rid] = (c_time, self.pos)
+                # for rid in start_alighting_rids:
+                #     dict_start_alighting[rid] = (c_time, self.pos)
+                no_show_rq_obj = list(no_show_dict.values())
+                for rq_obj in no_show_rq_obj:
+                    if rq_obj in self.pax:
+                        self.pax.remove(rq_obj)
+                # self.no_show_event_for_veh = True # TODO: Attention: Ritun added: this will make all the boarding legs to show "True" which have been repeated for no-show event
+                self.start_next_leg_first = True
+                remaining_step_time = 0
+                self.no_show_event = True
+        while remaining_step_time > 0:
+            if self.status in G_DRIVING_STATUS:
+                # 1) moving: update pos and soc (call move along route with record_node_times=replay_flag)
+                # LOG.debug(f"Vehicle {self.vid} is driving between {c_time} and {next_time}")
+                arrival_in_time_step = self._move(c_time, remaining_step_time, current_time)
+                if arrival_in_time_step == -1:
+                    #   a) move until next_time; do nothing
+                    remaining_step_time = 0
+                else:
+                    #   b) move up to destination [compute required time]
+                    #       end task, start next task; continue with remaining time
+                    remaining_step_time -= (arrival_in_time_step - c_time)
+                    c_time = arrival_in_time_step
+                    add_alighting_rq, passed_VRL = self.end_current_leg(c_time)
+                    for rid in add_alighting_rq:
+                        dict_alighting_requests[rid] = c_time
+                    if isinstance(passed_VRL, list):
+                        list_passed_VRL.extend(passed_VRL)
+                    else:
+                        list_passed_VRL.append(passed_VRL)
+                    if self.assigned_route:
+                        add_boarding_rids, start_alighting_rids = self.start_next_leg(c_time)
+                        no_show_dict = self._not_shown_yet_rid(add_boarding_rids, c_time)
+                        if not no_show_dict:
+                            for rid in add_boarding_rids:
+                                dict_boarding_requests[rid] = (c_time, self.pos)
+                            for rid in start_alighting_rids:
+                                # if rid == 535:
+                                #     print(f"rid {535} alighting here at {c_time} Position 1")
+                                dict_start_alighting[rid] = (c_time, self.pos)
+                        else:
+                            # print(f"No-show found 2, IDS: {list(no_show_dict.keys())} for Veh {self.vid} at {c_time}")
+                            # no_show_rids = list(no_show_dict.keys())
+                            for rid, rq_obj in no_show_dict.items():
+                                # if rid == 586:
+                                #     self.detector = True
+                                add_boarding_rids.remove(rid)
+                                # rq_obj.no_show_detected = True
+                                if rid not in self.no_shows_store_for_veh:
+                                    self.no_shows_store_for_veh[rid] = rq_obj
+                            for rid in add_boarding_rids:
+                                dict_boarding_requests[rid] = (c_time, self.pos)
+                            for rid in start_alighting_rids:
+                                # if rid == 535:
+                                #     print(f"rid {535} alighting here at {c_time} Position 2")
+                                dict_start_alighting[rid] = (c_time, self.pos)
+                            no_show_rq_obj = list(no_show_dict.values())
+                            for rq_obj in no_show_rq_obj:
+                                if rq_obj in self.pax:
+                                    self.pax.remove(rq_obj)
+                            # self.no_show_event_for_veh = True  # TODO: Attention: Ritun added: this will make all the boarding legs to show "True" which have been repeated for no-show event
+                            self.start_next_leg_first = True
+                            remaining_step_time = 0
+                            self.no_show_event = True
+            elif self.status != VRL_STATES.IDLE: #elif self.status != 0 and not self.status in G_IDLE_BUSY_STATUS:
+                # 2) non-moving:
+                if remaining_step_time < self.cl_remaining_time:
+                    #   a) duration is ongoing: do nothing
+                    self.cl_remaining_time -= remaining_step_time
+                    # if self.assigned_route:
+                    if self.assigned_route[0].stationary_process is not None:
+                        self.assigned_route[0].stationary_process.update_state(remaining_step_time)
+                    remaining_step_time = 0
+                else:
+                    #   b) duration is passed; end task, start next task; continue with remaining time
+                    c_time += self.cl_remaining_time
+                    remaining_step_time -= self.cl_remaining_time
+                    # if self.assigned_route:
+                    if self.assigned_route[0].stationary_process is not None:
+                        self.assigned_route[0].stationary_process.update_state(self.cl_remaining_time)
+                    add_alighting_rq, passed_VRL = self.end_current_leg(c_time)
+                    for rid in add_alighting_rq:
+                        # if rid == 535:
+                        #     print(f"rid {535} has finally alighted here at {c_time}!!!")
+                        dict_alighting_requests[rid] = c_time
+                    list_passed_VRL.append(passed_VRL)
+
+                    # for rid in add_alighting_rq:
+                    #     if rid == 41:
+                    #         print("ended leg having 41 and passed VRL")
+
+                    if self.assigned_route:
+                        add_boarding_rids, start_alighting_rids = self.start_next_leg(c_time)
+                        no_show_dict = self._not_shown_yet_rid(add_boarding_rids, c_time)
+                        if not no_show_dict:
+                            for rid in add_boarding_rids:
+                                dict_boarding_requests[rid] = (c_time, self.pos)
+                            for rid in start_alighting_rids:
+                                # if rid == 535:
+                                #     print(f"rid {535} alighting here at {c_time} Position 3")
+                                dict_start_alighting[rid] = (c_time, self.pos)
+                        else:  # This means that a boarding is late
+                            no_show_rq_obj = list(no_show_dict.values())
+                            # print(f"No-show found 3, IDS: {list(no_show_dict.keys())} for Veh {self.vid} at {c_time}")
+                            # no_show_rids = list(no_show_dict.keys())
+                            for rid, rq_obj in no_show_dict.items():
+                                add_boarding_rids.remove(rid)
+                                # if rid == 586:
+                                #     self.detector = True
+                                # rq_obj.no_show_detected = True
+                                if rid not in self.no_shows_store_for_veh:
+                                    self.no_shows_store_for_veh[rid] = rq_obj
+                            for rid in add_boarding_rids:
+                                dict_boarding_requests[rid] = (c_time, self.pos)
+                            for rid in start_alighting_rids:
+                                # if rid == 535:
+                                #     print(f"rid {535} alighting here at {c_time} Position 4")
+                                dict_start_alighting[rid] = (c_time, self.pos)
+                            no_show_rq_obj = list(no_show_dict.values())
+                            for rq_obj in no_show_rq_obj:
+                                if rq_obj in self.pax:
+                                    self.pax.remove(rq_obj)
+                            # self.no_show_event_for_veh = True  # TODO: Attention: Ritun added: this will make all the boarding legs to show "True" which have been repeated for no-show event
+                            self.start_next_leg_first = True
+                            remaining_step_time = 0
+                            self.no_show_event = True
+            else:
+                # 3) idle without VRL
+                remaining_step_time = 0
+        return dict_boarding_requests, dict_alighting_requests, list_passed_VRL, dict_start_alighting, dict_boarding_no_show_rids, dict_no_show_rid_rq_obj
+    
 
     def update_route(self):
         if self.assigned_route:

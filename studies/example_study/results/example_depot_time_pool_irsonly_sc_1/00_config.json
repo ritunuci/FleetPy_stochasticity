@@ -21,7 +21,7 @@
         "rq_type": "BasicRequest_no_show",
         "user_max_decision_time": 0,
         "op_min_wait_time": 0,
-        "op_max_wait_time": 3400,
+        "op_max_wait_time": 4200,
         "op_max_wait_time_2": null,
         "op_max_detour_time_factor": 40,
         "op_offer_time_window": null,
@@ -198,7 +198,7 @@
         "op_const_boarding_time": 30,
         "day_dir_name": "tuesday",
         "tt_multiplier": null,
-        "no_show_feature": false
+        "no_show_feature": true
     },
     "list_operator_attributes": [
         {
@@ -207,7 +207,7 @@
                 "default_vehtype": 9
             },
             "op_min_wait_time": 0,
-            "op_max_wait_time": 3400,
+            "op_max_wait_time": 4200,
             "op_max_wait_time_2": null,
             "op_max_detour_time_factor": 40,
             "op_offer_time_window": null,

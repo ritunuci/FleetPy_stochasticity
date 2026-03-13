@@ -648,9 +648,10 @@ class FleetSimulationBase:
                 self.operators[op_id].acknowledge_boarding(rid, vid, boarding_time)
             for rid, alighting_start_time_and_pos in dict_start_alighting.items():
                 # record user stats at beginning of alighting process
-                alighting_start_time, alighting_pos = alighting_start_time_and_pos
-                LOG.debug(f"rid {rid} deboarding at {alighting_start_time} at pos {alighting_pos}")
-                self.demand.record_alighting_start(rid, vid, op_id, alighting_start_time, do_pos=alighting_pos)
+                if not veh_obj.no_show_event:       # Ritun change: only record alighting start if no-show event did not happen or the no-shows are removed and the vehicle is ready to move
+                    alighting_start_time, alighting_pos = alighting_start_time_and_pos
+                    LOG.debug(f"rid {rid} deboarding at {alighting_start_time} at pos {alighting_pos}")
+                    self.demand.record_alighting_start(rid, vid, op_id, alighting_start_time, do_pos=alighting_pos)
             for rid, alighting_end_time in alighting_requests.items():
                 # # record user stats at end of alighting process
                 self.demand.user_ends_alighting(rid, vid, op_id, alighting_end_time)

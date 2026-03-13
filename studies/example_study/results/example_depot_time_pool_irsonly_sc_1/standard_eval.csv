@@ -1,62 +1,62 @@
 ,MoD_0
 operator_id,0.0
 total demand,937.0
-number users,629.0
-number travelers,700.0
-modal split,0.6499535747446611
-modal split rq,0.6712913553895411
+number users,740.0
+number travelers,840.0
+modal split,0.7799442896935933
+modal split rq,0.7897545357524013
 reservation users,0.0
 reservation pax,0.0
 served reservation users [%],100.0
 served reservation pax [%],100.0
-online users,629.0
-online pax,700.0
-served online users [%],67.12913553895412
-served online pax [%],64.9953574744661
+online users,740.0
+online pax,840.0
+served online users [%],78.97545357524012
+served online pax [%],77.99442896935933
 % created offers,84.41835645677695
 utility,
-travel time,518.9593394738171
+travel time,555.5090998644563
 travel distance,
-waiting time,578.0102502876919
-waiting time from ept,578.0102502876842
-waiting time (median),504.6294360029715
-waiting time (90% quantile),1033.35538035058
-waiting time offered,485.2994070081725
-waiting time offered (median),473.39812587398046
-waiting time offered (90% quantile),853.2797235834952
-waiting time for morning,623.5829382425782
-waiting time for morning (median),550.3676598779202
-waiting time for morning (90% quantile),1093.5022278655754
+waiting time,1800.074446097601
+waiting time from ept,1800.0744460976002
+waiting time (median),1549.7327024694496
+waiting time (90% quantile),3822.9881314737454
+waiting time offered,1581.7582572654412
+waiting time offered (median),1372.4543353699592
+waiting time offered (90% quantile),3143.76020567968
+waiting time for morning,2438.5266425615664
+waiting time for morning (median),2453.530240351505
+waiting time for morning (90% quantile),3955.556342492131
 waiting time for afternoon,
 waiting time for afternoon (median),
 waiting time for afternoon (90% quantile),
-waiting time for evening,648.6475689272436
-waiting time for evening (median),596.3417701190047
-waiting time for evening (90% quantile),1147.729419135202
-detour time,69.35033497255942
-rel detour,14.166276648929966
-% fleet utilization,70.00963758449588
-rides per veh rev hours,6.943488466490273
-rides per veh rev hours rq,6.239220350603403
-total vkm,3303.6807077513718
-occupancy,1.0382973924104448
-occupancy rq,0.9251899663228882
-% empty vkm,28.686650230153965
+waiting time for evening,2220.51400480726
+waiting time for evening (median),2223.1080807749677
+waiting time for evening (90% quantile),4014.7770744053596
+detour time,88.2182759728739
+rel detour,17.154261014509814
+% fleet utilization,76.57465174068973
+rides per veh rev hours,7.659070175664907
+rides per veh rev hours rq,6.747276107133371
+total vkm,3604.3134743927976
+occupancy,1.1944832441615616
+occupancy rq,1.045241373363981
+% empty vkm,28.94976942312388
 % repositioning vkm,0.0
-customer direct distance [km],2964.743848968595
-saved distance [%],-11.43224764259784
-trip distance per fleet distance,0.8974062905087847
-trip distance per fleet distance (no reloc),0.8974062905087847
-avg driving velocity [km/h],38.03330143276032
-avg trip velocity [km/h],0.03269683380725058
-vehicle revenue hours [Fzg h],100.81387812167407
+customer direct distance [km],3648.3998119848798
+saved distance [%],1.2083746262473727
+trip distance per fleet distance,1.0122315491993963
+trip distance per fleet distance (no reloc),1.0122315491993963
+avg driving velocity [km/h],38.30536173117908
+avg trip velocity [km/h],0.03195082144043285
+vehicle revenue hours [Fzg h],109.67388739548623
 total toll,0.0
-mod revenue,334133.0
+mod revenue,417197.0
 mod fix costs,22500.0
-mod var costs,82591.0
-total CO2 emissions [t],0.0018500611963407681
-total external emission costs,27.0
+mod var costs,90108.0
+total CO2 emissions [t],0.002018415545659967
+total external emission costs,29.0
 parking cost,
 toll,0.0
-customer in vehicle distance,4859.3517372751485
-shared rides [%],47.53577106518283
+customer in vehicle distance,5091.05076487652
+shared rides [%],60.4054054054054
