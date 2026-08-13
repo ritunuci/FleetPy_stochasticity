@@ -182,6 +182,8 @@ class NetworkBasic(NetworkBase):
         self.time_stamps = []
         self.travel_time_file_folders = self._load_tt_folder_path(network_dynamics_file_name=network_dynamics_file_name)
         self.scenario_parameters = scenario_parameters
+        self.hourly_tt_dict = {}  # This for storing hourly travel times from the network edge file
+        self.cv_dict = {}
         self.sto_parameter_dict = {}  # This for storing the stochastic parameters from the network edge file
         self.loadNetwork(network_name_dir, network_dynamics_file_name=network_dynamics_file_name,
                          stochastic_tt=stochastic_tt, scenario_time=scenario_time,
@@ -228,10 +230,16 @@ class NetworkBasic(NetworkBase):
                     to_node = int(data["to_node"])
                     # sto_tt_parameters = data["sto_tt_parameters"].split(';')
                     dist = data["distance"]
-                    shape = float(data["shape"])
-                    loc = float(data["loc"])
-                    scale = float(data["scale"])
-                    self.sto_parameter_dict[(from_node, to_node)] = (shape, loc, scale)
+                    # shape = float(data["shape"])
+                    # loc = float(data["loc"])
+                    # scale = float(data["scale"])
+                    # self.sto_parameter_dict[(from_node, to_node)] = (shape, loc, scale)
+
+                    peak_cv = float(data["peak_cv"])
+                    off_peak_cv = float(data["offpeak_cv"])
+                    self.cv_dict[(from_node, to_node)] = (peak_cv, off_peak_cv)
+                    for i in range(7, 21):            # This 7 and 21 is for the operation period in our current study
+                        self.hourly_tt_dict[(from_node, to_node, f"hr_{i}")] = float(data[f"hr_{i}"])
 
             stamps = scenario_parameters[G_STO_TIME_STAMPS]       #Ritun: This part is for loading the stochastic time stamps
             self.time_stamps = stamps
@@ -274,10 +282,13 @@ class NetworkBasic(NetworkBase):
         if self.time_stamps:
             if simulation_time in self.time_stamps:
                 LOG.info(f"STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME {simulation_time}")
-                for key, value in self.sto_parameter_dict.items():
+                simulation_hr = int(round(simulation_time / 3600))
+                clamped_hr = min(max(simulation_hr, 7), 20)
+                for key, value in self.cv_dict.items():
                     from_node, to_node = key
-                    shape, loc, scale = value
-                    self._set_stoch_edge_tt(from_node, to_node, self._draw_stochastic_tt(shape, loc, scale))
+                    mean_tt = self.hourly_tt_dict[(from_node, to_node, f"hr_{clamped_hr}")]
+                    peak_cv, off_peak_cv = value
+                    self._set_stoch_edge_tt(from_node, to_node, self._draw_stochastic_tt_new(simulation_time, mean_tt, peak_cv, off_peak_cv))
         if update_state:
             if self.travel_time_file_folders.get(simulation_time, None) is not None:  # Santi: this is what the operator considers for the routing tasks!
                 LOG.info(f"OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME {simulation_time}")
@@ -309,7 +320,7 @@ class NetworkBasic(NetworkBase):
         tt_file = os.path.join(f, "operator_exp_tt.csv")
         tmp_df = pd.read_csv(tt_file)
         tmp_df.set_index(["from_node","to_node"], inplace=True)
-        for edge_index_tuple, new_tt in tmp_df["travel_time"].iteritems():
+        for edge_index_tuple, new_tt in tmp_df["travel_time"].items():
             self._set_edge_tt(edge_index_tuple[0], edge_index_tuple[1], new_tt)
 
     def _set_edge_tt(self, o_node_index, d_node_index, new_travel_time):
@@ -345,9 +356,23 @@ class NetworkBasic(NetworkBase):
 
     def _draw_stochastic_tt(self, shape, loc, scale):
         # sample = lognorm.rvs(s=shape, loc=loc, scale=scale, random_state=42)
-        sample = lognorm.rvs(s=shape, loc=loc, scale=scale)
+        sample = lognorm.rvs(s=shape, loc=loc, scale=scale)     # CRN assumption is violated; implement to follow the master seed from connfig csv
         return sample
 
+    def _draw_stochastic_tt_new(self, simulation_time, mean_tt, peak_cv, off_peak_cv):
+        if 9*3600<=simulation_time<=12*3600 or 16*3600<=simulation_time<=19*3600:       #TODO: We have to parameterize this peak hour time window in the config file. For now, we are hardcoding it here.
+            sigma2 = np.log(1 + peak_cv**2)
+            sigma = np.sqrt(sigma2)
+            mu = np.log(mean_tt) - sigma2 / 2
+            sample = np.random.lognormal(mean=mu, sigma=sigma)
+        else:
+            sigma2 = np.log(1 + off_peak_cv**2)
+            sigma = np.sqrt(sigma2)
+            mu = np.log(mean_tt) - sigma2 / 2
+            sample = np.random.lognormal(mean=mu, sigma=sigma)
+        
+        return sample
+    
     def get_node_list(self):
         """
         :return: list of node objects.

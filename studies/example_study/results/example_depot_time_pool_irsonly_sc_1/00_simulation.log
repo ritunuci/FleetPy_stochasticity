@@ -1,11 +1,11 @@
-113808-src.FleetSimulationBase-INFO-Initialization of network and routing engine...
-113808-src.routing.NetworkBasic-INFO-... no network dynamics file given -> read folder structure
-113808-src.FleetSimulationBase-INFO-Initialization of line-based public transportation...
-113808-src.FleetSimulationBase-INFO-Initialization of travelers...
-113808-src.demand.demand-INFO-init(): 2/939 requests removed (rq_time not in simulation time)
-113808-src.demand.demand-INFO-init(): 0/937 requests removed (start == end)
-113808-src.FleetSimulationBase-INFO-Initialization of MoD fleets...
-113808-src.fleetctrl.FleetControlBase-INFO-Scenario example_depot_time_pool_irsonly_sc_1
+23672-src.FleetSimulationBase-INFO-Initialization of network and routing engine...
+23672-src.routing.NetworkBasic-INFO-... no network dynamics file given -> read folder structure
+23672-src.FleetSimulationBase-INFO-Initialization of line-based public transportation...
+23672-src.FleetSimulationBase-INFO-Initialization of travelers...
+23672-src.demand.demand-INFO-init(): 2/939 requests removed (rq_time not in simulation time)
+23672-src.demand.demand-INFO-init(): 0/937 requests removed (start == end)
+23672-src.FleetSimulationBase-INFO-Initialization of MoD fleets...
+23672-src.fleetctrl.FleetControlBase-INFO-Scenario example_depot_time_pool_irsonly_sc_1
 Operator 0 control strategy: PoolingInsertionHeuristicOnly
 	 control function: {'func_key': 'distance_and_user_times_with_walk', 'vot': 0.45}
 Operator 0 additional strategies:
@@ -17,188 +17,291 @@ Operator 0 additional strategies:
 	 Dynamic Pricing: None
 	 Dynamic Fleet Sizing: TimeBasedFS
 
-113808-src.FleetSimulationBase-INFO-Simulation environment specific initializations...
-113808-src.fleetctrl.fleetsizing.TimeBasedFS-INFO-Loaded nr-of-active-vehicles curve from d:\Ritun\FleetPy_stochasticity\data\fleetctrl\elastic_fleet_size\example_active_fleetsize.csv.
-113808-src.FleetSimulationBase-INFO-Creating or loading initial vehicle states...
-113808-src.FleetSimulationBase-INFO-Initialization of scenario example_depot_time_pool_irsonly_sc_1 successful.
-113808-src.simulation.Vehicles-INFO-VEHICLE 5: TOTAL NO SHOW DURATION:52.67496084400045, where CL duration:48.03111183, AT SIM TIME 26420
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 26430
-113808-src.simulation.Vehicles-INFO-VEHICLE 5 MOVING-ON FROM POS 1, AT SIM TIME 26430
-113808-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:84.44990698099355, where CL duration:82.63164847, AT SIM TIME 27890
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 27900
-113808-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 27900
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 847 -> vid 2 at 27900
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:79.14203116599674, where CL duration:73.44000935, AT SIM TIME 28310
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 28320
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 28320
-113808-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:41.91549549201227, where CL duration:34.92026564, AT SIM TIME 29740
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 29750
-113808-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 29750
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 159 -> vid 1 at 29750
-113808-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:239.1870501959893, where CL duration:229.51305, AT SIM TIME 30040
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 30050
-113808-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 30050
-113808-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:69.4399131470127, where CL duration:60.58586657, AT SIM TIME 32820
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 32830
-113808-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 32830
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 884 -> vid 2 at 32830
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 550 -> vid 2 at 32830
-113808-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:102.18524563805113, where CL duration:93.78033715, AT SIM TIME 32970
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 32980
-113808-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 32980
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 121 -> vid 3 at 32980
-113808-src.simulation.Vehicles-INFO-VEHICLE 8: TOTAL NO SHOW DURATION:40.33153511002456, where CL duration:27.76689967, AT SIM TIME 33050
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 33060
-113808-src.simulation.Vehicles-INFO-VEHICLE 8 MOVING-ON FROM POS 1, AT SIM TIME 33060
-113808-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:72.0428716640381, where CL duration:70.69044827, AT SIM TIME 33150
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 33160
-113808-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 33160
-113808-src.simulation.Vehicles-INFO-VEHICLE 7: TOTAL NO SHOW DURATION:41.40620354004204, where CL duration:30.51579273, AT SIM TIME 33160
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 33170
-113808-src.simulation.Vehicles-INFO-VEHICLE 7 MOVING-ON FROM POS 1, AT SIM TIME 33170
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 346 -> vid 7 at 33170
-113808-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:74.41173690903088, where CL duration:73.44000935, AT SIM TIME 33360
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 33370
-113808-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 33370
-113808-src.simulation.Vehicles-INFO-VEHICLE 0: TOTAL NO SHOW DURATION:45.27357257404219, where CL duration:1.433437352, AT SIM TIME 35950
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 35960
-113808-src.simulation.Vehicles-INFO-VEHICLE 0 MOVING-ON FROM POS 1, AT SIM TIME 35960
-113808-src.simulation.Vehicles-INFO-VEHICLE 8: TOTAL NO SHOW DURATION:122.15332446503453, where CL duration:114.7687535, AT SIM TIME 36330
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 36340
-113808-src.simulation.Vehicles-INFO-VEHICLE 8 MOVING-ON FROM POS 1, AT SIM TIME 36340
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 16 -> vid 8 at 36340
-113808-src.simulation.Vehicles-INFO-VEHICLE 0: TOTAL NO SHOW DURATION:73.1835971900291, where CL duration:70.69044827, AT SIM TIME 37080
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 37090
-113808-src.simulation.Vehicles-INFO-VEHICLE 0 MOVING-ON FROM POS 1, AT SIM TIME 37090
-113808-src.simulation.Vehicles-INFO-VEHICLE 5: TOTAL NO SHOW DURATION:86.60991541897965, where CL duration:82.72370796, AT SIM TIME 37560
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 37570
-113808-src.simulation.Vehicles-INFO-VEHICLE 5 MOVING-ON FROM POS 1, AT SIM TIME 37570
-113808-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:243.72845194600086, where CL duration:243.0980934, AT SIM TIME 38810
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 38820
-113808-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 38820
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:46.38551657002972, where CL duration:26.71597113, AT SIM TIME 38920
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 38930
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 38930
-113808-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:238.88455118496495, where CL duration:229.7215097, AT SIM TIME 41750
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 41760
-113808-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 41760
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:41.13219673404819, where CL duration:27.76689967, AT SIM TIME 42380
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 42390
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 42390
-113808-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:48.0897228450267, where CL duration:43.74941177, AT SIM TIME 43240
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 43250
-113808-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 43250
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:47.98187508700357, where CL duration:27.76689967, AT SIM TIME 43450
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 43460
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 43460
-113808-src.simulation.Vehicles-INFO-VEHICLE 5: TOTAL NO SHOW DURATION:44.38182878198859, where CL duration:17.30360985, AT SIM TIME 43840
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 43850
-113808-src.simulation.Vehicles-INFO-VEHICLE 5 MOVING-ON FROM POS 1, AT SIM TIME 43850
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 454 -> vid 5 at 43850
-113808-src.simulation.Vehicles-INFO-VEHICLE 0: TOTAL NO SHOW DURATION:47.82632715396903, where CL duration:14.96499935, AT SIM TIME 45280
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 45290
-113808-src.simulation.Vehicles-INFO-VEHICLE 0 MOVING-ON FROM POS 1, AT SIM TIME 45290
-113808-src.simulation.Vehicles-INFO-VEHICLE 5: TOTAL NO SHOW DURATION:41.13788652403309, where CL duration:19.95967615, AT SIM TIME 45870
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 45880
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:41.20080156403128, where CL duration:5.09253159, AT SIM TIME 45870
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 45880
-113808-src.simulation.Vehicles-INFO-VEHICLE 5 MOVING-ON FROM POS 1, AT SIM TIME 45880
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 30 -> vid 5 at 45880
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 45880
-113808-src.simulation.Vehicles-INFO-VEHICLE 5: TOTAL NO SHOW DURATION:71.66273097198427, where CL duration:70.69044827, AT SIM TIME 46510
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 46520
-113808-src.simulation.Vehicles-INFO-VEHICLE 5 MOVING-ON FROM POS 1, AT SIM TIME 46520
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:96.87255064202327, where CL duration:92.63657179, AT SIM TIME 47530
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 47540
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 47540
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 765 -> vid 6 at 47540
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 335 -> vid 6 at 47540
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 705 -> vid 6 at 47540
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:78.18169525497797, where CL duration:70.69044827, AT SIM TIME 53390
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 53400
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 53400
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:76.18823634300497, where CL duration:70.69044827, AT SIM TIME 54060
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 54070
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 54070
-113808-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:47.532903210041695, where CL duration:40.18360588, AT SIM TIME 54340
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 54350
-113808-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 54350
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 280 -> vid 4 at 54350
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:52.25349021800503, where CL duration:44.53372419, AT SIM TIME 54350
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 54360
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 54360
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:45.783468102999905, where CL duration:20.84988461, AT SIM TIME 54510
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 54520
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 54520
-113808-src.simulation.Vehicles-INFO-VEHICLE 7: TOTAL NO SHOW DURATION:250.7221137600427, where CL duration:243.0980934, AT SIM TIME 55680
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 55690
-113808-src.simulation.Vehicles-INFO-VEHICLE 7 MOVING-ON FROM POS 1, AT SIM TIME 55690
-113808-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:70.96108551600628, where CL duration:70.69044827, AT SIM TIME 56480
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 56490
-113808-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 56490
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 493 -> vid 1 at 56490
-113808-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:76.3096491679753, where CL duration:70.69044827, AT SIM TIME 57570
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 57580
-113808-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 57580
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 63 -> vid 1 at 57580
-113808-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:57.36892322696076, where CL duration:51.96426402, AT SIM TIME 57920
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 57930
-113808-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 57930
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 176 -> vid 3 at 57930
-113808-src.simulation.Vehicles-INFO-VEHICLE 5: TOTAL NO SHOW DURATION:121.15181270011817, where CL duration:117.5097445, AT SIM TIME 58620
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 58630
-113808-src.simulation.Vehicles-INFO-VEHICLE 5 MOVING-ON FROM POS 1, AT SIM TIME 58630
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 244 -> vid 5 at 58630
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:40.609840175042336, where CL duration:13.85306682, AT SIM TIME 59830
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 59840
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 59840
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:42.85712300400337, where CL duration:30.69091225, AT SIM TIME 60170
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 60180
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 60180
-113808-src.simulation.Vehicles-INFO-VEHICLE 7: TOTAL NO SHOW DURATION:52.41340238197154, where CL duration:51.96426402, AT SIM TIME 62210
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 62220
-113808-src.simulation.Vehicles-INFO-VEHICLE 7 MOVING-ON FROM POS 1, AT SIM TIME 62220
-113808-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:46.52467780595907, where CL duration:32.73052116, AT SIM TIME 62610
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 62620
-113808-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 62620
-113808-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:49.81305660507496, where CL duration:19.95967615, AT SIM TIME 63260
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 63270
-113808-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 63270
-113808-src.simulation.Vehicles-INFO-VEHICLE 7: TOTAL NO SHOW DURATION:81.28276036097668, where CL duration:76.13556936, AT SIM TIME 63760
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 63770
-113808-src.simulation.Vehicles-INFO-VEHICLE 7 MOVING-ON FROM POS 1, AT SIM TIME 63770
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 593 -> vid 7 at 63770
-113808-src.simulation.Vehicles-INFO-VEHICLE 8: TOTAL NO SHOW DURATION:72.74241285108292, where CL duration:70.69044827, AT SIM TIME 64820
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 64830
-113808-src.simulation.Vehicles-INFO-VEHICLE 8 MOVING-ON FROM POS 1, AT SIM TIME 64830
-113808-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:45.623734498090926, where CL duration:27.76689967, AT SIM TIME 65650
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 65660
-113808-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 65660
-113808-src.simulation.Vehicles-INFO-VEHICLE 8: TOTAL NO SHOW DURATION:73.14649784499488, where CL duration:70.69044827, AT SIM TIME 66940
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 66950
-113808-src.simulation.Vehicles-INFO-VEHICLE 8 MOVING-ON FROM POS 1, AT SIM TIME 66950
-113808-src.simulation.Vehicles-INFO-VEHICLE 7: TOTAL NO SHOW DURATION:82.41863462902256, where CL duration:77.3324385, AT SIM TIME 68770
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 68780
-113808-src.simulation.Vehicles-INFO-VEHICLE 7 MOVING-ON FROM POS 1, AT SIM TIME 68780
-113808-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:49.1229420460877, where CL duration:27.76689967, AT SIM TIME 69270
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 69280
-113808-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 69280
-113808-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:60.23856003998662, where CL duration:56.96820016, AT SIM TIME 69620
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 69630
-113808-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 69630
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 928 -> vid 3 at 69630
-113808-src.demand.demand-WARNING-waiting rq boarding warning : rid 792 -> vid 3 at 69630
-113808-src.simulation.Vehicles-INFO-VEHICLE 8: TOTAL NO SHOW DURATION:46.73162637896894, where CL duration:27.76689967, AT SIM TIME 70100
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 70110
-113808-src.simulation.Vehicles-INFO-VEHICLE 8 MOVING-ON FROM POS 1, AT SIM TIME 70110
-113808-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:44.175945928975125, where CL duration:1.521434324, AT SIM TIME 81330
-113808-src.simulation.Vehicles-INFO-No show leg is being overwritten at 81340
-113808-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 81340
-113808-src.FleetSimulationBase-INFO-Saving final simulation state.
-113808-src.FleetSimulationBase-INFO-record_remaining_assignments()
-113808-src.FleetSimulationBase-INFO-	 time 82800, remaining tasks 0
-113808-src.FleetSimulationBase-INFO-Scenario example_depot_time_pool_irsonly_sc_1 finished:
-      initialization : 0:00:07 h
-          simulation : 0:10:01 h
+23672-src.FleetSimulationBase-INFO-Simulation environment specific initializations...
+23672-src.fleetctrl.fleetsizing.TimeBasedFS-INFO-Loaded nr-of-active-vehicles curve from d:\Ritun\FleetPy_stochasticity\data\fleetctrl\elastic_fleet_size\example_active_fleetsize.csv.
+23672-src.FleetSimulationBase-INFO-Creating or loading initial vehicle states...
+23672-src.FleetSimulationBase-INFO-Initialization of scenario example_depot_time_pool_irsonly_sc_1 successful.
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 25200
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 25320
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 25920
+23672-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:43.92493110307623, where CL duration:30, AT SIM TIME 26460
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 26470
+23672-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 26470
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 26520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 27120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 27720
+23672-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:45.06691926853455, where CL duration:30, AT SIM TIME 27810
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 27820
+23672-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 27820
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 847 -> vid 6 at 27820
+23672-src.simulation.Vehicles-INFO-VEHICLE 5: TOTAL NO SHOW DURATION:45.937934915404185, where CL duration:30, AT SIM TIME 28020
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 28030
+23672-src.simulation.Vehicles-INFO-VEHICLE 5 MOVING-ON FROM POS 1, AT SIM TIME 28030
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 28320
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 28920
+23672-src.simulation.Vehicles-INFO-VEHICLE 7: TOTAL NO SHOW DURATION:40.15402901908965, where CL duration:30, AT SIM TIME 29420
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 29430
+23672-src.simulation.Vehicles-INFO-VEHICLE 7 MOVING-ON FROM POS 1, AT SIM TIME 29430
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 29520
+23672-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:40.60722702902058, where CL duration:30, AT SIM TIME 29750
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 29760
+23672-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 29760
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 159 -> vid 6 at 29760
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 30120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 30720
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 31320
+23672-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:46.21248993248082, where CL duration:30, AT SIM TIME 31830
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 31840
+23672-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 31840
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 31920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 32520
+23672-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:48.521130816225195, where CL duration:30, AT SIM TIME 32830
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 32840
+23672-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 32840
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 121 -> vid 2 at 32840
+23672-src.simulation.Vehicles-INFO-VEHICLE 0: TOTAL NO SHOW DURATION:47.85783762347273, where CL duration:30, AT SIM TIME 33060
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 33070
+23672-src.simulation.Vehicles-INFO-VEHICLE 0 MOVING-ON FROM POS 1, AT SIM TIME 33070
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 143 -> vid 0 at 33070
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 346 -> vid 0 at 33070
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 33120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 33720
+23672-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:48.20116315728228, where CL duration:30, AT SIM TIME 33920
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 33930
+23672-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 33930
+23672-src.simulation.Vehicles-INFO-VEHICLE 5: TOTAL NO SHOW DURATION:48.89459599026304, where CL duration:30, AT SIM TIME 33960
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 33970
+23672-src.simulation.Vehicles-INFO-VEHICLE 5 MOVING-ON FROM POS 1, AT SIM TIME 33970
+23672-src.simulation.Vehicles-INFO-VEHICLE 8: TOTAL NO SHOW DURATION:46.60546030756086, where CL duration:30, AT SIM TIME 34010
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 34020
+23672-src.simulation.Vehicles-INFO-VEHICLE 8 MOVING-ON FROM POS 1, AT SIM TIME 34020
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 34320
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 34920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 35520
+23672-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:40.33821305802121, where CL duration:30, AT SIM TIME 35680
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 35690
+23672-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 35690
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 537 -> vid 2 at 35690
+23672-src.simulation.Vehicles-INFO-VEHICLE 8: TOTAL NO SHOW DURATION:41.833992658117495, where CL duration:30, AT SIM TIME 35950
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 35960
+23672-src.simulation.Vehicles-INFO-VEHICLE 8 MOVING-ON FROM POS 1, AT SIM TIME 35960
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 36120
+23672-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:42.99318291416421, where CL duration:30, AT SIM TIME 36350
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 36360
+23672-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 36360
+23672-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:40.85800772784569, where CL duration:30, AT SIM TIME 36440
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 36450
+23672-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 36450
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 36720
+23672-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:41.35300810494664, where CL duration:30, AT SIM TIME 37080
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 37090
+23672-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 37090
+23672-src.simulation.Vehicles-INFO-VEHICLE 7: TOTAL NO SHOW DURATION:47.639916457126674, where CL duration:30, AT SIM TIME 37150
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 37160
+23672-src.simulation.Vehicles-INFO-VEHICLE 7 MOVING-ON FROM POS 1, AT SIM TIME 37160
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 365 -> vid 7 at 37160
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 37320
+23672-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:43.283353123384586, where CL duration:30, AT SIM TIME 37610
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 37620
+23672-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 37620
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 37920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 38520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 39120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 39720
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 40320
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 40920
+23672-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:48.4619311264687, where CL duration:30, AT SIM TIME 40960
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 40970
+23672-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 40970
+23672-src.simulation.Vehicles-INFO-VEHICLE 7: TOTAL NO SHOW DURATION:41.99441836026381, where CL duration:30, AT SIM TIME 41050
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 41060
+23672-src.simulation.Vehicles-INFO-VEHICLE 7 MOVING-ON FROM POS 1, AT SIM TIME 41060
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 41520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 42120
+23672-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:46.08534494553169, where CL duration:30, AT SIM TIME 42260
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 42270
+23672-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 42270
+23672-src.simulation.Vehicles-INFO-VEHICLE 6: TOTAL NO SHOW DURATION:43.96718054531084, where CL duration:30, AT SIM TIME 42500
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 42510
+23672-src.simulation.Vehicles-INFO-VEHICLE 6 MOVING-ON FROM POS 1, AT SIM TIME 42510
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 42720
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 43320
+23672-src.simulation.Vehicles-INFO-VEHICLE 0: TOTAL NO SHOW DURATION:40.297875017167826, where CL duration:30, AT SIM TIME 43360
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 43370
+23672-src.simulation.Vehicles-INFO-VEHICLE 0 MOVING-ON FROM POS 1, AT SIM TIME 43370
+23672-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:47.174014356787666, where CL duration:30, AT SIM TIME 43490
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 43500
+23672-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 43500
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 43920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 44520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 45120
+23672-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:45.4093869859862, where CL duration:30, AT SIM TIME 45400
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 45410
+23672-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 45410
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 358 -> vid 4 at 45410
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 45720
+23672-src.simulation.Vehicles-INFO-VEHICLE 7: TOTAL NO SHOW DURATION:45.86787262285361, where CL duration:30, AT SIM TIME 46030
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 46040
+23672-src.simulation.Vehicles-INFO-VEHICLE 7 MOVING-ON FROM POS 1, AT SIM TIME 46040
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 30 -> vid 7 at 46040
+23672-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:47.229748209312675, where CL duration:30, AT SIM TIME 46220
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 46230
+23672-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 46230
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 46320
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 46920
+23672-src.simulation.Vehicles-INFO-VEHICLE 7: TOTAL NO SHOW DURATION:40.15168473884842, where CL duration:30, AT SIM TIME 47040
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 47050
+23672-src.simulation.Vehicles-INFO-VEHICLE 7 MOVING-ON FROM POS 1, AT SIM TIME 47050
+23672-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:42.45361497612612, where CL duration:30, AT SIM TIME 47430
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 47440
+23672-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 47440
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 705 -> vid 2 at 47440
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 47520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 48120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 48720
+23672-src.simulation.Vehicles-INFO-VEHICLE 0: TOTAL NO SHOW DURATION:45.78587959252036, where CL duration:30, AT SIM TIME 49270
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 49280
+23672-src.simulation.Vehicles-INFO-VEHICLE 0 MOVING-ON FROM POS 1, AT SIM TIME 49280
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 49320
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 49920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 50520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 51120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 51720
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 52320
+23672-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:45.898518996094936, where CL duration:30, AT SIM TIME 52560
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 52570
+23672-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 52570
+23672-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:44.53908242455509, where CL duration:30, AT SIM TIME 52730
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 52740
+23672-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 52740
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 52920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 53520
+23672-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:44.12841091986775, where CL duration:30, AT SIM TIME 53860
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 53870
+23672-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 53870
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 54120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 54720
+23672-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:41.25896221752191, where CL duration:30, AT SIM TIME 55230
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 55240
+23672-src.simulation.Vehicles-INFO-VEHICLE 0: TOTAL NO SHOW DURATION:48.13857085296331, where CL duration:30, AT SIM TIME 55240
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 55250
+23672-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 55240
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 280 -> vid 4 at 55240
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 493 -> vid 4 at 55240
+23672-src.simulation.Vehicles-INFO-VEHICLE 0 MOVING-ON FROM POS 1, AT SIM TIME 55250
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 55320
+23672-src.simulation.Vehicles-INFO-VEHICLE 8: TOTAL NO SHOW DURATION:40.857610381433915, where CL duration:30, AT SIM TIME 55420
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 55430
+23672-src.simulation.Vehicles-INFO-VEHICLE 8 MOVING-ON FROM POS 1, AT SIM TIME 55430
+23672-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:47.48469020322227, where CL duration:30, AT SIM TIME 55790
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 55800
+23672-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 55800
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 55920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 56520
+23672-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:45.48278272150492, where CL duration:30, AT SIM TIME 56880
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 56890
+23672-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 56890
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 57120
+23672-src.simulation.Vehicles-INFO-VEHICLE 5: TOTAL NO SHOW DURATION:47.59078794688685, where CL duration:30, AT SIM TIME 57530
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 57540
+23672-src.simulation.Vehicles-INFO-VEHICLE 5 MOVING-ON FROM POS 1, AT SIM TIME 57540
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 57720
+23672-src.simulation.Vehicles-INFO-VEHICLE 0: TOTAL NO SHOW DURATION:47.37614434464194, where CL duration:30, AT SIM TIME 57730
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 57740
+23672-src.simulation.Vehicles-INFO-VEHICLE 0 MOVING-ON FROM POS 1, AT SIM TIME 57740
+23672-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:41.48756351409247, where CL duration:30, AT SIM TIME 57930
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 57940
+23672-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 57940
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 244 -> vid 1 at 57940
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 58320
+23672-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:48.074744099154486, where CL duration:30, AT SIM TIME 58670
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 58680
+23672-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 58680
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 58920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 59520
+23672-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:49.99907786429685, where CL duration:30, AT SIM TIME 59690
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 59700
+23672-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 59700
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 60120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 60720
+23672-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:44.39954523699271, where CL duration:30, AT SIM TIME 60720
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 60730
+23672-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 60730
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 61320
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 61920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 62520
+23672-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:42.70513195495005, where CL duration:30, AT SIM TIME 62770
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 62780
+23672-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 62780
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 593 -> vid 4 at 62780
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 63120
+23672-src.simulation.Vehicles-INFO-VEHICLE 0: TOTAL NO SHOW DURATION:47.76006804990902, where CL duration:30, AT SIM TIME 63390
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 63400
+23672-src.simulation.Vehicles-INFO-VEHICLE 0 MOVING-ON FROM POS 1, AT SIM TIME 63400
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 63720
+23672-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:43.56688216432667, where CL duration:30, AT SIM TIME 63800
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 63810
+23672-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 63810
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 263 -> vid 1 at 63810
+23672-src.simulation.Vehicles-INFO-VEHICLE 8: TOTAL NO SHOW DURATION:46.97511871015013, where CL duration:30, AT SIM TIME 64100
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 64110
+23672-src.simulation.Vehicles-INFO-VEHICLE 8 MOVING-ON FROM POS 1, AT SIM TIME 64110
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 64320
+23672-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:44.977773106518725, where CL duration:30, AT SIM TIME 64900
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 64910
+23672-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 64910
+23672-src.demand.demand-WARNING-waiting rq boarding warning : rid 533 -> vid 1 at 64910
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 64920
+23672-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:42.91082753457158, where CL duration:30, AT SIM TIME 65260
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 65270
+23672-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 65270
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 65520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 66120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 66720
+23672-src.simulation.Vehicles-INFO-VEHICLE 3: TOTAL NO SHOW DURATION:41.12262094519974, where CL duration:30, AT SIM TIME 66740
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 66750
+23672-src.simulation.Vehicles-INFO-VEHICLE 3 MOVING-ON FROM POS 1, AT SIM TIME 66750
+23672-src.simulation.Vehicles-INFO-VEHICLE 4: TOTAL NO SHOW DURATION:44.00404650406563, where CL duration:30, AT SIM TIME 67050
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 67060
+23672-src.simulation.Vehicles-INFO-VEHICLE 4 MOVING-ON FROM POS 1, AT SIM TIME 67060
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 67320
+23672-src.simulation.Vehicles-INFO-VEHICLE 0: TOTAL NO SHOW DURATION:40.9638128085935, where CL duration:30, AT SIM TIME 67450
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 67460
+23672-src.simulation.Vehicles-INFO-VEHICLE 0 MOVING-ON FROM POS 1, AT SIM TIME 67460
+23672-src.simulation.Vehicles-INFO-VEHICLE 5: TOTAL NO SHOW DURATION:40.518568001134554, where CL duration:30, AT SIM TIME 67640
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 67650
+23672-src.simulation.Vehicles-INFO-VEHICLE 5 MOVING-ON FROM POS 1, AT SIM TIME 67650
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 67920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 68520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 69120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 69720
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 70320
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 70920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 71520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 72120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 72720
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 73320
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 73920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 74520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 75120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 75720
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 76320
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 76920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 77520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 78120
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 78720
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 79320
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 79920
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 80520
+23672-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 81120
+23672-src.simulation.Vehicles-INFO-VEHICLE 2: TOTAL NO SHOW DURATION:40.0233651734452, where CL duration:30, AT SIM TIME 81350
+23672-src.simulation.Vehicles-INFO-No show leg is being overwritten at 81360
+23672-src.simulation.Vehicles-INFO-VEHICLE 2 MOVING-ON FROM POS 1, AT SIM TIME 81360
+23672-src.FleetSimulationBase-INFO-Saving final simulation state.
+23672-src.FleetSimulationBase-INFO-record_remaining_assignments()
+23672-src.FleetSimulationBase-INFO-	 time 82800, remaining tasks 0
+23672-src.FleetSimulationBase-INFO-Scenario example_depot_time_pool_irsonly_sc_1 finished:
+      initialization : 0:00:06 h
+          simulation : 0:04:59 h
           evaluation : 0:00:00 h
 

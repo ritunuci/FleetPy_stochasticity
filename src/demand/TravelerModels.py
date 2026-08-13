@@ -87,6 +87,7 @@ class RequestBase(metaclass=ABCMeta):
         self.expected_pickup_time_calculated = False    # Ritun added for diffusion model
         self.ETA_update_time_stamp = self.rq_time    # Ritun added for diffusion model
         self.ETA_update_flag = False            # Ritun added for diffusion model
+        self.rider_declined = False            # Ritun added to capture if rider declined an offer
         if rq_row.get(G_RQ_EPT):
             self.earliest_start_time = rq_row.get(G_RQ_EPT)
         elif scenario_parameters.get(
@@ -195,6 +196,7 @@ class RequestBase(metaclass=ABCMeta):
         for op_id, operator_offer in self.offer.items():
             all_offer_info.append(f"{op_id}:" + operator_offer.to_output_str())
         record_dict[G_RQ_OFFERS] = "|".join(all_offer_info)
+        record_dict[G_RQ_DECLINED] = self.rider_declined
         # decision-dependent
         record_dict[G_RQ_LEAVE_TIME] = self.leave_system_time  # TODO # when only adding stuff conditionally there will
         record_dict[G_RQ_CHOSEN_OP_ID] = self.chosen_operator_id  # TODO # be errors when evaluating
@@ -498,6 +500,7 @@ class RequestBase(metaclass=ABCMeta):
         else:
             self.cancellation_decision_in_progress = False
             self.max_diffusion_decision_time_reached = True
+            self.diffusion_decision_time = self.rq_time + max_diffusion_decision_time
 
         return self.diffusion_state_t
 
@@ -652,9 +655,37 @@ class BasicRequest_no_show(RequestBase):
         if len(opts) == 0:
             return None
         elif len(opts) == 1:
-            self.fare = self.offer[opts[0]].get(G_OFFER_FARE, 0)
-            self.chosen_operator_id = opts[0]
-            return opts[0]
+            # -------------- Stochastic Rider Decline ---------------
+            if sc_parameters[G_OP_STO_RIDER_DECLINE]:
+                if not self.no_show:
+                    offered_wait_time = self.offer[opts[0]][G_OFFER_WAIT]
+                    if offered_wait_time <= sc_parameters[G_WAIT_LOWER_BOUND]:
+                        LOG.debug(f" -> accept")
+                        self.fare = self.offer[opts[0]].get(G_OFFER_FARE, 0)
+                        self.chosen_operator_id = opts[0]
+                        return opts[0]
+                    else:
+                        prob_decline = 1 - ((sc_parameters[G_OP_MAX_WT]-offered_wait_time)/(sc_parameters[G_OP_MAX_WT]-sc_parameters[G_WAIT_LOWER_BOUND]))  # This is the probability that a person declines
+                        r = np.random.random()
+                        if r < prob_decline:
+                            LOG.debug(f" -> decline")
+                            self.rider_declined = True
+                            return -1
+                        else:
+                            LOG.debug(f" -> accept")
+                            self.fare = self.offer[opts[0]].get(G_OFFER_FARE, 0)
+                            self.chosen_operator_id = opts[0]
+                            return opts[0]
+                else:
+                    LOG.debug(f" -> accept")
+                    self.fare = self.offer[opts[0]].get(G_OFFER_FARE, 0)
+                    self.chosen_operator_id = opts[0]
+                    return opts[0]
+            # --------------------------------------------------------
+            else:
+                self.fare = self.offer[opts[0]].get(G_OFFER_FARE, 0)
+                self.chosen_operator_id = opts[0]
+                return opts[0]
         else:
             LOG.error(f"not implemented {offer_str(self.offer)}")
 

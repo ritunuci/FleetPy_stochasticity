@@ -119,6 +119,7 @@ G_AR_MAX_CDT = "user_max_constant_detour_time"
 G_AR_MAX_DTF = "user_max_detour_time_factor"
 G_AR_MAX_DEC_T = "user_max_decision_time"
 G_AR_PRICE_F = "user_price_sensitivity_func_dict"
+G_OP_STO_RIDER_DECLINE = "stochastic_rider_service_decline" # Ritun added for stochastic rider decline model
 
 # traveler mode choice attributes
 G_MC_VOT = "value_of_time"
@@ -430,6 +431,7 @@ G_RAND_TERM_VARIANCE = "random_term_variance"
 G_DECISION_THRESHOLD_UPPER = "decision_threshold_upper"
 G_DECISION_THRESHOLD_LOWER = "decision_threshold_lower"
 G_ETA_UPDATE_INTERVAL = "ETA_update_interval"
+G_MAX_DEC_TIME_DEF_LOWER_BOUND = "max_dec_time_def_state_lower_bound"
 
 # optional input data (and output)
 # --------------------------------
@@ -450,6 +452,7 @@ G_RQ_PA_LDT = "parcel_latest_dropoff_time"
 # --------------
 G_RQ_TYPE = "rq_type"
 G_RQ_OFFERS = "offers"
+G_RQ_DECLINED = "rider_declined"
 G_RQ_LEAVE_TIME = "decision_time"
 G_RQ_CHOSEN_OP_ID = "chosen_operator_id"
 G_RQ_OP_ID = "operator_id"

@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH --job-name=fleetpy_env_test      ## Name of the job.
+#SBATCH -A HYLANDM_LAB     ## account to charge 
+#SBATCH -p standard          ## partition/queue name
+#SBATCH --nodes=1            ## (-N) number of nodes to use
+#SBATCH --ntasks=1           ## (-n) number of tasks to launch
+#SBATCH --cpus-per-task=16    ## number of cores the job needs
+#SBATCH --mem=64G
+#SBATCH --error=slurm-%J.err ## error log file
+
+module load anaconda/2024.06
+# Make conda activation work in non-interactive sbatch shells
+eval "$(/opt/apps/anaconda/2024.06/bin/conda shell.bash hook)"
+
+echo "Before activate:"
+echo "  CONDA_PREFIX=${CONDA_PREFIX:-<unset>}"
+echo "  which python=$(which python)"
+
+conda activate /data/homezvol1/jayashan/.conda/envs/fleetpy_env_mamba
+
+echo "After activate:"
+echo "  CONDA_PREFIX=${CONDA_PREFIX:-<unset>}"
+echo "  which python=$(which python)"
+python -c "import sys; print('Executable:', sys.executable)"
+python -c "import sys; print('Version:', sys.version)"

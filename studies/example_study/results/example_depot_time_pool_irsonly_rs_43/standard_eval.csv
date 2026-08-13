@@ -1,0 +1,62 @@
+,MoD_0
+operator_id,0.0
+total demand,445.0
+number users,306.0
+number travelers,341.0
+modal split,0.6765873015873016
+modal split rq,0.6876404494382022
+reservation users,0.0
+reservation pax,0.0
+served reservation users [%],100.0
+served reservation pax [%],100.0
+online users,306.0
+online pax,341.0
+served online users [%],68.76404494382022
+served online pax [%],67.65873015873017
+% created offers,98.65168539325843
+utility,
+travel time,922.9000642225085
+travel distance,
+waiting time,580.6308680279924
+waiting time from ept,580.6308680279911
+waiting time (median),566.3296795450115
+waiting time (90% quantile),1014.5966062373045
+waiting time offered,599.6354691538149
+waiting time offered (median),617.9228143260079
+waiting time offered (90% quantile),969.3672473141705
+waiting time for morning,587.658866091099
+waiting time for morning (median),553.9807001899062
+waiting time for morning (90% quantile),1021.0149188180549
+waiting time for afternoon,
+waiting time for afternoon (median),
+waiting time for afternoon (90% quantile),
+waiting time for evening,634.9721029466235
+waiting time for evening (median),615.5650378949904
+waiting time for evening (90% quantile),1164.613583294522
+detour time,-100.95934960657115
+rel detour,-26.738622276507478
+% fleet utilization,78.72644131123698
+rides per veh rev hours,2.904645372610347
+rides per veh rev hours rq,2.6065146158908097
+total vkm,2682.330460885291
+occupancy,0.740607209428971
+occupancy rq,0.6639691671175132
+% empty vkm,34.900318986644265
+% repositioning vkm,0.0
+customer direct distance [km],1779.1300879804878
+saved distance [%],-50.76640426726956
+trip distance per fleet distance,0.663277740727477
+trip distance per fleet distance (no reloc),0.663277740727477
+avg driving velocity [km/h],24.3255389352665
+avg trip velocity [km/h],0.022679532728354823
+vehicle revenue hours [Fzg h],117.39815235811389
+total toll,0.0
+mod revenue,197942.0
+mod fix costs,30000.0
+mod var costs,67058.0
+total CO2 emissions [t],0.0015021050580957631
+total external emission costs,22.0
+parking cost,
+toll,0.0
+customer in vehicle distance,5820.211509960599
+shared rides [%],3.9215686274509802

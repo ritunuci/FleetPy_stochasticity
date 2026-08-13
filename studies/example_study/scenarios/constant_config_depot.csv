@@ -52,3 +52,5 @@ random_term_variance,3
 decision_threshold_upper,70
 decision_threshold_lower,-70
 ETA_update_interval,20
+stochastic_rider_service_decline,TRUE
+max_dec_time_def_state_lower_bound,-7

@@ -872,7 +872,7 @@ class FleetSimulationBase:
                         
 
                     if not rq_obj.cancellation_decision_in_progress:
-                        if rq_obj.diffusion_state_t < 0:
+                        if rq_obj.diffusion_state_t < self.scenario_parameters.get(G_MAX_DEC_TIME_DEF_LOWER_BOUND, 0):
                             rq_obj.diffusion_cancelled = True
                             rq_obj.last_diffusion_state_t = rq_obj.diffusion_state_t
                             list_passengers_cancelled.append((rid, rq_obj))
@@ -887,7 +887,6 @@ class FleetSimulationBase:
             self.demand.record_user(rid)
             del self.demand.rq_db[rid]
             del self.demand.waiting_rq[rid]
-
 
 
     # def _check_request_cancellations_diffusion_model(self, sim_time):           # No ETA update feature

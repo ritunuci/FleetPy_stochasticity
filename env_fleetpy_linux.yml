@@ -1,0 +1,86 @@
+name: test_env
+channels:
+  - conda-forge
+  - gurobi
+  - defaults
+
+dependencies:
+  # core
+  - python=3.10
+  - pip
+
+  # scientific stack
+  - numpy
+  - pandas
+  - scipy
+  - scikit-learn
+  - numba
+  - joblib
+  - tqdm
+  - networkx
+
+  # geo stack (let conda-forge resolve compatible versions on Linux)
+  - geopandas
+  - shapely
+  - fiona
+  - rasterio
+  - gdal
+  - pyproj
+  - proj
+  - rtree
+  - affine
+  - geographiclib
+  - geopy
+  - contextily
+  - mercantile
+  - xyzservices
+  - pyopenssl
+  - cryptography
+  - requests
+  - urllib3
+  - pyyaml
+
+  # plotting / notebooks
+  - matplotlib
+  - ipython
+  - ipykernel
+  - jupyter_client
+  - jupyter_core
+  - pygments
+
+  # web / docs (keep if you actually use them)
+  - flask
+  - flask-socketio
+  - python-socketio
+  - python-engineio
+  - livereload
+  - mkdocs
+  - mkdocs-material
+  - mkdocs-material-extensions
+  - markdown
+  - pymdown-extensions
+  - lunr
+  - nltk
+  - regex
+
+  
+
+  # Qt: on Linux it’s safer to let conda-forge pick versions
+  - pyqt
+
+  - pip:
+      - ax-platform==0.2.6
+      - botorch==0.6.6
+      - gpytorch==1.8.1
+      - pyro-api==0.1.2
+      - pyro-ppl==1.8.6
+      - torch==1.13.1
+      - colorlog==6.9.0
+      - multipledispatch==1.0.0
+      - opt-einsum==3.3.0
+      - packaging==24.0
+      - plotly==5.18.0
+      - tenacity==8.2.3
+      - typeguard==4.1.2
+      - typing-extensions==4.7.1
+      - cython==3.0.12

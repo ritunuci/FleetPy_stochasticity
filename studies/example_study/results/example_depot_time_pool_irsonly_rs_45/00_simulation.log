@@ -1,0 +1,168 @@
+284964-src.FleetSimulationBase-INFO-Initialization of network and routing engine...
+284964-src.routing.NetworkBasic-INFO-... load network dynamics file: d:\Ritun\FleetPy_stochasticity\data\networks\example_network\network_dynamics.csv
+284964-src.FleetSimulationBase-INFO-Initialization of line-based public transportation...
+284964-src.FleetSimulationBase-INFO-Initialization of travelers...
+284964-src.demand.demand-INFO-init(): 0/445 requests removed (rq_time not in simulation time)
+284964-src.demand.demand-INFO-init(): 0/445 requests removed (start == end)
+284964-src.FleetSimulationBase-INFO-Initialization of MoD fleets...
+284964-src.fleetctrl.FleetControlBase-INFO-Scenario example_depot_time_pool_irsonly_rs_45
+Operator 0 control strategy: PoolingInsertionHeuristicOnly
+	 control function: {'func_key': 'distance_and_user_times_with_walk', 'vot': 0.45}
+Operator 0 additional strategies:
+	 RV Heuristics: {}
+	 Stop-Insert Heuristics: {}
+	 Charging: None
+	 On-Street Parking: True
+	 Repositioning: None
+	 Dynamic Pricing: None
+	 Dynamic Fleet Sizing: TimeBasedFS
+
+284964-src.FleetSimulationBase-INFO-Simulation environment specific initializations...
+284964-src.fleetctrl.fleetsizing.TimeBasedFS-INFO-Loaded nr-of-active-vehicles curve from d:\Ritun\FleetPy_stochasticity\data\fleetctrl\elastic_fleet_size\example_active_fleetsize.csv.
+284964-src.FleetSimulationBase-INFO-Creating or loading initial vehicle states...
+284964-src.FleetSimulationBase-INFO-Initialization of scenario example_depot_time_pool_irsonly_rs_45 successful.
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 25200
+284964-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 25200
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 25320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 25920
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 26520
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 27120
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 27720
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 28320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 28920
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 29520
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 30120
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 30720
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 31320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 31920
+284964-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 32400
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 32520
+284964-src.simulation.Vehicles-INFO-VEHICLE 5: TOTAL NO SHOW DURATION:186.6300744500404, where CL duration:1.067931315454219, AT SIM TIME 32960
+284964-src.simulation.Vehicles-INFO-No show leg is being overwritten at 32970
+284964-src.simulation.Vehicles-INFO-VEHICLE 5 MOVING-ON FROM POS 1, AT SIM TIME 32970
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 33120
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 33720
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 34320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 34920
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 35520
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 36120
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 36720
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 37320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 37920
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 38520
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 39120
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 39720
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 40320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 40920
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 41520
+284964-src.simulation.Vehicles-INFO-VEHICLE 1: TOTAL NO SHOW DURATION:180.60797340502904, where CL duration:95.75552121111616, AT SIM TIME 41800
+284964-src.simulation.Vehicles-INFO-No show leg is being overwritten at 41810
+284964-src.simulation.Vehicles-INFO-VEHICLE 1 MOVING-ON FROM POS 1, AT SIM TIME 41810
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 42120
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 42720
+284964-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 43200
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 43320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 43920
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 44520
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 45120
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 45720
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 46320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 46920
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 47520
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 48120
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 48720
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 49320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 49920
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 50520
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 51120
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 51720
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 52320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 52920
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 53520
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 54120
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 54720
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 55320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 55920
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 56520
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 57120
+284964-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 57600
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 57720
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 58320
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 58920
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 59520
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 60120
+284964-src.routing.NetworkBasic-INFO-STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 60720
+284964-src.routing.NetworkBasic-INFO-OPERATOR NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME 64800
+284964-src.FleetSimulationBase-INFO-Saving final simulation state.
+284964-src.FleetSimulationBase-INFO-record_remaining_assignments()
+284964-src.FleetSimulationBase-INFO-	 time 70000, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70010, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70020, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70030, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70040, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70050, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70060, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70070, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70080, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70090, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70100, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70110, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70120, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70130, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70140, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70150, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70160, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70170, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70180, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70190, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70200, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70210, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70220, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70230, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70240, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70250, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70260, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70270, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70280, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70290, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70300, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70310, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70320, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70330, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70340, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70350, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70360, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70370, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70380, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70390, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70400, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70410, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70420, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70430, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70440, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70450, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70460, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70470, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70480, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70490, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70500, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70510, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70520, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70530, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70540, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70550, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70560, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70570, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70580, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70590, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70600, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70610, remaining tasks 2
+284964-src.FleetSimulationBase-INFO-	 time 70620, remaining tasks 1
+284964-src.FleetSimulationBase-INFO-	 time 70630, remaining tasks 1
+284964-src.FleetSimulationBase-INFO-	 time 70640, remaining tasks 1
+284964-src.FleetSimulationBase-INFO-	 time 70650, remaining tasks 0
+284964-src.FleetSimulationBase-INFO-Scenario example_depot_time_pool_irsonly_rs_45 finished:
+      initialization : 0:00:03 h
+          simulation : 0:05:41 h
+          evaluation : 0:00:00 h
+
