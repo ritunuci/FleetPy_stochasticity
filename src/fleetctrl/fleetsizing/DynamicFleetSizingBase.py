@@ -43,6 +43,12 @@ class DynamicFleetSizingBase(ABC):
         self.sorted_time_activate = []
         self.sorted_time_deactivate = []
         self.keep_free_depot_cu = 0 # TODO (parameter to keep free depot charging spots otherwise filled with parking vehicles)
+        # an activation fails if no deactivated vehicle arrived at a depot yet (vehicles driving to a depot cannot be
+        # activated). the scheduled activation is then re-queued, otherwise it is lost and the fleet stays below the
+        # target fleet size for the rest of the simulation.
+        # subclasses that re-derive the number of vehicles to activate from the live fleet state in every time step
+        # have to disable this, otherwise the retry and the re-derived demand activate two vehicles instead of one.
+        self.requeue_failed_activation = True
         # children classes:
         # - check of additionally required attributes from operator_attributes
         # - save these as class attributes
@@ -101,16 +107,18 @@ class DynamicFleetSizingBase(ABC):
         """
         depot_input = depot
         if depot is None:
+            # only depots with vehicles that already arrived are considered; vehicles that are still driving to a
+            # depot are counted in depot.parking_vehicles, but cannot be activated yet
             most_parking_veh = 0
             for possible_depot in self.op_charge_depot_infra.depot_by_id.values():
-                if possible_depot.parking_vehicles > most_parking_veh:
+                nr_arrived_veh = len(possible_depot.arrived_parking_vehicles)
+                if nr_arrived_veh > most_parking_veh:
                     depot = possible_depot
-                    most_parking_veh = depot.parking_vehicles
-        if depot is None:
-            return None
-        veh_obj = depot.pick_vehicle_to_be_active()
-        LOG.info(f"Activating vehicle {veh_obj} from depot {depot} (plan time: {sim_time})")
+                    most_parking_veh = nr_arrived_veh
+        # depot is None if no depot has an arrived vehicle at all -> same failure case as an empty depot below
+        veh_obj = depot.pick_vehicle_to_be_active() if depot is not None else None
         if veh_obj is not None:
+            LOG.info(f"Activating vehicle {veh_obj} from depot {depot} (plan time: {sim_time})")
             if len(self.fleetctrl.veh_plans[veh_obj.vid].list_plan_stops) > 1:
                 # for ps in self.fleetctrl.veh_plans[veh_obj.vid].list_plan_stops[1:]:
                 #     if ps.get_state() == G_PLANSTOP_STATES.CHARGING:
@@ -124,9 +132,9 @@ class DynamicFleetSizingBase(ABC):
             self.fleetctrl.receive_status_update(veh_obj.vid, sim_time, [inactive_vrl])
             depot.schedule_active(veh_obj)
         else:
-            LOG.info("Activation failed!")
-            if depot_input is not None:
-                LOG.warning(f"Activation failed! Trying to activate again in {REACTIVATE_TIME/60} min")
+            LOG.warning(f"Activation failed at time {sim_time}! No deactivated vehicle has arrived at a depot yet.")
+            if self.requeue_failed_activation:
+                LOG.warning(f" -> re-queued, trying to activate again in {REACTIVATE_TIME/60} min")
                 new_activate_time = sim_time + REACTIVATE_TIME
                 self.add_time_triggered_activate(new_activate_time, 1, depot=depot_input)
         return veh_obj
@@ -249,18 +257,17 @@ class DynamicFleetSizingBase(ABC):
         :param simulation_time: current simulation time
         :return: list of activated vehicles
         """
-        list_remove_index = []
+        # due entries are taken off the schedule before any activation is attempted: activate_vehicle() re-queues
+        # failed activations, which appends to and re-sorts self.sorted_time_activate
+        due_activations = []
+        while self.sorted_time_activate and self.sorted_time_activate[0][0] <= simulation_time:
+            due_activations.append(self.sorted_time_activate.pop(0))
         return_veh_list = []
-        for i in range(len(self.sorted_time_activate)):
-            activate_time, nr_activate, depot = self.sorted_time_activate[i]
-            if simulation_time >= activate_time:
-                list_remove_index.append(i)
-                for _ in range(nr_activate):
-                    return_veh_list.append(self.activate_vehicle(simulation_time, depot))
-            else:
-                break
-        for i in reversed(list_remove_index):
-            del self.sorted_time_activate[i]
+        for _, nr_activate, depot in due_activations:
+            for _ in range(nr_activate):
+                veh_obj = self.activate_vehicle(simulation_time, depot)
+                if veh_obj is not None:  # failed activations are re-queued by activate_vehicle()
+                    return_veh_list.append(veh_obj)
         return return_veh_list
 
     def fill_charging_units_at_depot(self, simulation_time):

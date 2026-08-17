@@ -59,6 +59,10 @@ class UtilizationBasedFS(DynamicFleetSizingBase):
         self.max_duration_underutilized = operator_attributes[G_OP_DYFS_UNDER_UTIL_DUR]
         self.minimum_active_fleetsize = operator_attributes[G_OP_DYFS_MIN_ACT_FS]
         self.start_time_underutilization = self.fleetctrl.sim_time
+        # the number of vehicles to activate is re-derived from the current fleet utilization in every time step, i.e.
+        # a failed activation is requested again by the next check anyway. re-queuing it on top would activate two
+        # vehicles where only one is needed.
+        self.requeue_failed_activation = False
 
     def check_and_change_fleet_size(self, simulation_time):
         """This method checks whether fleet vehicles should be activated or deactivated.

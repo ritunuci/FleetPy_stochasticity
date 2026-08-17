@@ -1,0 +1,2 @@
+time,event,station_id,ch_op_id,vid,op_id,veh_type,current_soc,socket_id,socket_power,initial_soc,transferred_power,connection_duration
+43838.22555377102,detach,3,op_0,4,0,default_vehtype,1.0,0,15,0.996,0.20093980737927453,48.22555377102253
