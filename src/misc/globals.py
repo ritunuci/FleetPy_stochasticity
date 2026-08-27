@@ -286,6 +286,13 @@ G_SUMO_SIM_TIME_OFFSET = "sumo_sim_time_offset" # offset between fleetpy and sum
 G_OP_PA_ASSTH = "op_parcel_assignment_threshold"
 G_OP_PA_OBASS = "op_parcel_passenger_ob_assignment"
 G_OP_PA_REDEL = "op_parcel_remaining_delivery_time"
+# -------------------------------------------------------------------------------------------------------------------- #
+# Second vehicle assignment configurations
+G_OP_RACE_FLAG = "op_race_enabled"       # if True, a fraction of requests get two vehicles racing to pickup
+G_OP_RACE_PROB = "op_race_probability"   # probability [0,1] that an eligible request triggers a race
+SECOND_VEH_ASSIGNED = "second_vehicle_assigned"
+ASSIGNED_VIDS = "assigned_vids"
+LOOSER_VID = "looser_vid"
 
 # -------------------------------------------------------------------------------------------------------------------- #
 # Charging Stations/Depots

@@ -172,6 +172,11 @@ class PlanRequest:
         :return: traveller id"""
         return self.rid
 
+    def get_rq_obj(self):
+        """ this function returns the traveller object represented by the plan request
+        :return: traveller object"""
+        return self.traveler_rq_obj
+
     def get_rq_time(self) -> float:
         """ returns the request time of the plan request
         :return: request time"""

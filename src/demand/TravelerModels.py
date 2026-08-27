@@ -126,6 +126,10 @@ class RequestBase(metaclass=ABCMeta):
         # 
         self.modal_state = G_RQ_STATE_MONOMODAL  # mono-modal trip by default
 
+        self.duplicate_assignment = False  # Ritun added: To capture if the request is assigned to multiple vehicles
+        self.assigned_vids = None  # Ritun added: To capture the vehicle ids in which the request is assigned to
+        self.looser_vid = None  # Ritun added: To capture the vehicle id in which the request is assigned but lost the race
+
     def get_rid(self):
         return self.rid
 
@@ -218,6 +222,10 @@ class RequestBase(metaclass=ABCMeta):
         # record_dict[G_RQ_CANCEL_LATER_TIMESTAMP] = self.cancel_later_timestamp    # Ritun: This is associated with the two stage binary logit model for cancellation
         record_dict[G_RQ_NO_SHOW_OUTPUT] = self.no_show
         record_dict[G_RQ_DIFFUSION_STATE_VALUES] = self.diffusion_state_values
+
+        record_dict[SECOND_VEH_ASSIGNED] = self.duplicate_assignment
+        record_dict[ASSIGNED_VIDS] = self.assigned_vids
+        record_dict[LOOSER_VID] = self.looser_vid
 
         return self._add_record(record_dict)
 

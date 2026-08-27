@@ -1,14 +1,14 @@
 Scenario example_depot_time_pool_irsonly_rs_42 has mismatch with assertions:/n                                                              MoD_0  Assertion
 operator_id                                                     0.0        NaN
 total demand                                                  445.0        NaN
-number users                                                  269.0       88.0
-number travelers                                              301.0        NaN
-modal split                                                0.597222        NaN
+number users                                                  262.0       88.0
+number travelers                                              292.0        NaN
+modal split                                                0.579365        NaN
 ...                                                             ...        ...
 parking cost                                                    NaN        NaN
 toll                                                            0.0        NaN
-customer in vehicle distance                            6051.701127        NaN
-shared rides [%]                                           2.230483        NaN
+customer in vehicle distance                            5920.254165        NaN
+shared rides [%]                                           5.343511        NaN
 scenario_name                 example_depot_time_pool_irsonly_rs_42        NaN
 
 [62 rows x 2 columns]/n--------------------------------------------------------------------------------/n

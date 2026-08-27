@@ -57,11 +57,17 @@ class PoolingInsertionHeuristicOnly(FleetControlBase):
                          dir_names=dir_names, op_charge_depot_infra=op_charge_depot_infra, list_pub_charging_infra=list_pub_charging_infra)
         # TODO # make standard in FleetControlBase
         self.rid_to_assigned_vid = {} # rid -> vid
+        self.rid_to_assigned_vid_primary = {} # rid -> vid
+        self.rid_to_assigned_vid_racing = {} # rid -> vid
         self.pos_veh_dict = {}  # pos -> list_veh
         self.vr_ctrl_f = return_pooling_objective_function(operator_attributes[G_OP_VR_CTRL_F])
         self.sim_time = scenario_parameters[G_SIM_START_TIME]
         # others # TODO # standardize IRS assignment memory?
         self.tmp_assignment = {}  # rid -> VehiclePlan
+        self.race_enabled = operator_attributes.get(G_OP_RACE_FLAG, False)  # rid -> vid race feature toggle
+        self.race_prob = operator_attributes.get(G_OP_RACE_PROB, 0.0)
+        self.tmp_race_assignment = {}   # rid -> second-candidate VehiclePlan, pending confirmation
+        self.racing_rid_to_vids = {}    # rid -> (vid_winner_candidate, vid_loser_candidate), active races
         self._init_dynamic_fleetcontrol_output_key(G_FCTRL_CT_RQU)
 
     def receive_status_update(self, vid, simulation_time, list_finished_VRL, force_update=True, no_show_rids = None):
@@ -123,8 +129,13 @@ class PoolingInsertionHeuristicOnly(FleetControlBase):
         else:
             list_tuples = insertion_with_heuristics(sim_time, prq, self, force_feasible_assignment=True)
             if len(list_tuples) > 0:
-                (vid, vehplan, delta_cfv) = min(list_tuples, key=lambda x:x[2])
+                sorted_tuples = sorted(list_tuples, key=lambda x: x[2])
+                (vid, vehplan, delta_cfv) = sorted_tuples[0]
                 self.tmp_assignment[rid_struct] = vehplan
+                if self.race_enabled and random.random() < self.race_prob:
+                    second_candidate = next((t for t in sorted_tuples[1:] if t[0] != vid), None)
+                    if second_candidate is not None:
+                        self.tmp_race_assignment[rid_struct] = second_candidate[1]
                 offer = self._create_user_offer(prq, sim_time, vehplan)
                 LOG.debug(f"new offer for rid {rid_struct} : {offer}")
             else:
@@ -151,14 +162,25 @@ class PoolingInsertionHeuristicOnly(FleetControlBase):
         super().user_confirms_booking(rid, simulation_time)
         LOG.debug(f"user confirms booking {rid} at {simulation_time}")
         prq = self.rq_dict[rid]
+        rq_obj = prq.get_rq_obj()
         if prq.get_reservation_flag():
             self.reservation_module.user_confirms_booking(rid, simulation_time)
         else:
             new_vehicle_plan = self.tmp_assignment[rid]
             vid = new_vehicle_plan.vid
             veh_obj = self.sim_vehicles[vid]
+            self.rid_to_assigned_vid_primary[rid] = vid
             self.assign_vehicle_plan(veh_obj, new_vehicle_plan, simulation_time)
             del self.tmp_assignment[rid]
+            race_plan = self.tmp_race_assignment.pop(rid, None)
+            if race_plan is not None:
+                rq_obj.duplicate_assignment = True  # Ritun added: To capture if the request is assigned to multiple vehicles
+                race_vid = race_plan.vid
+                race_veh_obj = self.sim_vehicles[race_vid]
+                self.rid_to_assigned_vid_racing[rid] = race_vid
+                self.assign_vehicle_plan(race_veh_obj, race_plan, simulation_time)
+                self.racing_rid_to_vids[rid] = (vid, race_vid)
+                LOG.debug(f"race triggered for rid {rid}: vid {vid} vs vid {race_vid}")
 
     def user_cancels_request(self, rid, simulation_time):
         """
@@ -195,16 +217,30 @@ class PoolingInsertionHeuristicOnly(FleetControlBase):
             # if prev_assignment:
             #     del self.tmp_assignment[rid]
             # Check if already assigned to a vehicle
-            assigned_vid = self.rid_to_assigned_vid.get(rid)
-            if assigned_vid is not None:
-                veh_obj = self.sim_vehicles[assigned_vid]
-                old_plan = self.veh_plans[assigned_vid]
+            # assigned_vid = self.rid_to_assigned_vid.get(rid)
+            assigned_primary_vid = self.rid_to_assigned_vid_primary.get(rid)
+            assigned_racing_vid = self.rid_to_assigned_vid_racing.get(rid)
+            if assigned_primary_vid is not None:
+                veh_obj = self.sim_vehicles[assigned_primary_vid]
+                old_plan = self.veh_plans[assigned_primary_vid]
 
                 new_vehicle_plan = simple_remove(veh_obj=veh_obj, veh_plan=old_plan, remove_rid=rid, sim_time=simulation_time,
                                              routing_engine=self.routing_engine, obj_function=self.vr_ctrl_f, rq_dict=self.rq_dict,
                                              std_bt=self.const_bt, add_bt=self.add_bt)
                 self.assign_vehicle_plan(veh_obj, new_vehicle_plan, simulation_time, force_assign=True)
+                del self.rid_to_assigned_vid_primary[rid]
+            if assigned_racing_vid is not None:
+                veh_obj = self.sim_vehicles[assigned_racing_vid]
+                old_plan = self.veh_plans[assigned_racing_vid]
+
+                new_vehicle_plan = simple_remove(veh_obj=veh_obj, veh_plan=old_plan, remove_rid=rid, sim_time=simulation_time,
+                                             routing_engine=self.routing_engine, obj_function=self.vr_ctrl_f, rq_dict=self.rq_dict,
+                                             std_bt=self.const_bt, add_bt=self.add_bt)
+                self.assign_vehicle_plan(veh_obj, new_vehicle_plan, simulation_time, force_assign=True)
+                del self.rid_to_assigned_vid_racing[rid]
+            if rid in self.rid_to_assigned_vid:
                 del self.rid_to_assigned_vid[rid]
+            self.racing_rid_to_vids.pop(rid, None)
         # Final cleanup
         self.rq_dict.pop(rid, None)
 
@@ -297,6 +333,20 @@ class PoolingInsertionHeuristicOnly(FleetControlBase):
         :type simulation_time: float
         """
         LOG.debug(f"acknowledge boarding {rid} in {vid} at {simulation_time}")
+        race_vids = self.racing_rid_to_vids.pop(rid, None)
+        self.rq_dict[rid].traveler_rq_obj.assigned_vids = race_vids
+        if race_vids is not None:
+            vid_a, vid_b = race_vids
+            loser_vid = vid_b if vid == vid_a else vid_a
+            self.rq_dict[rid].traveler_rq_obj.looser_vid = loser_vid
+            loser_veh_obj = self.sim_vehicles[loser_vid]
+            loser_plan = self.veh_plans[loser_vid]
+            new_loser_plan = simple_remove(veh_obj=loser_veh_obj, veh_plan=loser_plan, remove_rid=rid, sim_time=simulation_time,
+                                            routing_engine=self.routing_engine, obj_function=self.vr_ctrl_f, rq_dict=self.rq_dict,
+                                            std_bt=self.const_bt, add_bt=self.add_bt)
+            self.assign_vehicle_plan(loser_veh_obj, new_loser_plan, simulation_time, force_assign=True)
+            self.rid_to_assigned_vid[rid] = vid
+            LOG.debug(f"race resolved for rid {rid}: winner vid {vid}, released loser vid {loser_vid}")
         self.rq_dict[rid].set_pickup(vid, simulation_time)
 
     def acknowledge_alighting(self, rid, vid, simulation_time):
@@ -314,6 +364,11 @@ class PoolingInsertionHeuristicOnly(FleetControlBase):
 
         del self.rq_dict[rid]
         del self.rid_to_assigned_vid[rid]
+
+        if rid in self.rid_to_assigned_vid_primary:
+            del self.rid_to_assigned_vid_primary[rid]
+        if rid in self.rid_to_assigned_vid_racing:
+            del self.rid_to_assigned_vid_racing[rid]
 
     # def acknowledge_no_show(self, rid, vid, simulation_time):
     #     """This method can trigger some database processes whenever a passenger does not show up for boarding.
@@ -425,11 +480,36 @@ class PoolingInsertionHeuristicOnly(FleetControlBase):
         from the method _check_waiting_request_cancellations(self, sim_time) within FleetSimulationBase.py
         """
         # return self.expected_pickup_time_dict[rid]
-        assigned_vid_to_rid = self.rid_to_assigned_vid.get(rid)
-        if assigned_vid_to_rid is not None:
-            vehicle_plan = self.veh_plans[assigned_vid_to_rid]
+        # assigned_vid_to_rid = self.rid_to_assigned_vid.get(rid)
+
+        assigned_primary_vid_to_rid = self.rid_to_assigned_vid_primary.get(rid)
+        assigned_racing_vid_to_rid = self.rid_to_assigned_vid_racing.get(rid)
+
+        # if assigned_vid_to_rid is not None:
+        #     vehicle_plan = self.veh_plans[assigned_vid_to_rid]
+        #     pax_info = vehicle_plan.get_pax_info(rid)
+        #     return pax_info[0]
+
+        primary_vid_pickup_time = None
+        racing_vid_pickup_time = None
+
+        if assigned_primary_vid_to_rid is not None:
+            vehicle_plan = self.veh_plans[assigned_primary_vid_to_rid]
             pax_info = vehicle_plan.get_pax_info(rid)
-            return pax_info[0]
+            if pax_info is not None:
+                primary_vid_pickup_time = pax_info[0]
+
+        if assigned_racing_vid_to_rid is not None:
+            vehicle_plan = self.veh_plans[assigned_racing_vid_to_rid]
+            pax_info = vehicle_plan.get_pax_info(rid)
+            if pax_info is not None:
+                racing_vid_pickup_time = pax_info[0]
+
+        if primary_vid_pickup_time is not None and racing_vid_pickup_time is not None:
+            return min(primary_vid_pickup_time, racing_vid_pickup_time)
+        if primary_vid_pickup_time is not None:
+            return primary_vid_pickup_time
+        return racing_vid_pickup_time
 
     def lock_current_vehicle_plan(self, vid):
         super().lock_current_vehicle_plan(vid)
