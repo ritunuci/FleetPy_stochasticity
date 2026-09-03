@@ -20,14 +20,14 @@ rq_type,BasicRequest_no_show
 user_max_decision_time,0
 ##2,FleetControl
 op_min_wait_time,0
-op_max_wait_time,1500.0
+op_max_wait_time,1500
 op_max_wait_time_2,
-op_max_detour_time_factor,20.0
+op_max_detour_time_factor,20
 op_offer_time_window,
 op_add_constant_detour_time,
 op_max_constant_detour_time,
 op_min_detour_time_window,
-op_const_boarding_time,300.0
+op_const_boarding_time,300
 op_add_boarding_time,0
 op_base_fare,0
 op_distance_fare,0.1
@@ -40,14 +40,14 @@ op_min_soc_after_planstop,0.5
 op_n_charge_station_query,5
 op_n_charge_offer_per_station,5
 ##3,Cancellation diffusion model
-waiting_time_lower_bound,700.0
-waiting_time_upper_bound,1500.0
+waiting_time_lower_bound,700
+waiting_time_upper_bound,1500
 diffusion_model_time_step,0.05
-max_decision_time,30.0
+max_decision_time,30
 decision_feedback_rate,0.99
-random_term_variance,5.0
-decision_threshold_upper,80.0
-decision_threshold_lower,-80.0
+random_term_variance,5
+decision_threshold_upper,80
+decision_threshold_lower,-80
 max_dec_time_def_state_lower_bound,-7
 ETA_update_interval,20
 ##4,Fleet configuration
@@ -73,7 +73,7 @@ max_rel_error_black_box_PUDO_duration,65.60244936
 upper_bound_black_box_PUDO_dur,400
 lower_bound_black_box_PUDO_dur,10
 ##9,Stochastic no-show config
-no_show_wait_time,180.0
+no_show_wait_time,180
 no_show_feature,TRUE
 ##10,Peak and Offpeak hr config
 morning_hr_start,32400
@@ -83,3 +83,4 @@ afternoon_hr_end,
 evening_hr_start,57600
 evening_hr_end,68400
 stochastic_rider_service_decline,TRUE
+rider_decline_max_wait_time,1500

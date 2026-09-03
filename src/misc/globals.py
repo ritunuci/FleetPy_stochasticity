@@ -120,6 +120,7 @@ G_AR_MAX_DTF = "user_max_detour_time_factor"
 G_AR_MAX_DEC_T = "user_max_decision_time"
 G_AR_PRICE_F = "user_price_sensitivity_func_dict"
 G_OP_STO_RIDER_DECLINE = "stochastic_rider_service_decline" # Ritun added for stochastic rider decline model
+G_RIDER_MAX_WT = "rider_decline_max_wait_time" # Ritun added for stochastic rider decline model
 
 # traveler mode choice attributes
 G_MC_VOT = "value_of_time"

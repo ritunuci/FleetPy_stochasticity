@@ -209,7 +209,7 @@ if __name__ == "__main__":
         # sc = os.path.join(scs_path, "example_ir_only.csv")
         sc = os.path.join(scs_path, "example_depot_cali_sc_1.csv")
 
-        run_scenarios(cc, sc, log_level=log_level, n_cpu_per_sim=1, n_parallel_sim=5)
+        run_scenarios(cc, sc, log_level=log_level, n_cpu_per_sim=1, n_parallel_sim=1)
         list_results = read_outputs_for_comparison(cc, sc)
         all_scenario_assert_dict = {0: {"number users": 88}}
         check_assertions(list_results, all_scenario_assert_dict)

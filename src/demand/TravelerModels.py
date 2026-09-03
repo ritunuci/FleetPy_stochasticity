@@ -665,7 +665,7 @@ class BasicRequest_no_show(RequestBase):
                         self.chosen_operator_id = opts[0]
                         return opts[0]
                     else:
-                        prob_decline = 1 - ((sc_parameters[G_OP_MAX_WT]-offered_wait_time)/(sc_parameters[G_OP_MAX_WT]-sc_parameters[G_WAIT_LOWER_BOUND]))  # This is the probability that a person declines
+                        prob_decline = 1 - ((sc_parameters[G_RIDER_MAX_WT]-offered_wait_time)/(sc_parameters[G_RIDER_MAX_WT]-sc_parameters[G_WAIT_LOWER_BOUND]))  # This is the probability that a person declines
                         r = np.random.random()
                         if r < prob_decline:
                             LOG.debug(f" -> decline")
