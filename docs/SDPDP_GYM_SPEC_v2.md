@@ -522,13 +522,15 @@ FleetPy quantities are raw seconds and metres. Two layers:
 
 ### 6.1 Structure
 
-Reward events accumulate in a `RewardTracker` and are flushed each gym step. `step()` returns
-the sum of everything that fired between the previous action and this one.
+Reward events accumulate in a `RewardTracker` and are flushed each gym step. `step(action)` returns the sum of everything that fired after that action was applied, up to
+the next decision point — the action's own immediate consequence plus whatever the simulation
+produced while advancing. `flush()` is called after `.send()`, never before. The simulation is
+frozen while the agent decides, so the window boundaries are exact.
 
 | Event | Fires at | Term |
 |---|---|---|
 | Operator rejected | `record_user`; labelled at the decision by `commit_assignment_choice` | `-w_reject` |
-| Rider declined the offer | `user_cancels_request` via `record_user` | `-w_decline` |
+| Rider declined the offer | `record_user` from `_rid_chooses_offer` | `-w_decline` |
 | Post-match cancellation | Diffusion model via `record_user` | `-w_cancel` |
 | No-show | `record_no_show` via `record_user` | `-w_noshow` |
 | **Pickup** | **`record_boarding`** | `+w_pickup - w_wait * (pu_time - rq_time)/60` |
@@ -980,6 +982,9 @@ contaminate every stochastic result reported later. Report it and stop.
 
 Also report: step count, wall-clock seconds, steps/second, reward-event breakdown, and how
 many requests took the reservation branch or returned an empty candidate list.
+
+Also report the distribution of wall-clock gaps between consecutive gym steps
+(min, median, mean, 95th percentile, max).
 
 Write these figures to `docs/RL_GYM_PHASE1_RESULTS.md` as well as reporting them: step
 count, reservation-branch count, empty-candidate count, wall-clock seconds, steps/second,
