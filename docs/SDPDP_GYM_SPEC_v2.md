@@ -2,12 +2,14 @@
 
 Repository: `FleetPy_stochasticity`, branch: `fleetpy_stochasticity_RL` 
 (this has been created by branching out from `no_show_model_update` branch and retains everything from that branch)
+Environment: `fleetpy_rl` (conda), captured in `env_fleetpy_rl.yml` (in the branch: `fleetpy_stochasticity_RL`). The other environment
+files predate the RL work, do not use them for this project.
 Fleet control: `PoolingIRSOnly` → `src/fleetctrl/PoolingIRSOnly.py::PoolingInsertionHeuristicOnly`
 Simulation env: `ImmediateDecisionsSimulation`
 Simulation config files are: `constant_config_depot_cali_sc_1.csv` and `example_depot_cali_sc_1.csv`
 `baseline_user_stats.csv` lives in `docs` directory at the root.
 RL library: Stable-Baselines3 + `sb3-contrib` (MaskablePPO)
-Companion document: `SDVRP_project_proposal.pdf` — the research design this implements
+Companion reaserch proposal document: `SDVRP_project_proposal.pdf` — the research design this implements
 
 The action space is top-K ranked candidates, the architecture is generator-based,
 and reward is anchored on **pickup**.
@@ -71,6 +73,10 @@ differences are what all four of these look like. Ritun decides what happens nex
   rather than working around it — the design decisions depend on those facts.
 - Every edit to a file outside `src/rl_gym/` and `dev/` carries a `# RL-GYM:` comment.
 - Prefer adding a parameter with a safe default over changing an existing default.
+- **Do not install, upgrade, or remove any package.** If an import fails, stop and report
+  which package is missing. Ritun manages the environment — a dependency resolution that
+  moves `numpy`, `scipy` or `torch` would change floating-point results and invalidate
+  `baseline_user_stats.csv`.
 - If you run into any confusion or have any questions, pause and ask Ritun, do not assume something.
   Ritun will tell you what to do and then you can continue.
 
@@ -169,9 +175,9 @@ Confirmed structure, and it is short and self-contained:
 5. `op.time_trigger(sim_time)` per operator.
 6. Charging operator triggers; `record_stats()`.
 
-**This already satisfies the proposal's §3.1 requirement** that the insertion heuristic
+**This already satisfies the research proposal's §3.1 requirement** that the insertion heuristic
 re-runs after each assignment so an updated vehicle plan is visible for the next
-same-timestamp request. No change needed.
+same-timestamp request. No change needed. **VERIFY** this item as claimed and report to Ritun.
 
 Note that step 3 iterates undecided travelers *plus* new arrivals. **VERIFY** whether
 `get_undecided_travelers` is ever non-empty under `ImmediateDecisionsSimulation`; if it is,
@@ -219,7 +225,7 @@ Callers live in `FleetSimulationBase.update_sim_state_fleets` around lines 647
 
 ### 2.5 Stochasticity present in the simulator
 
-| Uncertainty (proposal §1) | Implemented? | Where |
+| Uncertainty | Implemented? | Where |
 |---|---|---|
 | Travel time | Yes | `NetworkBasic`, `stochastic_tt = TRUE` |
 | Post-match booking cancellation | Yes | `FleetSimulationBase._check_request_cancellations_diffusion_model` |
@@ -293,7 +299,7 @@ Because `rider_decline_max_wait_time = 1500` and `waiting_time_lower_bound = 700
 window from §2.3 is only 800 s wide: decline probability is 0 at an offered wait of 700 s and
 1 at 1500 s. Every observation normalizer must read these from `scenario_parameters`.
 
-The proposal specifies a 5-second time step, which would double simulation steps to ~9,000
+The research proposal specifies a 5-second time step, which would double simulation steps to ~9,000
 per episode and roughly double wall-clock, while leaving the gym step count unchanged.
 **Confirm with Ritun before changing `time_step`** — it is pure overhead for the RL loop.
 
@@ -311,8 +317,7 @@ was generated from that row; the run's own output directory is
 The gym owns the time loop. `RLImmediateDecisionsSimulation` exposes a generator that yields
 at each decision epoch and receives the action via `.send()`.
 
-This is a change from v1, which specified a background thread and a queue pair. The proposal's
-design — decisions only at request arrival, requests processed FIFO with the wall clock
+The research proposal's design — decisions only at request arrival, requests processed FIFO with the wall clock
 frozen, never pausing mid-time-step — makes the generator approach viable, and
 `ImmediateDecisionsSimulation.step()` is short and self-contained enough to mirror.
 
@@ -336,8 +341,8 @@ untouched and non-RL scenarios keep running.
 
 ### D3. Action space is `Discrete(K + 1)` over **ranked candidates**.
 
-Per proposal §3.1.2 and §3.2. Slot `k` for `k in [0, K)` = "offer the insertion plan for the
-`k`-th cheapest candidate". Slot `K` = "reject". Reject is always legal.
+Slot `k` for `k in [0, K)` = "offer the insertion plan for the `k`-th cheapest candidate".
+Slot `K` = "reject". Reject is always legal.
 
 - `K` is a config parameter. Start at `K = 8`. `K` is owned by `SDPDPAssignmentEnv` alone. 
   `RLPoolingIRSOnly` receives a semantic choice(candidate index or reject), never a raw action.
@@ -389,8 +394,8 @@ up even after that tail, which is the intended meaning.
 ### D7. Per-episode reseeding is mandatory.
 
 `reset(seed=...)` writes a fresh `scenario_parameters[G_RANDOM_SEED]` before the simulation
-is constructed. Per proposal §3.1.2, each day is replayed under several seeds and the agent
-must see demand and travel-time variation. Without this every episode replays one sample
+is constructed. Per research proposal §3.1.2, each day is replayed under several seeds and the agent
+must see demand variation over the months that Ritun will finally decide to work on. Without this every episode replays one sample
 path.
 
 ### D8. `SubprocVecEnv`, never `DummyVecEnv`.
@@ -522,7 +527,7 @@ FleetPy quantities are raw seconds and metres. Two layers:
 
 ### 6.1 Structure
 
-Reward events accumulate in a `RewardTracker` and are flushed each gym step. `step(action)` returns the sum of everything that fired after that action was applied, up to
+Reward events accumulate in a `RewardTracker` and are flushed each gym step. `step(action)` returns the sum of everything that fired after that action was applied, upto
 the next decision point — the action's own immediate consequence plus whatever the simulation
 produced while advancing. `flush()` is called after `.send()`, never before. The simulation is
 frozen while the agent decides, so the window boundaries are exact.
@@ -621,12 +626,17 @@ Point them at modules that do not exist yet; that is fine, the dict values are l
 
 **VERIFY** the exact ten function names against `src/misc/init_modules.py`. Note the
 inconsistency between `add_dev_simulation_environments` and `add_simulation_environments`.
-Missing one raises `AttributeError` at import time for **every** simulation in the repo, RL
-or not.
+Missing one raises `AttributeError` the first time the corresponding `get_src_*()` getter is
+called — not at import. The `dev_content.add_*()` calls sit inside the getters, so a bare
+import will not surface the problem; it will instead fail partway into a simulation.
 
-**How Ritun verifies:** `python -c "import src.misc.init_modules"` succeeds;
-`get_src_fleet_control_modules()["PoolingIRSOnly"]` still resolves; the existing greedy
-scenario still runs and produces output identical to `baseline_user_stats.csv`.
+**How Ritun verifies:** every one of the ten `get_src_*()` getters is called and returns
+without error, still containing its stock entries. Importing the module is not sufficient —
+the `add_*` calls live inside the getters. Confirm
+`get_src_fleet_control_modules()["PoolingIRSOnly"]` and
+`get_src_simulation_environments()["ImmediateDecisionsSimulation"]` still resolve and that
+the two RL entries now appear. Then run the existing greedy scenario and match
+`baseline_user_stats.csv`.
 
 **Commit:** `RL-GYM: add dev extension package for module registration`
 
@@ -925,7 +935,7 @@ After `reset()` builds the simulation, attach the tracker before advancing the g
 `sim.operators[0].set_reward_tracker(tracker)`, plus the two `demand.py` callbacks from P1.7.
 
 **VERIFY** the `ConstantConfig` / `ScenarioConfig` API and the config-addition idiom against
-`src/misc/config.py`. This fork uses CSV, not YAML.
+`src/misc/config.py`. This reference scenario uses CSV, though the API accepts YAML too.
 
 Keep all diagnostic state in this class. Do not put subclass-specific state in a base class.
 
@@ -937,17 +947,21 @@ cycles leak no memory and no file handles.
 
 ---
 
-### P1.9 — Seeding and scenario pool
+### P1.9 — Per-episode seeding
 
 **Files:** `src/rl_gym/gym_env.py`
 
 `reset(seed=None)` seeds the env's own `np.random.Generator` on first call, then draws an
 episode seed from it and writes `scenario_parameters[G_RANDOM_SEED] = int(episode_seed)`
-before construction.
+before construction. Each `SubprocVecEnv` worker gets a different base seed derived from
+`env_id`.
 
-Rotate the scenario row across episodes from `scenario_pool`, so the policy sees multiple
-demand days (proposal §3.1.2). Each `SubprocVecEnv` worker gets a different base seed derived
-from `env_id`.
+**Phase 1 implements seeding only.** The demand day is not per-scenario-row —
+`example_depot_cali_sc_1.csv` carries only `op_module`, `scenario_name` and `random_seed`,
+while `day_dir_name` and `rq_file` live in the constant config, so rotating rows would
+change the seed and nothing else. Multi-day rotation is deferred to Phase 2 and will write
+`G_DAY_DIR` / `G_RQ_FILE` into `scenario_parameters` directly (research proposal §3.1.2).
+Accept `scenario_pool` in the config for forward compatibility but leave it unused.
 
 When `skip_output` is False, set
 `scenario_name = f"{base}_env{env_id}_pid{os.getpid()}_ep{counter}"`. Both the pid and the
@@ -958,7 +972,7 @@ counter because `create_or_empty_dir` would otherwise erase the previous episode
 fixed action sequence; two resets with different seeds produce different `1_user-stats.csv`
 output. Both must hold.
 
-**Commit:** `RL-GYM: add per-episode seeding and scenario pool rotation`
+**Commit:** `RL-GYM: add per-episode seeding`
 
 ---
 
@@ -966,9 +980,12 @@ output. Both must hold.
 
 **Files:** `tests/test_rl_gym.py`
 
-Drive the env entirely from outside: `obs, _ = env.reset()`, then at each step choose
-`argmin` over the `delta_cfv` slots in the observation, step, repeat until `terminated`. Run
-with `skip_output = 0` so a user-stats file is produced.
+Drive the env entirely from outside: `obs, _ = env.reset()`, then at each step choose the
+`argmin` of `delta_cfv` restricted to slots where `is_valid = 1` — never over padded slots,
+whose `delta_cfv` is padding rather than a cost and would win. Equivalently, since the list
+arrives sorted and truncation is a prefix, the scripted greedy action is always slot 0
+whenever any candidate is valid. Step, repeat until `terminated`. Run with
+`skip_output = 0` so a user-stats file is produced.
 
 The resulting `1_user-stats.csv` must match `baseline_user_stats.csv` **byte for byte**.
 
@@ -986,7 +1003,7 @@ many requests took the reservation branch or returned an empty candidate list.
 Also report the distribution of wall-clock gaps between consecutive gym steps
 (min, median, mean, 95th percentile, max).
 
-Write these figures to `docs/RL_GYM_PHASE1_RESULTS.md` as well as reporting them: step
+Create if `docs/RL_GYM_PHASE1_RESULTS.md` is absent. Write these figures to `docs/RL_GYM_PHASE1_RESULTS.md` as well as reporting them: step
 count, reservation-branch count, empty-candidate count, wall-clock seconds, steps/second,
 the full `episode_summary()` breakdown, and the candidate-list length distribution
 (min, median, mean, max, and the count exceeding `K`).
@@ -1027,7 +1044,7 @@ Order matters.
 
 - **P2.1** H3 zone system: `h3` dependency, node→hex mapping preprocessing, neighbour lookup,
   integration as a FleetPy zone system
-- **P2.2** Offline historical baselines from the 11 months of demand files: per-zone arrival
+- **P2.2** Offline historical baselines from the 11 months (or whatever the number of months Ritun decides) of demand files: per-zone arrival
   rates, rejection rates, 95th-percentile normalizers
 - **P2.3** `RollingStatsTracker` on the P1.7 callbacks
 - **P2.4** Full observation per §5.2, plus `VecNormalize`
