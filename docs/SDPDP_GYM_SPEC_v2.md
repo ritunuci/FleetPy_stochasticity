@@ -126,7 +126,9 @@ vehicle serves each incoming request.
 
 - One gym step = one request for which the operator has an actual choice to make. Requests
   resolved internally with no choice available — origin equals destination, the reservation
-  branch, a duplicate rid, or an empty candidate list — do not generate a step. See P1.3.
+  branch, or an empty candidate list — do not generate a step. There are three such cases,
+  not four: `PoolingInsertionHeuristicOnly.user_request` has no duplicate-rid branch, it
+  simply overwrites `rq_dict[rid_struct]`. See P1.3.
 - One episode = one full simulation day (defined by simulation start and end time).
 
 **Phase 1 — plumbing.** A correct, valid, single-threaded Gym environment with a minimal
@@ -410,7 +412,7 @@ One env per OS process.
 ### Implemented as specified
 
 Decision epochs are per actionable request. In practice a request with no available choice — origin equals
-destination, reservation branch, duplicate rid, or no feasible candidate — is resolved inside
+destination, reservation branch, or no feasible candidate — is resolved inside
 `build_assignment_context` and generates no gym step, because there is nothing for the policy
 to decide. One episode per day; days replayed across seeds and
 across 11 months (Ritun may change the number of months to be used later) of demand files;
@@ -590,6 +592,28 @@ charge nothing. All reward is charged once, in `on_exit`. `on_exit` must be idem
 rid: `record_alighting_start` and `record_remaining_users` can both fire for a rider who is
 mid-alighting when the day ends.
 
+**`on_pickup` is last-write-wins, not dedupe-on-first.** `record_boarding` can fire more than
+once for the same rid. The cause is the no-show mechanism: when a no-show rider shares a
+boarding stop with another rider on the same vehicle,
+`sim_veh_no_show_requests_cleanup` calls `simple_remove_bulk`, and the replan re-fires the
+boarding stop for the co-located rider. It therefore recurs whenever a no-show shares a
+boarding stop, not only in the one observed case. On the reference day this is rid 50 — two
+calls, vid 4, same `pu_pos`, at `sim_time = 33032.898...` then `33230`, with rid 45 the
+no-show at the same stop, same vehicle, same origin/destination.
+
+FleetPy overwrites `pu_time` on each call and the output file records the **last** value
+(33230 for rid 50), so the reward must match that. Charging on the first call would price a
+92.9 s wait against a realized 290 s and would bias the policy against precisely those riders
+delayed by someone else's no-show.
+
+`on_pickup` therefore stores the amount charged per rid and, on a repeat, charges the
+**delta**, so the net is exactly one pickup priced at the final `pu_time`. Dedupe-on-first is
+wrong for the same reason: it keeps the stale wait.
+
+P1.7 must report the duplicate-boarding count in `episode_summary()` — the number of rids
+whose `record_boarding` fired more than once — so it is visible whether this stays at one per
+day.
+
 ### 6.5 Discounting
 
 A pickup reward can land 10–30 decisions after the assignment that caused it. Set
@@ -767,7 +791,7 @@ get one handler each, as they do today.
 ```
 class PendingDecision:
     prq, candidates (list of (vid, vehplan, delta_cfv) exactly as insertion_with_heuristics
-    returned it — do not re-sort), sim_time, rid_struct, cpu_t0
+    returned it — do not re-sort), sim_time, rid_struct, cpu_elapsed
 
 class RLPoolingIRSOnly(PoolingInsertionHeuristicOnly):
     def build_assignment_context(self, rq, sim_time) -> PendingDecision | None
@@ -778,9 +802,24 @@ class RLPoolingIRSOnly(PoolingInsertionHeuristicOnly):
 
 `build_assignment_context` performs everything `user_request` does up to the `argmin`. It
 returns `None` when the request was fully resolved internally and no decision is needed:
-`o_pos == d_pos` auto-reject, the reservation branch, a duplicate rid, or an empty candidate
-list. In those cases it must reproduce the parent's behaviour exactly, including
-`_create_rejection` and the `G_FCTRL_CT_RQU` bookkeeping.
+`o_pos == d_pos` auto-reject, the reservation branch, or an empty candidate list — three
+cases, not four. There is no duplicate-rid branch in the parent to reproduce; lines 109–111
+overwrite `rq_dict[rid_struct]` unconditionally.
+
+In those cases it must reproduce the parent's behaviour exactly, including `_create_rejection`
+and the `G_FCTRL_CT_RQU` bookkeeping — **but the bookkeeping applies to the reservation and
+empty-candidate branches only.** The `o_pos == d_pos` branch is a bare `return` at
+`PoolingIRSOnly.py` line ~116 that jumps over the bookkeeping at lines ~133–141, and must keep
+doing so. Adding bookkeeping there would write a `G_FCTRL_CT_RQU` value the parent never writes.
+
+**CPU-time accounting across the yield.** The parent measures `perf_counter() - t0` across the
+whole of `user_request`. In the split, the agent's decision sits between build and commit, so a
+single timestamp would fold policy inference and scheduler latency into `G_FCTRL_CT_RQU`.
+`G_FCTRL_CT_RQU` measures fleet-control computation, and the contamination would be worst in
+evaluation runs, which is exactly where that number is read. So `PendingDecision` carries
+`cpu_elapsed` — a **duration, not a timestamp**: build stores its own elapsed span, and commit
+adds its own span before writing the sum. The two are identical for the greedy fallback, where
+build and commit are adjacent.
 
 Sorting has already happened inside `insertion_with_heuristics`; `build_assignment_context`
 stores the list as returned. Do not re-sort it — see D3.
@@ -946,6 +985,9 @@ Phase 1 uses counting-only weights (§6.6).
 - operator rejections = 0, since a scripted greedy policy never selects slot `K`
 - unclassified = 0 — every request that reaches `record_user` matched one of the branches
   in §6.4
+- duplicate boardings — rids whose `record_boarding` fired more than once. Expected 1 on the
+  reference day (rid 50). The pickup count above must still be 288 distinct rids, not 289
+  calls; `on_pickup` is last-write-wins per §6.4.
 
 Any mismatch means a choke point was missed.
 
@@ -1058,6 +1100,8 @@ the full `episode_summary()` breakdown, and the candidate-list length distributi
 **How Ritun verifies:** the byte comparison, plus a step-count reconciliation:
 step count + reservation-branch count + empty-candidate count + same-origin-destination
 count + duplicate-rid count = 445. Every request must be accounted for in exactly one bucket.
+The duplicate-rid bucket is expected to be **0** — the parent has no such branch (§1). Keep
+the bucket and report it: a non-zero value means the source changed.
 
 **Commit:** `RL-GYM: add scripted greedy rollout test (Phase 1 exit gate)`
 

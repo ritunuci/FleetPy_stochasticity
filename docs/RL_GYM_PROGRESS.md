@@ -209,3 +209,100 @@ Decisions:
   logging guard to RL mode with non-RL behaviour bit-identical, update the Files line.
 - Asked: leave `self.repo.record_repo_stats()` unguarded since `repo` is None here?
   Ritun: guard it too — "skip_output = 1 produces no files" should hold unconditionally.
+
+---
+
+## P1.3 — STARTED 2026-09-12 16:19
+Files I will touch: src/rl_gym/__init__.py, src/rl_gym/fleetctrl_rl.py,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+## P1.3 — DONE 2026-09-12 16:26 — awaiting Ritun's verification
+
+Files changed — both new; **no existing source file modified** (`git diff --stat -- src/` is
+empty; `RLPoolingIRSOnly` resolves through the P1.1 dev hook):
+- `src/rl_gym/__init__.py` — package marker, deliberately import-free
+- `src/rl_gym/fleetctrl_rl.py` — `PendingDecision` and
+  `RLPoolingIRSOnly(PoolingInsertionHeuristicOnly)` with `build_assignment_context`,
+  `commit_assignment_choice`, greedy-fallback `user_request`, `set_reward_tracker`, and the
+  `_record_request_cpu_time` helper
+- `docs/SDPDP_GYM_SPEC_v2.md` — corrections 6 and 7 and the CPU-timing decision (below)
+- `docs/RL_GYM_PROGRESS.md` — this entry
+
+Verification — everything passed:
+
+1. **Byte-for-byte, the Phase 1 headline test.** Full day with `op_module = RLPoolingIRSOnly`,
+   no gym: `1_user-stats.csv` **identical to `docs/baseline_user_stats.csv`** (`cmp` reports no
+   differing byte; md5 `53879ea79cf211d700f670dee1173dd5`; 117,056 bytes).
+2. **Byte-for-byte again with a reward tracker attached.** Re-ran the same day with a stub
+   tracker on `set_reward_tracker`: still identical, same md5. This is what proves the two
+   label hooks are pure bookkeeping that does not perturb the simulation.
+3. **Request reconciliation, exact:** 436 decisions + 0 reservation-branch + 9 empty-candidate
+   + 0 same-origin-destination + 0 duplicate-rid = **445**. Every request in exactly one bucket.
+   The 9 empty-candidate cases match the figure in §2.8.
+4. **Tracker labels:** `note_no_candidates` fired for exactly 9 rids
+   (79, 85, 86, 220, 264, 266, 332, 341, 372) — the same 9 as bucket 3, and P1.7's expected
+   count. `note_rejection` fired 0 times under greedy, as P1.7 expects.
+5. **Per-decision invariants asserted on all 436 decisions:** slot 0 is the `argmin`; the
+   candidate list is sorted ascending by `delta_cfv`; no vid appears twice, so `vid -> plan` is
+   a function. Candidate list length: min 1, median 5, mean 4.60, max 11, with 13 lists longer
+   than K=8 (relevant to P1.5 truncation).
+6. **Paths greedy never reaches**, on a truncated run driven by a scripted policy: 20
+   rejections via `choice=None` produced `note_rejection` exactly 20 times, left no rejected rid
+   in `tmp_assignment`, and yielded no real offer; 41 assignments at the **last** candidate
+   index (deliberately not slot 0) committed without error.
+7. **Bounds assertion** in `commit_assignment_choice` rejects `choice` of 2 and 5 against a
+   2-candidate list and rejects -1, each with the rid in the message.
+8. `_reward_tracker` defaults to `None`, so non-RL scenarios are unaffected.
+
+VERIFY findings:
+- `insertion_with_heuristics` side effects on `fleetctrl` state: **DIFFERED from "none" — one
+  exists, and it is benign.** `insert_prq_in_selected_veh_list` calls
+  `veh_plan.set_utility(current_vehplan_utility)`, mutating `fleetctrl.veh_plans[vid]` by
+  caching the utility when it was `None`. No restoration is needed: `build_assignment_context`
+  calls `insertion_with_heuristics` exactly once per actionable request at the same point the
+  parent calls it, so the mutation is identical. Nothing touches `rid_to_assigned_vid` and
+  nothing reassigns `veh_plans`.
+- `op_vpi_nr_plans` (`G_VPI_KEEP`) unset so at most one plan per vid: **matched the spec, and
+  more strongly than it assumed.** The key is absent from the constant config and is never
+  added to `rv_heuristics` (`FleetControlBase.py` lines 174–203), *and*
+  `insert_prq_in_selected_veh_list` defaults `nr_plans_per_vehicle` to 1 and truncates
+  `keep_plans[:1]`. So `vid -> plan` is a function unconditionally, not merely by config.
+  Confirmed empirically in check 5.
+
+Three facts checked beyond the VERIFY list, all de-risking the byte gate:
+- **No RNG anywhere in the insertion path.** `random` is imported at `PoolingIRSOnly.py:3` but
+  never used, and `insertion.py` / `searchVehicles.py` contain no `random` reference at all.
+  The §0 failure mode "the build/commit split consumes global RNG differently" cannot arise
+  through this path.
+- `rv_heuristics` is `{}` in the reference scenario (the run banner prints `RV Heuristics: {}`),
+  so no post-insertion truncation fires and the returned list is the complete sorted list.
+- `min(list_tuples, key=lambda x: x[2])` is exactly `list_tuples[0]`: the sort in `insertion.py`
+  is a stable ascending `sorted()` and `min` returns the first minimum on ties. D3 holds.
+
+Spec changes made this turn:
+- §1 and §4: "duplicate rid" removed — three internal-resolution cases, not four, because the
+  parent has no duplicate-rid branch (lines 109–111 overwrite `rq_dict[rid_struct]`).
+- P1.3: same correction; plus the `G_FCTRL_CT_RQU` bookkeeping now stated to apply to the
+  reservation and empty-candidate branches only, the `o_pos == d_pos` branch returning before
+  it; plus `cpu_t0` renamed `cpu_elapsed` with the CPU-time accounting decision recorded.
+- P1.10: duplicate-rid bucket kept, expected 0, with a note that non-zero means the source
+  changed.
+
+Note: P1.3 verification left two gitignored result directories,
+`studies/example_study/results/p13_rl_greedy_check/` and `p13_tracker_greedy_check/`. Both are
+reproducible and safe to delete. `example_depot_time_pool_irsonly_rs_42/` was not touched and
+still matches the baseline.
+
+Decisions:
+- Asked: (6) the spec lists a duplicate-rid internal-resolution case the parent does not have;
+  (7) the `o_pos == d_pos` branch skips the CPU-time bookkeeping, contradicting "including the
+  `G_FCTRL_CT_RQU` bookkeeping".
+  Ritun: both corrections accepted. Remove "duplicate rid" from §1, §4 and P1.3; keep P1.10's
+  bucket and note that a non-zero value means the source changed. Do not add bookkeeping to the
+  `o_pos == d_pos` branch; amend P1.3 to scope the bookkeeping to the other two branches.
+- Asked: should commit time the whole build-to-commit span, folding in agent latency, or sum
+  the two computation spans and exclude the wait?
+  Ritun: sum the spans, exclude the wait — `G_FCTRL_CT_RQU` should measure fleet-control
+  computation, not policy inference plus scheduler latency, and it surfaces in evaluation runs
+  where the contamination would be worst. Rename `PendingDecision.cpu_t0` to `cpu_elapsed`, a
+  duration rather than a timestamp, with commit adding its own span before writing.
