@@ -103,3 +103,109 @@ Decisions:
   `studies/example_study/results/example_depot_time_pool_irsonly_rs_42/`, which is gitignored
   and whose contents were already byte-identical to the docs baseline.
   Ritun: "Yes, go ahead."
+
+---
+
+## P1.2 — STARTED 2026-09-12 12:24
+Files I will touch: src/misc/globals.py, src/FleetSimulationBase.py, src/demand/demand.py,
+src/fleetctrl/FleetControlBase.py, docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+## P1.2 — DONE 2026-09-12 12:46 — awaiting Ritun's verification
+
+Files changed:
+- `src/misc/globals.py` — added `G_SKIP_OUTPUT = "skip_output"` and `G_RL_MODE = "rl_mode"`
+- `src/FleetSimulationBase.py` — cached `self.skip_output` / `self.rl_mode` in `__init__`;
+  guarded `create_or_empty_dir`, `save_scenario_inputs()`, the `2_vehicle_types.csv` write,
+  the op-stats write inside `record_stats` (clear kept outside the guard), and in `run()`
+  `save_final_state()` and `evaluate()`; RL-mode-only once-per-process logging guard with a
+  `NullHandler` and forced warning level under `skip_output`
+- `src/demand/demand.py` — `self.skip_output` in `Demand.__init__`; guarded the `to_csv` in
+  `save_user_stats`, keeping `self.user_stat_buffer = []` outside the guard
+- `src/fleetctrl/FleetControlBase.py` — `self.skip_output` in `__init__`; guarded the `to_csv`
+  in `record_dynamic_fleetcontrol_output`, keeping `self.dyn_output_dict = {}` outside the
+  guard; guarded `self.repo.record_repo_stats()`
+- `docs/SDPDP_GYM_SPEC_v2.md` — folded in the four corrections agreed this turn (below)
+- `docs/RL_GYM_PROGRESS.md` — this entry
+
+`record_remaining_assignments()` and `demand.record_remaining_users()` left unguarded, per
+decision A.
+
+Verification — everything passed; one probe of mine was wrong and was corrected, and one
+pre-existing simulator behaviour was found (both below):
+
+1. Default config (no `skip_output`), full run: `1_user-stats.csv` **byte for byte identical**
+   to `docs/baseline_user_stats.csv` (`cmp` clean, md5 `53879ea79cf211d700f670dee1173dd5`), and
+   all nine usual output files produced.
+2. `skip_output = 1`, full run pointed at the populated results directory: no file deleted, no
+   file added, no file modified (md5 + size snapshot before/after).
+3. All four buffers empty after that run: `user_stat_buffer`, `op_output[0]`,
+   `operators[0].dyn_output_dict`, and `repo` confirmed `None` so the fourth guarded write site
+   is unreached in this scenario. Also asserted `operators[0].sim_vehicles[0].op_output is
+   sim.op_output[0]` — the in-place `.clear()` does reach the vehicles' shared list.
+4. Callback survival with output off: `record_user` fired 445 times and appended 445 rows,
+   reconciling exactly with the 445 rows in `baseline_user_stats.csv`. `record_boarding` fired
+   for 288 distinct rids, reconciling exactly with the 288 baseline rows carrying a
+   `pickup_time`; the set difference is empty in both directions.
+5. Logging. RL mode: a second construction in the same process adds no handler (1 -> 1) and the
+   only handler is a `NullHandler`, so no log file is opened. Non-RL: two constructions in one
+   process still rebuild the handler onto each scenario's own `00_simulation.log` (verified both
+   files exist on disk), handler count stays at 1, and `FleetSimulationBase._logging_configured`
+   is never set. Non-RL behaviour is unchanged.
+6. All four edited modules byte-compile; grep for `to_csv` / `.write(` / `open(` across them
+   shows every remaining write site sitting inside a guard.
+
+A probe of mine that was wrong, not the code: I first asserted that `demand.rq_db` would still
+be populated at the end of a run and that pickups could be counted off it. Both are false by
+design — `rq_db` entries are deleted as each rider terminates (`demand.py` lines 255 and 276),
+so an empty `rq_db` at the end is the expected state and `record_remaining_users` correctly
+finds nothing left to sweep. Replaced with the direct invocation counting in check 4.
+
+Pre-existing behaviour found, unrelated to P1.2 but material to P1.7: **`record_boarding` fires
+twice for rid 50** — 289 calls for 288 distinct rids. Both calls are for vid 4 at the same
+`pu_pos` (node 1391) and arrive through the same path
+(`update_sim_state_fleets` -> `demand.record_boarding`), at `sim_time = 33032.898...` and then
+at `sim_time = 33230`. The baseline CSV records `pickup_time = 33230.0`, so the later call wins:
+`user_boards_vehicle` overwrites `pu_time` on each call. This is not caused by P1.2 —
+`skip_output` touches no simulation logic, and the default-config run of this same code is
+byte-identical to the pre-P1.2 baseline. It matters for P1.7 because §6.1 charges
+`+w_pickup - w_wait * (pu_time - rq_time)/60` on `record_boarding`: without per-rid idempotency
+`on_pickup` would pay rid 50 twice, and charging on the first call would use a `pu_time` that
+never reaches the output file. §6.4 requires `on_exit` to be idempotent but says nothing about
+`on_pickup`. Flagged for P1.7, not acted on here.
+
+VERIFY findings:
+- All three buffers still clear when writes are suppressed: **matched the spec**, and the
+  spec's warning is exactly right — all three clears sit inside their write blocks, so each
+  guard wraps the write statement only. Confirmed at runtime in check 3.
+- Every file write in `src/FleetSimulationBase.py` covered by a guard: **matched the spec** —
+  `to_csv` / `.write(` / `open(` finds lines 432, 448+449, 569, 620 (487 is commented out),
+  i.e. the four locations and five statements the spec describes; 448 and 569 sit inside
+  `save_scenario_inputs` / `save_final_state`, guarded at their call sites, and 620 is reachable
+  only through `record_stats` (callers: `run()` and `record_remaining_assignments()`).
+  **Two sites those greps do not find**, both now guarded and both recorded in the spec:
+  `create_or_empty_dir` (reaches `os.makedirs` / `os.remove` / `os.rmdir`) and
+  `logging.FileHandler(self.log_file)`, whose construction is what creates `00_simulation.log`.
+- Nothing under `src/evaluation/` reads `2_vehicle_types.csv`: **DIFFERED** —
+  `src/evaluation/standard.py:226` and `src/evaluation/standard_with_peak.py:230` both
+  `pd.read_csv(os.path.join(output_dir, "2_vehicle_types.csv"))`. The spec's contingency holds:
+  `evaluate()` is guarded by the same flag, so write and read are suppressed together and
+  evaluation runs are unaffected. Spec updated to state the finding.
+
+Spec changes made this turn (§7 P1.2):
+- Files line now lists `src/demand/demand.py` and `src/fleetctrl/FleetControlBase.py`.
+- "Do NOT guard" extended to `demand.record_remaining_users()`, with the argument.
+- `self.repo.record_repo_stats()` added as a fourth write site to guard.
+- `op_output[op_id]` shared-list note added: the clear must stay in-place `.clear()`.
+- `create_or_empty_dir` and `logging.FileHandler` recorded as file-touching sites the
+  prescribed greps miss.
+- `src/evaluation/` VERIFY replaced with the finding.
+- Logging guard scoped to RL mode, with the `run_examples.py` sequential-run reasoning.
+- "How Ritun verifies" updated for the RL-mode-only logging guard.
+
+Decisions:
+- Asked: (A) guard `demand.record_remaining_users()` or not; (B) blanket vs RL-scoped logging
+  guard; (C) P1.2's file list omits two files.
+  Ritun: all three accepted as proposed — leave `record_remaining_users` unguarded, scope the
+  logging guard to RL mode with non-RL behaviour bit-identical, update the Files line.
+- Asked: leave `self.repo.record_repo_stats()` unguarded since `repo` is None here?
+  Ritun: guard it too — "skip_output = 1 produces no files" should hold unconditionally.

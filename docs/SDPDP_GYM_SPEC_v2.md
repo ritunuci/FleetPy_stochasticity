@@ -644,14 +644,20 @@ the two RL entries now appear. Then run the existing greedy scenario and match
 
 ### P1.2 — Output, logging, and seed guards
 
-**Files:** `src/misc/globals.py`, `src/FleetSimulationBase.py`
+**Files:** `src/misc/globals.py`, `src/FleetSimulationBase.py`, `src/demand/demand.py`,
+`src/fleetctrl/FleetControlBase.py`
+
+Two of the three write sites named below live outside `FleetSimulationBase`:
+`Demand.save_user_stats` is in `src/demand/demand.py` and
+`record_dynamic_fleetcontrol_output` is in `src/fleetctrl/FleetControlBase.py`. Note that
+`src/demand/demand.py` is also P1.7's file — P1.2 touches it first, for a different reason.
 
 Add `G_SKIP_OUTPUT = "skip_output"` and `G_RL_MODE = "rl_mode"`.
 
 Guard behind `if not self.scenario_parameters.get(G_SKIP_OUTPUT, False):`
 - `create_or_empty_dir(self.dir_names[G_DIR_OUTPUT])`
 - `self.save_scenario_inputs()`
-- in `run()`: `save_final_state()`, `demand.record_remaining_users()`, `evaluate()`
+- in `run()`: `save_final_state()`, `evaluate()`
 - in `_load_fleetctr_vehicles()`, line ~432: `veh_type_df.to_csv(veh_type_f, index=False)`,
   which writes `2_vehicle_types.csv`. Guard the write only — `veh_type_list` and
   `self.sim_vehicles` must still be built, so nothing in memory changes. This is a separate
@@ -664,9 +670,33 @@ it writes on any step where a buffer is non-empty. Guarding only the `run()` cal
 insufficient. Guard the three write sites, not the `record_stats` call itself, and each site
 must still clear its buffer:
 `Demand.save_user_stats` (~line 182), `record_stats` (~line 620), and
-`FleetControlBase.record_dynamic_fleetcontrol_output` (~line 860).
+`FleetControlBase.record_dynamic_fleetcontrol_output` (~line 860). Guard the fourth write
+that hangs off the last line of `record_dynamic_fleetcontrol_output` as well:
+`self.repo.record_repo_stats()`, which writes via `RepositioningBase.record_repo_stats`
+(~line 66). `self.repo` is `None` in the reference scenario, but "`skip_output = 1` produces
+no files" must hold unconditionally, not only while `repo` happens to be unset.
 
-**Do NOT guard `record_remaining_assignments()`.** Despite its name it is not an output
+`self.op_output[op_id]` is created at `FleetSimulationBase.py` ~line 394 as a list **shared
+with every `SimulationVehicle`** — each vehicle is handed the same list object at
+construction. Its clear must stay the in-place `.clear()`. Rebinding it to `[]` orphans the
+vehicles' reference: they keep appending to the old list, the guarded buffer never fills,
+and nothing raises. The other two clears (`user_stat_buffer`, `dyn_output_dict`) are
+rebinds and may stay rebinds.
+
+**Do NOT guard `record_remaining_assignments()` or `demand.record_remaining_users()`.**
+Neither is an output operation despite its name.
+
+`record_remaining_users` (`demand.py` ~line 275) is the end-of-day `record_user` sweep —
+`for rid in list(self.rq_db.keys()): self.record_user(rid)` followed by one
+`save_user_stats(force=True)`. That trailing call is its only write and is already covered by
+the write-site guard above. Guarding the method itself would contradict the
+"`record_user` must keep running with output off" rule below and §2.4, which lists it as a
+`record_user` choke point; it would delete the §6.1 unserved-at-horizon events and every §6.4
+terminal classification for riders still in `rq_db` at the end of the day. RL episodes would
+then be scored differently from the P1.7 reconciliation run, which runs with output on — the
+same failure the `record_remaining_assignments` argument below guards against.
+
+As for `record_remaining_assignments()`: despite its name it is not an output
 operation — it advances the simulation past `end_time` (up to `end_time + 14400`) until every
 vehicle finishes its assigned route, and `update_sim_state_fleets` fires `record_boarding`,
 `record_alighting_start` and `record_no_show` throughout. Riders in flight at `end_time` are
@@ -688,26 +718,43 @@ current source: lines ~432, ~448, ~569, ~620. Lines 448 and 569 sit inside
 `save_scenario_inputs` and `save_final_state`, which are already guarded. Confirm line 620 is
 reachable only through `record_stats`, and report any site that is not covered.
 
-**VERIFY** that nothing under `src/evaluation/` reads `2_vehicle_types.csv`. If something
-does, note it — `evaluate()` is guarded by the same flag, so the two are skipped together and
-evaluation runs are unaffected, but the dependency should be on record.
+Those greps do not find every site that touches the filesystem. Two more, both real and both
+guarded by this work item:
 
-Logging: guard the handler setup so it runs once per process.
+- `create_or_empty_dir(...)` (~line 188) reaches `os.makedirs` / `os.remove` / `os.rmdir`
+  (~lines 92–104). It is destructive rather than a write, and matches none of the three greps.
+- `logging.FileHandler(self.log_file)` (~lines 220 and 223) **creates `00_simulation.log` on
+  disk**. Handler construction is a file-creating site; the logging guard below is what covers it.
+
+`src/evaluation/standard.py` line ~226 and `src/evaluation/standard_with_peak.py` line ~230
+both `pd.read_csv(os.path.join(output_dir, "2_vehicle_types.csv"))`. `evaluate()` is guarded by
+the same flag as the write, so write and read are suppressed together and evaluation runs are
+unaffected.
+
+Logging: guard the handler setup so it runs once per process — **in RL mode only**.
 
 ```
-# RL-GYM: configure process logging exactly once
-if not getattr(FleetSimulationBase, "_logging_configured", False):
+# RL-GYM: configure process logging exactly once in RL mode
+if rl_mode and not getattr(FleetSimulationBase, "_logging_configured", False):
     ... existing handler setup ...
     FleetSimulationBase._logging_configured = True
 ```
 
-In RL mode with `G_SKIP_OUTPUT`, force `log_level` to warning with a `NullHandler`. Left
-unguarded, 1,000 episodes in one worker opens 1,000 file handlers.
+Non-RL behaviour must stay bit-identical. `run_examples.py` line ~97 runs scenarios
+sequentially **in one process** whenever `n_parallel_sim == 1`, which is how `run_examples.py`
+invokes it, and `example_depot_cali_sc_1.csv` holds ten seed rows. A blanket once-per-process
+guard would route every scenario's log into the first scenario's `00_simulation.log` and leave
+the remaining output directories with no log file at all. It would not change
+`1_user-stats.csv`, so the byte-for-byte gate would not catch it. The motivation for the guard
+— 1,000 episodes in one worker opening 1,000 file handlers — is an RL-mode concern only.
+
+In RL mode with `G_SKIP_OUTPUT`, force `log_level` to warning with a `NullHandler`.
 
 **How Ritun verifies:** the greedy scenario with default config still matches
 `baseline_user_stats.csv` exactly; the same scenario with `skip_output = 1` produces no files
 and does not erase an existing results directory; constructing the sim object twice in one
-process does not add a second log handler.
+process in RL mode does not add a second log handler, while two non-RL constructions still
+get one handler each, as they do today.
 
 **Commit:** `RL-GYM: add skip_output flag and guard global logging setup`
 

@@ -105,6 +105,8 @@ class FleetControlBase(metaclass=ABCMeta):
         # dynamic output base
         # -------------------
         self.dyn_fltctrl_output_f = os.path.join(dir_names[G_DIR_OUTPUT], f"3-{self.op_id}_op-dyn_atts.csv")
+        # RL-GYM: suppress the dynamic-fleetcontrol write; the buffer still clears
+        self.skip_output = scenario_parameters.get(G_SKIP_OUTPUT, False)
         self.dyn_output_dict = {}
         self.dyn_par_keys = []
 
@@ -836,34 +838,38 @@ class FleetControlBase(metaclass=ABCMeta):
         current_buffer_size = len(self.dyn_output_dict.keys())
         if current_buffer_size > 0:
             if force or current_buffer_size > BUFFER_SIZE:
-                if os.path.isfile(self.dyn_fltctrl_output_f):
-                    write_mode = "a"
-                    write_header = False
-                else:
-                    write_mode = "w"
-                    write_header = True
-                tmp_df_list = []
-                for sim_time, entry_dict in self.dyn_output_dict.items():
-                    x = {"sim_time":sim_time}
-                    x.update(entry_dict)
-                    for key in self.dyn_par_keys:
-                        if key not in x.keys():
-                            x[key] = 0.0
-                    tmp_df_list.append(x)
-                tmp_df = pd.DataFrame(tmp_df_list)
-                unsorted_cols = tmp_df.columns
-                sorted_cols = ["sim_time"] + self.dyn_par_keys.copy()
-                for key in sorted(unsorted_cols):
-                    if key not in sorted_cols:
-                        sorted_cols.append(key)
-                record_df = tmp_df[sorted_cols]
-                record_df.to_csv(self.dyn_fltctrl_output_f, index=False, mode=write_mode, header=write_header)
+                # RL-GYM: guard the write, never the buffer clear below
+                if not self.skip_output:
+                    if os.path.isfile(self.dyn_fltctrl_output_f):
+                        write_mode = "a"
+                        write_header = False
+                    else:
+                        write_mode = "w"
+                        write_header = True
+                    tmp_df_list = []
+                    for sim_time, entry_dict in self.dyn_output_dict.items():
+                        x = {"sim_time":sim_time}
+                        x.update(entry_dict)
+                        for key in self.dyn_par_keys:
+                            if key not in x.keys():
+                                x[key] = 0.0
+                        tmp_df_list.append(x)
+                    tmp_df = pd.DataFrame(tmp_df_list)
+                    unsorted_cols = tmp_df.columns
+                    sorted_cols = ["sim_time"] + self.dyn_par_keys.copy()
+                    for key in sorted(unsorted_cols):
+                        if key not in sorted_cols:
+                            sorted_cols.append(key)
+                    record_df = tmp_df[sorted_cols]
+                    record_df.to_csv(self.dyn_fltctrl_output_f, index=False, mode=write_mode, header=write_header)
                 self.dyn_output_dict = {}
                 # LOG.info(f"\t ... just wrote {current_buffer_size} entries from buffer to stats of operator {op_id}.")
                 LOG.debug(f"\t ... just wrote {current_buffer_size} entries from buffer to dynamic stats of operator"
                           f" {self.op_id}.")
         # additionally save repositioning output if repositioning module is available
-        if self.repo:
+        # RL-GYM: guarded too, so "skip_output produces no files" holds unconditionally and
+        # not merely while self.repo happens to be None
+        if self.repo and not self.skip_output:
             self.repo.record_repo_stats()
             
     def _build_VRLs(self, vehicle_plan : VehiclePlan, veh_obj : SimulationVehicle, sim_time : int) -> List[VehicleRouteLeg]:

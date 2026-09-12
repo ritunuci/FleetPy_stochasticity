@@ -149,6 +149,10 @@ class FleetSimulationBase:
         LOG.info(f"General initialization of scenario {self.scenario_name}...")
         self.dir_names = self.get_directory_dict(scenario_parameters)
         self.scenario_parameters: dict = scenario_parameters
+        # RL-GYM: suppress all file output / mark gym-driven runs; both default to False so
+        # every existing scenario behaves exactly as before
+        self.skip_output = self.scenario_parameters.get(G_SKIP_OUTPUT, False)
+        self.rl_mode = self.scenario_parameters.get(G_RL_MODE, False)
         self.cancelled_rid_list = []
         # check whether simulation already has been conducted -> use final_state.csv to check
         final_state_f = os.path.join(self.dir_names[G_DIR_OUTPUT], "final_state.csv")
@@ -185,14 +189,26 @@ class FleetSimulationBase:
         np.random.seed(self.scenario_parameters[G_RANDOM_SEED])
 
         # empty output directory
-        create_or_empty_dir(self.dir_names[G_DIR_OUTPUT])
+        # RL-GYM: never wipe an output directory in skip_output mode
+        if not self.skip_output:
+            create_or_empty_dir(self.dir_names[G_DIR_OUTPUT])
 
         # write scenario config file in output directory
-        self.save_scenario_inputs()
+        # RL-GYM: 00_config.json is pure output
+        if not self.skip_output:
+            self.save_scenario_inputs()
 
+        # RL-GYM: in RL mode configure process logging exactly once -- one episode per
+        # simulation object would otherwise open one file handler per episode in a long-lived
+        # worker. Outside RL mode the handlers are rebuilt per scenario exactly as before:
+        # run_examples.py runs scenarios sequentially in a single process when
+        # n_parallel_sim == 1, and each one needs its own 00_simulation.log.
+        _rl_gym_configure_logging = not (self.rl_mode
+                                         and getattr(FleetSimulationBase, "_logging_configured", False))
         # remove old log handlers (otherwise sequential simulations only log to first simulation)
-        for handler in logging.root.handlers[:]:
-            logging.root.removeHandler(handler)
+        if _rl_gym_configure_logging:
+            for handler in logging.root.handlers[:]:
+                logging.root.removeHandler(handler)
         # start new log file
         logging.VERBOSE = 5
         logging.addLevelName(logging.VERBOSE, "VERBOSE")
@@ -216,14 +232,22 @@ class FleetSimulationBase:
             log_level = DEFAULT_LOG_LEVEL
             pd.set_option("mode.chained_assignment", None)
         self.log_file = os.path.join(self.dir_names[G_DIR_OUTPUT], f"00_simulation.log")
-        if log_level < logging.INFO:
-            streams = [logging.FileHandler(self.log_file), logging.StreamHandler()]
-        else:
-            print("Only minimum output to console -> see log-file")
-            streams = [logging.FileHandler(self.log_file)]
-        # TODO # log of subsequent simulations is saved in first simulation log
-        logging.basicConfig(handlers=streams,
-                            level=log_level, format='%(process)d-%(name)s-%(levelname)s-%(message)s')
+        if _rl_gym_configure_logging:
+            # RL-GYM: with output suppressed, never open a log file -- constructing the
+            # FileHandler is itself what creates 00_simulation.log on disk
+            if self.skip_output:
+                log_level = logging.WARNING
+                streams = [logging.NullHandler()]
+            elif log_level < logging.INFO:
+                streams = [logging.FileHandler(self.log_file), logging.StreamHandler()]
+            else:
+                print("Only minimum output to console -> see log-file")
+                streams = [logging.FileHandler(self.log_file)]
+            # TODO # log of subsequent simulations is saved in first simulation log
+            logging.basicConfig(handlers=streams,
+                                level=log_level, format='%(process)d-%(name)s-%(levelname)s-%(message)s')
+            if self.rl_mode:
+                FleetSimulationBase._logging_configured = True
 
         # set up output files
         self.user_stat_f = os.path.join(self.dir_names[G_DIR_OUTPUT], f"1_user-stats.csv")
@@ -429,7 +453,12 @@ class FleetSimulationBase:
                 self.operators.append(OpClass)
         veh_type_f = os.path.join(self.dir_names[G_DIR_OUTPUT], "2_vehicle_types.csv")
         veh_type_df = pd.DataFrame(veh_type_list, columns=[G_V_OP_ID, G_V_VID, G_V_TYPE])
-        veh_type_df.to_csv(veh_type_f, index=False)
+        # RL-GYM: guard the write only -- veh_type_list and self.sim_vehicles are built above
+        # and nothing in memory changes. src/evaluation/standard.py and standard_with_peak.py
+        # read this file, but evaluate() is guarded by the same flag, so write and read are
+        # suppressed together.
+        if not self.skip_output:
+            veh_type_df.to_csv(veh_type_f, index=False)
         self.vehicle_update_order: tp.Dict[tp.Tuple[int, int], int] = {vid: 1 for vid in self.sim_vehicles.keys()}
 
     @staticmethod
@@ -609,15 +638,20 @@ class FleetSimulationBase:
         for op_id in range(self.n_op):
             current_buffer_size = len(self.op_output[op_id])
             if (current_buffer_size and force) or current_buffer_size > BUFFER_SIZE:
-                op_output_f = os.path.join(self.dir_names[G_DIR_OUTPUT], f"2-{op_id}_op-stats.csv")
-                if os.path.isfile(op_output_f):
-                    write_mode = "a"
-                    write_header = False
-                else:
-                    write_mode = "w"
-                    write_header = True
-                tmp_df = pd.DataFrame(self.op_output[op_id])
-                tmp_df.to_csv(op_output_f, index=False, mode=write_mode, header=write_header)
+                # RL-GYM: guard the write, never the buffer clear below. self.op_output[op_id]
+                # is the list shared with every SimulationVehicle, so the clear must stay the
+                # in-place .clear() -- rebinding it to [] would orphan the vehicles' reference
+                # and the buffer would grow unbounded with no error.
+                if not self.skip_output:
+                    op_output_f = os.path.join(self.dir_names[G_DIR_OUTPUT], f"2-{op_id}_op-stats.csv")
+                    if os.path.isfile(op_output_f):
+                        write_mode = "a"
+                        write_header = False
+                    else:
+                        write_mode = "w"
+                        write_header = True
+                    tmp_df = pd.DataFrame(self.op_output[op_id])
+                    tmp_df.to_csv(op_output_f, index=False, mode=write_mode, header=write_header)
                 self.op_output[op_id].clear()
                 # LOG.info(f"\t ... just wrote {current_buffer_size} entries from buffer to stats of operator {op_id}.")
                 LOG.debug(f"\t ... just wrote {current_buffer_size} entries from buffer to stats of operator {op_id}.")
@@ -1019,12 +1053,23 @@ class FleetSimulationBase:
             self.record_stats()
 
             # save final state, record remaining travelers and vehicle tasks
-            self.save_final_state()
+            # RL-GYM: final_state.csv is pure output
+            if not self.skip_output:
+                self.save_final_state()
+            # RL-GYM: record_remaining_assignments and record_remaining_users are NOT output
+            # operations and stay unguarded. The first advances the simulation past end_time
+            # until every vehicle finishes its route, firing record_boarding /
+            # record_alighting_start / record_no_show throughout. The second is the end-of-day
+            # record_user sweep; its only write is a trailing save_user_stats, already guarded
+            # at the write site. Skipping either would train the agent against a different
+            # reward than it is evaluated on.
             self.record_remaining_assignments()
             self.demand.record_remaining_users()
         t_run_end = time.perf_counter()
         # call evaluation
-        self.evaluate()
+        # RL-GYM: evaluation reads the output files this flag suppresses
+        if not self.skip_output:
+            self.evaluate()
         t_eval_end = time.perf_counter()
         # short report
         t_init = datetime.timedelta(seconds=int(t_run_start - self.t_init_start))

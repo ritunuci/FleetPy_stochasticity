@@ -55,6 +55,9 @@ class Demand:
         self.scenario_parameters = scenario_parameters
         # prepare output
         self.output_f = output_f
+        # RL-GYM: suppress the user-stats write; record_user itself keeps running because the
+        # reward callbacks ride on it
+        self.skip_output = scenario_parameters.get(G_SKIP_OUTPUT, False)
         self.user_stat_buffer = []  # list of dictionaries
         # request data bases
         self.rq_db = {}  # rid > rq
@@ -173,13 +176,15 @@ class Demand:
     def save_user_stats(self, force=True):
         current_buffer_size = len(self.user_stat_buffer)
         if (current_buffer_size and force) or current_buffer_size >= BUFFER_SIZE:
-            if os.path.isfile(self.output_f):
-                write_mode, write_header = "a", False
-            else:
-                write_mode, write_header = "w", True
-            out_df = pd.DataFrame(self.user_stat_buffer)
-            out_df.set_index(G_RQ_ID, inplace=True)
-            out_df.to_csv(self.output_f, mode=write_mode, header=write_header)
+            # RL-GYM: guard the write, never the buffer clear below
+            if not self.skip_output:
+                if os.path.isfile(self.output_f):
+                    write_mode, write_header = "a", False
+                else:
+                    write_mode, write_header = "w", True
+                out_df = pd.DataFrame(self.user_stat_buffer)
+                out_df.set_index(G_RQ_ID, inplace=True)
+                out_df.to_csv(self.output_f, mode=write_mode, header=write_header)
             self.user_stat_buffer = []
             # LOG.info(f"\t ... just wrote {current_buffer_size} entries from buffer to customer output file.")
             LOG.debug(f"\t ... just wrote {current_buffer_size} entries from buffer to customer output file.")
