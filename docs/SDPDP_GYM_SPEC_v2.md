@@ -477,11 +477,43 @@ Length `3 * K + 4`. For `K = 8` that is **28**. `float32`.
 1. `sin(2π · t_of_day)`
 2. `cos(2π · t_of_day)`
 3. fraction of the day elapsed
-4. fraction of active vehicles currently idle: `IDLE` count divided by the count of vehicles
-   whose status is not `OUT_OF_SERVICE`. `OUT_OF_SERVICE` (status 5) is what
-   `veh_search_for_immediate_request` itself skips (`searchVehicles.py` line ~21), so it is
-   the operative definition of inactive. `IDLE` means `VRL_STATES.IDLE` only — not `WAITING`,
-   `PLANNED_STOP` or `REPO_TARGET`. Guard the divide: if no vehicle is active, emit 0.
+4. fraction of active vehicles currently idle
+
+Features 1–2 and feature 3 are **different quantities**. `t_of_day` is absolute clock time,
+`(sim_time mod 86400) / 86400`, so the `sin`/`cos` pair is a circular encoding of where the
+day sits on a 24-hour clock. Feature 3 is episode progress,
+`(sim_time - start_time) / (end_time - start_time)`, which is the horizon signal D6 relies on.
+On the reference day the episode covers 07:00–19:26, so the two differ throughout. The circular
+encoding is convention here — this day never wraps midnight, so `sin`/`cos` only earn their
+keep if a full 24-hour day is ever run.
+
+Feature 4 is the `IDLE` count divided by the count of vehicles whose status is not
+`OUT_OF_SERVICE`. `IDLE` means `VRL_STATES.IDLE` only — not `WAITING`, `PLANNED_STOP` or
+`REPO_TARGET`. Guard the divide: if no vehicle is active, emit 0.
+
+`OUT_OF_SERVICE` is the operative definition of inactive because **`simple_insert`
+(`insertion.py` line ~36) returns early on it**: `if veh_obj.status == VRL_STATES.OUT_OF_SERVICE:
+return`. An out-of-service vehicle therefore yields no insertion and never becomes a candidate.
+That is the live filter.
+
+**Three other comparisons that look like this filter are inert and have never fired:**
+`searchVehicles.py` line ~21, `searchVehicles.py` line ~90, and `insertion.py` line ~414 all
+test `veh_obj.status == 5`. `VRL_STATES` is a plain `Enum` whose members hold `(int, str)`
+tuples and which defines no `__eq__` against ints, so `VRL_STATES.OUT_OF_SERVICE == 5` is
+unconditionally `False`. `veh_obj.status` is always a `VRL_STATES` member
+(`Vehicles.py` line ~68). **This is upstream FleetPy, not this fork — do not read it as a
+defect introduced here, and do not "fix" it.** Changing those lines would start excluding
+vehicles that are currently included and would break every byte-for-byte comparison.
+
+Feature 4 as defined is a coarse fleet-utilisation signal, not a true availability count:
+`simple_insert` also returns early on `veh_obj.no_show_event`, so the set of vehicles that could
+actually serve the request is strictly narrower, and the two notions diverge exactly while a
+no-show is being waited out. That is accepted for Phase 1; see §5.2.
+
+**Padding.** Every feature of an unoccupied candidate slot is `0.0`. Two reasons: it is what
+makes P1.10's warning true — a padded `delta_cfv` of 0.0 wins a naive `argmin` over positive
+real costs, which is why the scripted driver must restrict to `is_valid` — and a large sentinel
+would distort `VecNormalize`'s per-feature running statistics in Phase 2 (§5.3).
 
 All wait-related features divide by `op_max_wait_time` read from `scenario_parameters`
 (1500 in the reference scenario), never a literal.
@@ -505,7 +537,11 @@ neighbors over the last 15 min.
 score in `{−1, 0, +1}`; ETA to the current request's pickup; the vehicle's ETA health for
 already-assigned riders; insertion cost; number of assigned-but-unserved requests in the vehicle plan.
 
-**Global block**: fraction of fleet idle; fraction of fleet carrying an infeasible-plan flag
+**Global block**: fraction of fleet idle; **a proper availability count** — the fraction of the
+fleet that could actually receive the current request, i.e. excluding both `OUT_OF_SERVICE` and
+`no_show_event` vehicles, which is what `simple_insert` really filters on. Phase 1's feature 4
+uses only the `OUT_OF_SERVICE` half (§5.1), so the two diverge exactly while a no-show is being
+waited out; fraction of fleet carrying an infeasible-plan flag
 (latest pickup violated, max trip time violated, latest arrival violated); per-minute arrivals
 over the last 5/10/20 min normalized by the 95th-percentile historical rate; rejection rate;
 fraction cancelled over the last 5/20 min; mean and median promised-vs-realized ETA gap for

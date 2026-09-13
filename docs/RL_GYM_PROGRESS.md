@@ -475,3 +475,127 @@ Decisions:
   Ritun: leave it to P1.8 — agreed, to avoid bundling two work items.
 - Ritun: the mask/`is_valid` coupling goes into the spec now rather than at P1.6, so it does not
   exist only in chat if a session ends.
+
+---
+
+## P1.6 — STARTED 2026-09-12 22:30
+Files I will touch: src/rl_gym/observers.py, tests/test_rl_gym_observers.py,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+## P1.6 — DONE 2026-09-12 22:40 — awaiting Ritun's verification
+
+Files changed — two new; **no existing source file modified** (`git diff --stat -- src/` is
+empty):
+- `src/rl_gym/observers.py` — `AbstractObserver` (with `observe`, `output_length`,
+  `observe_vector`), `signed_log1p`, `CandidateObserver` (3*K), `GlobalStateObserver` (4)
+- `tests/test_rl_gym_observers.py` — 37 stdlib `unittest` tests
+- `docs/SDPDP_GYM_SPEC_v2.md` — §5.1 rewritten per the decisions below; §5.2 availability-count
+  note
+- `docs/RL_GYM_PROGRESS.md` — this entry
+
+Verification:
+
+**Unit tests: 66 pass across the suite** (37 new for P1.6, plus P1.5's 29), 0.011 s.
+Covering `signed_log1p` oddness, strict monotonicity, and that `argmin` over the transform
+agrees with `argmin` over raw `delta_cfv` on 200 random draws (P1.10 depends on that);
+`is_valid` sourced from `candidate_slot_validity` for every `n` in 0..11; padded slots all-zero
+across all three features; the offered-wait formula against the `_create_user_offer`
+computation; the normalizer read from `scenario_parameters` rather than hardcoded (checked by
+swapping `op_max_wait_time` to 4200, trap 8); truncation preserving order; `time_sin`/`time_cos`
+as absolute clock time including the midnight wrap, and distinct from episode progress;
+progress endpoints, midpoint, and clipping past `end_time`; `idle_fraction` excluding
+`OUT_OF_SERVICE` from the denominator, counting only `VRL_STATES.IDLE` and not `WAITING` /
+`PLANNED_STOP` / `REPO_TARGET`, and guarding the divide for an all-out-of-service and an empty
+fleet; observer lengths summing to `3*K + 4` for `K` in 1, 4, 8, 16.
+
+**Full scripted greedy day, 436 decision epochs, every check passed:**
+- observation length 28 = `3*K + 4` at every epoch, all identical
+- dtype `float32` everywhere
+- **no NaN and no inf** across all 12,208 scalars
+- slot 0's `delta_cfv` is the minimum over valid slots at all 436 epochs
+- `is_valid` equals the action mask's candidate half at all 436 epochs (trap 12, enforced
+  rather than assumed)
+- episode progress within [0, 1]; offered wait non-negative on every valid slot
+
+Observed feature ranges over the day: `is_valid` 0–1 (mean 0.568); `delta_cfv` −14.508 to 0.000
+(mean −7.851); `offered_wait` 0.000–0.9999 (mean 0.398); `time_sin` −1.000 to 0.965; `time_cos`
+−1.000 to 0.259; `day_progress` 0.0013–0.9643; `idle_fraction` 0.000–1.000 (mean 0.190).
+
+**A premise in the spec turned out to be false, and it is one added this same turn.** Real
+`delta_cfv` values on this scenario are **negative** — transformed range [−14.508, 0.000], the
+0.000 end being padding, so the raw most-negative value is about −2.0e6. Inserting a request
+*improves* the objective, because an unserved request carries a penalty, and stock's
+`min(list_tuples, key=...)` therefore picks the most negative delta. Consequently **padding at
+0.0 is the largest value in the slot, not the smallest**, and a naive unrestricted `argmin`
+over all `K` slots would still land on slot 0.
+
+That inverts the stated rationale in two places: P1.10's "padded slots, whose `delta_cfv` is
+padding rather than a cost and would win", and the sentence added to §5.1 this turn, "a padded
+`delta_cfv` of 0.0 wins a naive `argmin` over positive real costs". The **decision** is
+unaffected — 0.0 remains the right padding value, on the `VecNormalize` argument alone — and the
+**instruction** to restrict the scripted driver to `is_valid` should stand, because it is
+correct regardless of sign and the sign is a property of this objective function rather than of
+the design. But the justification is wrong and the spec should not keep it. A side effect worth
+naming: P1.10's byte-for-byte gate would pass even with the `is_valid` restriction removed, so
+that test does not actually protect against a padding bug on this scenario. Correction proposed
+to Ritun, not yet applied.
+
+**`OUT_OF_SERVICE` vehicles are real and frequent on this day**, which makes the dead-code
+finding consequential rather than cosmetic: of 12 vehicles, between 0 and 4 are out of service
+at a decision epoch (mean 0.45), and **147 of the 436 epochs have at least one**. Had the
+observer used the upstream `== 5` comparison, feature 4's denominator would have been a constant
+12 and the feature wrong at a third of all decisions.
+
+VERIFY findings — P1.6 carries no `VERIFY` markers of its own, but it depends on three §5.1
+source claims, all checked:
+- `pax_info[rid][0] - prq.rq_time` as the offered wait: **matched the spec, and it is the
+  authoritative formula.** `PoolingIRSOnly._create_user_offer` (~line 365) unpacks
+  `pu_time, do_time = assigned_vehicle_plan.pax_info.get(prq.get_rid_struct())` and quotes
+  `pu_time - prq.rq_time`. Feature 3 reproduces it exactly.
+- `VRL_STATES` values: **matched the spec.** `IDLE = (0, "idle")`,
+  `OUT_OF_SERVICE = (5, "out_of_service")`, with `WAITING (4)`, `PLANNED_STOP (6)` and
+  `REPO_TARGET (7)` all distinct, as feature 4 requires.
+- `veh_search_for_immediate_request` skipping `OUT_OF_SERVICE` at `searchVehicles.py` ~line 21:
+  **DIFFERED — that line is dead code.** `VRL_STATES` is a plain `Enum` whose members hold
+  `(int, str)` tuples and which defines no `__eq__` against ints, so
+  `VRL_STATES.OUT_OF_SERVICE == 5` is unconditionally `False` (verified at runtime);
+  `veh_obj.status` is always an enum member (`Vehicles.py` ~line 68). The same inert comparison
+  appears at `searchVehicles.py` ~line 90 and `insertion.py` ~line 414. The **live** filter is
+  `simple_insert` at `insertion.py` ~line 36, which uses the correct enum comparison and returns
+  early, so an out-of-service vehicle yields no insertion and never becomes a candidate. §5.1's
+  conclusion stands; only its citation was wrong. This is upstream FleetPy, not this fork.
+  Ritun verified the finding independently.
+
+Spec changes made this turn:
+- §5.1: features 1–2 and 3 documented as different quantities, with `t_of_day` as absolute clock
+  time and feature 3 as episode progress, plus the note that the circular encoding is convention
+  here because this day never wraps midnight.
+- §5.1: feature 4's justification recited to `simple_insert` (`insertion.py` ~36) as the live
+  filter, with an explicit note that `searchVehicles.py` ~21, ~90 and `insertion.py` ~414 are
+  inert comparisons that have never fired, that this is upstream FleetPy rather than a defect
+  introduced here, and that "fixing" them would change which vehicles are considered and break
+  every byte-for-byte comparison.
+- §5.1: feature 4 recorded as a coarse fleet-utilisation signal rather than a true availability
+  count, because `simple_insert` also skips `no_show_event` vehicles.
+- §5.1: padding documented as 0.0 for all three features of an unoccupied slot. **The
+  `VecNormalize` half of that rationale holds; the `argmin` half is disproven above and needs
+  correcting.**
+- §5.2: a proper availability count added to the global block — the fraction of the fleet that
+  could actually receive the request, excluding both `OUT_OF_SERVICE` and `no_show_event`, with a
+  note that the two notions diverge exactly while a no-show is being waited out.
+
+Decisions:
+- Asked: is `t_of_day` absolute clock time or episode fraction, given §5.1 lists `sin`/`cos` of
+  it *and* "fraction of the day elapsed"?
+  Ritun: different quantities, as read — `sin`/`cos` over `(sim_time mod 86400)/86400` for
+  absolute clock time, feature 3 as episode progress for the D6 horizon signal. Note that the
+  `sin`/`cos` pair is convention here since this day never wraps midnight.
+- Asked: what value pads an invalid slot?
+  Ritun: 0.0 for all three features; beyond the `argmin` argument, a large sentinel would distort
+  `VecNormalize`'s per-feature running statistics in Phase 2.
+- Asked: feature 4's denominator is broader than the set of vehicles that could actually serve
+  the request, because `simple_insert` also excludes `no_show_event` vehicles.
+  Ritun: implement §5.1 as written and record the narrowing; note the proper availability count
+  in §5.2's global block.
+- Ritun: correct §5.1 to cite `simple_insert` as the live filter and state explicitly that the
+  three `== 5` comparisons are inert upstream code, so it does not later read as our bug.
