@@ -972,6 +972,10 @@ position encoding (§5.2), and the space must follow automatically.
 `CandidateObserver` reads `K` from the env config — the same value the env uses for
 truncation and translation. Do not parameterise it separately.
 
+**`is_valid` must come from `spaces.candidate_slot_validity` (P1.5), never from a fresh
+`k < len(candidates)`.** That function is the single source of truth shared by the action mask
+and this feature, and the two must agree slot for slot. See trap 12.
+
 **How Ritun verifies:** shape is `(3*K + 4,)`, dtype `float32`, no NaN or inf across a full
 scripted run; slot 0's `delta_cfv` is always the minimum.
 
@@ -1233,6 +1237,15 @@ without the greedy baseline on the same held-out days.**
 11. **Generator finalisation.** `generator.close()` raises `GeneratorExit` inside the
     simulation. Make sure the `finally` block is safe when the episode did not run to
     completion.
+12. **The action mask and the `is_valid` observation feature must come from one source.**
+    Both answer the same question — which of the `K` candidate slots is occupied — so both read
+    `spaces.candidate_slot_validity` (P1.5). Computing them independently lets them drift, and
+    **nothing would raise**: the policy would either see a valid slot it cannot select, or be
+    able to select a slot the observation labels as padding, and training would quietly
+    optimise against a misreported action set. The likely way this gets reintroduced is a later
+    "simplification" of `is_valid` to an inline `k < len(candidates)` in `CandidateObserver`
+    (P1.6), which looks equivalent and is the same expression the shared function evaluates —
+    until one side changes.
 
 ---
 

@@ -394,3 +394,84 @@ Decisions:
   trained policy matching the baseline exactly.
 - Ritun: `K` stays at 8, justified by the P1.3 distribution. Record it in P1.10's results file
   and note in P2.6 that slot-selection frequency should be logged.
+
+---
+
+## P1.5 — STARTED 2026-09-12 21:12
+Files I will touch: src/rl_gym/spaces.py, tests/test_rl_gym_spaces.py,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Note: this session was interrupted by a usage limit after P1.5 was approved but before any
+file was written. Resume check found P1.4 committed with a matching DONE, no P1.5 STARTED
+entry, and no P1.5 code — the item never began, so there was nothing to salvage. The one
+uncommitted file at that point was the P1.10 gap-distribution spec amendment, which Ritun
+committed separately as 8909652.
+
+## P1.5 — DONE 2026-09-12 21:16 — awaiting Ritun's verification
+
+Files changed — two new; **no existing source file modified** (`git diff --stat -- src/` is
+empty):
+- `src/rl_gym/spaces.py` — `make_action_space`, `reject_action`, `truncate_candidates`,
+  `candidate_slot_validity`, `build_action_mask`. Pure functions, no state; `K` is passed in,
+  since it is owned by `SDPDPAssignmentEnv` (P1.8).
+- `tests/test_rl_gym_spaces.py` — 29 stdlib `unittest` tests. `tests/` created.
+- `docs/SDPDP_GYM_SPEC_v2.md` — P1.6 `is_valid` requirement and trap 12
+- `docs/RL_GYM_PROGRESS.md` — this entry
+
+Verification — **29 tests, all pass** (`python -m unittest discover tests`, 0.008 s):
+
+The three cases P1.5 names:
+1. Truncation preserves input order exactly — including a tied-`delta_cfv` list in an order no
+   sort would produce, and a deliberately *descending* list that must come back descending.
+   That is the direct test that no sort or tie-break is applied (D3, trap 10).
+2. Fewer than `K` candidates: validity is `[True]*n + [False]*(K-n)` and the mask masks only
+   the surplus slots.
+3. `K` larger than the candidate count leaves the list unchanged; `K` smaller takes a prefix of
+   the first `K`, so the dropped candidates are always the most expensive ones.
+
+Beyond those: exactly `K` candidates; empty list; `n_candidates` of 0 leaving reject as the
+only legal action; reject always legal across `n = 0..14`; mask never all-`False` across
+`n = 0..14` and `K in {1, 2, 8, 20}`; mask shape `(K+1,)` and dtype `bool`;
+`ValueError` on `k_max <= 0` and negative `n_candidates`, `TypeError` on non-int arguments
+(including `bool`, which is an `int` subclass and would otherwise slip through);
+`truncate_candidates` returning a new list so a caller's mutation cannot reach back into
+`PendingDecision.candidates`.
+
+Three invariants later work items depend on, asserted here so a drift fails loudly:
+- **mask[:K] is exactly `candidate_slot_validity(n, K)`** across `n = 0..14` — trap 12's
+  single-source requirement, checked rather than merely documented.
+- **validity agrees with truncation length** across `n = 0..14`: exactly the slots truncation
+  fills are the valid ones, and no others.
+- **every unmasked slot `k < K` is a legal index into the truncated list** — the same condition
+  `RLPoolingIRSOnly.commit_assignment_choice` asserts, so the mask can never offer an action
+  that commit would reject.
+- `len(build_action_mask(n, K)) == make_action_space(K).n` for `K in {1, 2, 8, 20}` — an
+  off-by-one here would silently shift which slot MaskablePPO thinks it is choosing.
+- The candidate lengths actually observed on the reference day (1, 4, 5, 8, 9, 11) all behave,
+  covering both sides of `K = 8`.
+
+Also confirmed `import src.rl_gym.spaces` pulls in only `src.rl_gym` and itself — no FleetPy
+fleet-control stack — so the unit tests stay fast and P1.8 can import it cheaply.
+
+VERIFY findings: **P1.5 contains no `VERIFY` items** (confirmed by grep over the work item's
+spec text: zero matches). Nothing to record.
+
+Spec changes made this turn:
+- P1.6: `CandidateObserver` must derive `is_valid` from `spaces.candidate_slot_validity`, never
+  from a fresh `k < len(candidates)`, with a pointer to trap 12.
+- New trap 12: the action mask and the `is_valid` feature must come from one source; two
+  independent computations can drift with nothing raising, and the likely reintroduction is a
+  later "simplification" of `is_valid` to an inline `k < len(candidates)` in `CandidateObserver`
+  — an expression that looks equivalent and is in fact what the shared function evaluates,
+  until one side changes.
+
+Decisions:
+- Asked: `pytest` is absent from the `fleetpy_rl` environment and from `env_fleetpy_rl.yml`, and
+  the repo has no existing test suite; P1.5's Files line names no test file.
+  Ritun: use stdlib `unittest`, no new dependency. `tests/` and the separate file name
+  `tests/test_rl_gym_spaces.py` are both fine; keep `tests/test_rl_gym.py` for P1.10's rollout
+  gate.
+- Asked: put `translate_action` in `spaces.py` next to the mask, or leave it to P1.8?
+  Ritun: leave it to P1.8 — agreed, to avoid bundling two work items.
+- Ritun: the mask/`is_valid` coupling goes into the spec now rather than at P1.6, so it does not
+  exist only in chat if a session ends.
