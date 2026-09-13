@@ -189,8 +189,11 @@ def main():
 
     cfg = dict(DEFAULT_CFG, base_seed=args.base_seed, skip_output=not args.output,
                log_level=args.log_level)
-    print(f"start method: {mp.get_start_method()} | workers: {args.workers} | "
-          f"base_seed: {cfg['base_seed']} | skip_output: {cfg['skip_output']}", flush=True)
+    # mp's process default is not what SubprocVecEnv uses; it prefers forkserver where
+    # available. The one SB3 actually chose is reported after the run.
+    print(f"mp default start method: {mp.get_start_method()} (SB3 picks its own) | "
+          f"workers: {args.workers} | base_seed: {cfg['base_seed']} | "
+          f"skip_output: {cfg['skip_output']}", flush=True)
 
     r = smoke_test(n_workers=args.workers, cfg=cfg)
 
@@ -215,6 +218,11 @@ def main():
 
 
 if __name__ == "__main__":
-    # required for spawn: without it each worker re-executes main() and forks recursively
+    # The guard is required. SubprocVecEnv uses the forkserver start method where available
+    # (macOS included), and multiprocessing's forkserver preloads ['__main__'] by default --
+    # it executes this file top to bottom under run_name="__mp_main__" before forking any
+    # worker. Without the guard, main() would run inside the forkserver process itself.
+    # That preload is also what carries the numpy-first import order above into every worker:
+    # the ordering is established once in the forkserver, and the workers inherit its image.
     mp.freeze_support()
     sys.exit(main())

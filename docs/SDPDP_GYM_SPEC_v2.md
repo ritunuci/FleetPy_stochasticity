@@ -1379,6 +1379,18 @@ has been expanded into full work items. These bullets are topics, not specificat
 
 Order matters.
 
+- **P2.0 — resolve the duplicate OpenMP runtime, before any training.** Install `torch` from
+  conda-forge so `fleetpy_rl` links a single `libomp`, then **re-run the P1.10 gate**. If
+  `1_user-stats.csv` still matches `baseline_user_stats.csv` byte for byte, remove the
+  import-order workaround in `train_sdpdp.py` and delete §8a. If it does not match, that is the
+  finding — report it and stop; the environment as it stands works and has passed every gate,
+  so nothing is lost by leaving the workaround in place.
+
+  This is its own task, not a step inside another. It moves `torch`, and a resolution that also
+  moved `numpy` or `scipy` would change floating-point results and invalidate the baseline with
+  no visible symptom — which is exactly why the re-verification is part of the task rather than
+  an afterthought.
+
 - **P2.1** H3 zone system: `h3` dependency, node→hex mapping preprocessing, neighbour lookup,
   integration as a FleetPy zone system
 - **P2.2** Offline historical baselines from the 11 months (or whatever the number of months Ritun decides) of demand files: per-zone arrival
@@ -1442,9 +1454,27 @@ training and followed by **re-running the P1.10 gate**. If the gate still matche
 import-order workaround comes out. If it does not, that is itself the finding, and the current
 environment still works.
 
-With `spawn` (the macOS default) each `SubprocVecEnv` worker re-imports `__main__`, so the
-ordering in the entry script carries into the workers — provided the `if __name__ == "__main__":`
-guard is present.
+**How the ordering reaches the workers — via forkserver, not spawn.** `mp`'s default start
+method on macOS is `spawn`, but `SubprocVecEnv` overrides it: it picks **`forkserver`** whenever
+that is available, falling back to spawn only otherwise. Measured under P1.11:
+`venv.processes[0]._start_method` is `forkserver`.
+
+That changes the mechanism, though not the conclusion. `multiprocessing/forkserver.py` sets
+`self._preload_modules = ['__main__']` by default and SB3 never overrides it, so the forkserver
+process **imports the entry script once** — `forkserver.py` calls
+`spawn.import_main_path(main_path)` — and every worker is then **forked from that image**.
+Workers do not each re-import `__main__`. The numpy-first ordering is therefore established
+exactly once, in the forkserver, and inherited by every worker.
+
+The `if __name__ == "__main__":` guard is still required, for a reason specific to this path:
+the preload *executes* the entry script top to bottom, under `run_name="__mp_main__"`
+(`spawn.py`). Without the guard, `main()` would run inside the forkserver process itself.
+
+**The "construct envs inside `_init()`" rule in P1.11 is unaffected and rests on something
+else.** SB3 passes `CloudpickleWrapper(env_fn)` as a `Process` argument, so whatever crosses
+the process boundary must pickle. A pre-constructed env holding a routing engine and open file
+handles cannot, under forkserver or spawn alike. That requirement is about picklability, not
+about how `__main__` is imported.
 
 **An alphabetising linter or `isort` run will reintroduce a hard crash.** The import site
 carries a comment saying so; keep it.

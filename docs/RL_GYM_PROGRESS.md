@@ -1180,3 +1180,46 @@ Decisions:
 - Ritun (carried from P1.10): add the per-episode last-dropoff-to-`end_time` margin to P2.6's
   logging plan, since a trained policy can move it and closing it makes `w_horizon` a real
   decision. Added.
+
+## P1.11 — FOLLOW-UP 2026-09-13 02:53 — forkserver correction, Phase 1 closed
+
+Ritun flagged that §8a's reasoning assumed `spawn` re-importing `__main__`, while SB3 actually
+uses forkserver, which forks from a template. He was right, and the mechanism I had written was
+wrong even though the conclusion held. Traced it to the source rather than reasoning about it:
+
+- `subproc_vec_env.py`: `start_method = "forkserver" if forkserver_available else "spawn"` —
+  SB3 **overrides** `mp`'s default, and forkserver is available on macOS. Confirmed at runtime:
+  `venv.processes[0]._start_method == "forkserver"`.
+- `multiprocessing/forkserver.py` line 40: `self._preload_modules = ['__main__']` by default,
+  and SB3 never calls `set_forkserver_preload`. Line 173 calls `spawn.import_main_path(...)`.
+- `multiprocessing/spawn.py` lines 286–290: the entry script is executed under
+  `run_name="__mp_main__"`, which is what makes the `if __name__ == "__main__":` guard False
+  inside the forkserver.
+
+So the ordering reaches the workers by a different route than I wrote: **the forkserver imports
+the entry script once and every worker is forked from that image**; workers do not each
+re-import `__main__`. The numpy-first ordering is established exactly once and inherited. The
+guard is still required, but because the preload *executes* the module — without it, `main()`
+would run inside the forkserver process itself.
+
+**P1.11's "construct envs inside `_init()`" requirement is unaffected, and its stated reason was
+already correct**: SB3 passes `CloudpickleWrapper(env_fn)` as a `Process` argument, so whatever
+crosses the boundary must pickle, and a pre-built env holding a routing engine and open file
+handles cannot. That is true under forkserver and spawn alike — it is about picklability, not
+about how `__main__` is imported. Only the §8a paragraph needed correcting.
+
+Files changed:
+- `docs/SDPDP_GYM_SPEC_v2.md` — §8a mechanism corrected with the source citations; **new P2.0**
+  added to §8 as a standalone prerequisite task: install `torch` from conda-forge, re-run the
+  P1.10 gate, and only then remove the import-order workaround and §8a — with the explicit
+  instruction that if the gate stops matching, that is the finding, report and stop, since the
+  current environment works and has passed every gate.
+- `train_sdpdp.py` — the stale "required for spawn" comment on the `__main__` guard replaced
+  with the verified forkserver mechanism; the startup line no longer prints `mp`'s default
+  start method as though it were the one in use.
+
+Re-ran the smoke test after both edits: 2 workers, exit codes `[0, 0]`, no orphans, forkserver
+confirmed.
+
+Phase 1 is closed: P1.1 through P1.11 implemented, verified and committed, with the exit gate
+passing byte for byte.
