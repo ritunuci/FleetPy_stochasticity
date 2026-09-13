@@ -1073,3 +1073,110 @@ Decisions:
 - Ritun: report the zero-gap count as its own figure rather than folded into the distribution,
   since same-timestamp windows are a distinct regime; and if the tail approached +14400, treat
   it as a finding and say so plainly. It did not — it is 0.
+
+---
+
+## P1.11 — STARTED 2026-09-13 02:28
+Files I will touch: train_sdpdp.py, docs/RL_GYM_PHASE1_RESULTS.md,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+## P1.11 — DONE 2026-09-13 02:43 — awaiting Ritun's verification
+
+Files changed:
+- `train_sdpdp.py` — **new.** `make_env`, `check_config`, `smoke_test`, CLI. Skeleton only.
+- `src/rl_gym/gym_env.py` — one line: `log_level` accepted from the env config, defaulting to
+  `"warning"` exactly as before. Needed for the log-separation check (below); a parameter with a
+  safe default rather than a changed default.
+- `docs/RL_GYM_PHASE1_RESULTS.md` — P1.11 section appended
+- `docs/SDPDP_GYM_SPEC_v2.md` — new §8a on the import-order workaround
+- `docs/RL_GYM_PROGRESS.md` — this entry
+
+Verification — four workers, one episode each, random legal actions:
+
+| | |
+|---|---|
+| start method | **forkserver**, not `spawn` — SB3 prefers it where available |
+| construct 4 workers | 1.01 s |
+| wall clock, four episodes | 61.4 s (vs 38.0 s for one alone: 1.6× for 4× throughput) |
+| per-worker steps | 443 / 443 / 444 / 443 |
+| peak worker RSS | 1.61 GB total, 0.40 GB per worker |
+| worker exit codes | `[0, 0, 0, 0]` |
+| orphaned workers after `close()` | **none** |
+| log files | four separate, 292–296 KB, **no interleaving**, none truncated |
+
+Each worker drew a distinct seed and reported `unclassified = 0`. Under random actions they
+rejected 76–85 and picked up 196–205 against greedy's 288, so the env behaves sensibly off the
+greedy path. Full suite still **161 tests pass**, including the P1.10 byte gate, after the
+`gym_env.py` change.
+
+**A measurement of mine that was wrong, corrected.** My first run reported two orphaned
+processes after `close()`. They were not workers: they were multiprocessing's own
+`resource_tracker` and `forkserver` helpers, which live as long as the parent. The real workers
+had already exited with code 0. I had been diffing "all new child PIDs" instead of reading the
+worker PIDs from `venv.processes`. Fixed to take the PIDs from SB3 and to report the helper
+count separately, so the distinction is visible rather than silently folded in. This also
+surfaced that SB3 chooses **forkserver**, which the spec had assumed was `spawn`.
+
+**The log check was vacuous until I forced it.** At the env's default `log_level = "warning"`
+each worker creates its log file but writes nothing to it, because nothing warns — and an empty
+file cannot demonstrate non-interleaving. Added `log_level` as an env config key (default
+unchanged) and re-ran at `info`: each log then carries 3800+ lines and, since the format is
+`%(process)d-…`, the PID prefix identifies the writer. Every file contains **exactly one**
+distinct PID, its own. No cross-writing, and all four end on a complete newline-terminated line.
+
+Recorded as a caveat rather than fixed: in RL mode the P1.2 logging guard configures handlers
+once per process, so a *second* episode in the same worker with output on would keep logging
+into the first episode's directory. Training uses `skip_output = 1` and writes no logs, and
+P1.9's unique `scenario_name` separates the user-stats regardless, so this only affects someone
+debugging a multi-episode run with output enabled.
+
+**The OpenMP blocker, and the environment answer Ritun asked for.**
+
+Importing `stable_baselines3` or `torch` aborts the process outright —
+`OMP: Error #15: … libomp.dylib already initialized`, `Abort trap: 6`. Isolated to pure import
+order: `import torch` alone aborts, `import stable_baselines3` alone aborts, `import torch,
+numpy` aborts; `import numpy, torch` and `import numpy, stable_baselines3` are fine. torch is
+pip-installed while numpy and scipy come from conda-forge, so two `libomp` copies are linked.
+Worked around by importing numpy first, with a loud comment at the import site; **not** with
+`KMP_DUPLICATE_LIB_OK=TRUE`, which OpenMP itself warns may silently produce incorrect results.
+Recorded in §8a as temporary, to be removed once torch comes from conda-forge and P1.10 has
+been re-verified.
+
+On whether the clone disturbed the original environment: **it did not.**
+- `fleetpy_Ax_client` currently holds numpy 2.2.6, torch 2.10.0, botorch 0.16.1, gpytorch
+  1.15.2 — identical to `fleetpy_rl`, and self-consistent, since botorch 0.16.1 requires
+  torch ≥ 2.x and could not run on 1.13.1.
+- The `torch==1.13.1` pin lives only in `env_fleetpy_linux.yml` and `fleetpy_backup.yml`, the
+  legacy files the spec header says predate the RL work. `env_fleetpy_rl.yml` correctly records
+  2.10.0. So the original was upgraded as a set at some earlier point, not by the clone.
+- The duplicate-libomp condition is present in **both** environments, so it predates and is
+  independent of the RL work.
+- `AxClient` (used by the calibration scripts) imports fine. The top-level
+  `from ax import optimize` API that `MOBO_for_micro.py` and `SOBO_for_micro.py` use no longer
+  exists in this Ax version — those two are already broken independently of OpenMP and of
+  anything done here.
+
+**One live footgun found while checking: `conda run -n fleetpy_Ax_client` silently runs
+`fleetpy_rl`'s interpreter** in this shell — `sys.prefix` comes back as
+`/opt/anaconda3/envs/fleetpy_rl`. My first probes of the original environment were therefore
+invalid and were redone with `/opt/anaconda3/envs/fleetpy_Ax_client/bin/python` directly. Use
+the direct interpreter path for anything meant to run in the Ax environment, or work in an
+activated shell.
+
+VERIFY findings: P1.11 carries no `VERIFY` markers.
+
+Decisions:
+- Asked: handle the OpenMP conflict by import order, or fix the environment first?
+  Ritun: import-order workaround now; the reasoning against `KMP_DUPLICATE_LIB_OK` is right,
+  since "silently produce incorrect results" is the failure mode this whole design exists to
+  prevent. The environment has passed ten byte-for-byte gates, which is empirical proof its
+  numpy reproduces the baseline, and reinstalling torch or numpy risks moving numpy and
+  breaking that with no visible cause. The proper fix — torch from conda-forge — happens as its
+  own task before Phase 2 training, followed by re-running the P1.10 gate; if it still matches,
+  the workaround comes out. Record the workaround as temporary, with a loud comment and a spec
+  note.
+- Ritun: record the logging caveat as a debugging annoyance rather than a correctness issue,
+  and confirm the clone did not disturb `fleetpy_Ax_client`.
+- Ritun (carried from P1.10): add the per-episode last-dropoff-to-`end_time` margin to P2.6's
+  logging plan, since a trained policy can move it and closing it makes `w_horizon` a real
+  decision. Added.

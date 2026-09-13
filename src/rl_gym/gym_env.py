@@ -146,7 +146,9 @@ class SDPDPAssignmentEnv(gym.Env):
         constant_cfg["n_cpu_per_sim"] = 1
         constant_cfg["evaluate"] = 0
         constant_cfg["keep_old"] = False
-        constant_cfg.setdefault("log_level", "warning")
+        # quiet by default; raise it only to inspect a run's log (P1.11 uses this to verify
+        # that four workers write four separate, non-interleaved log files)
+        constant_cfg["log_level"] = self.cfg.get("log_level", "warning")
 
         params = constant_cfg + scenario_cfgs[self.scenario_row]
         params[G_SIM_ENV] = RL_SIM_ENV

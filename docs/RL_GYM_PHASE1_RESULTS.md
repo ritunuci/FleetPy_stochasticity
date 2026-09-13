@@ -157,6 +157,62 @@ routing engine or any simulation object across `reset()` is out of scope.
 
 ---
 
+## P1.11 — `SubprocVecEnv` smoke test
+
+`python train_sdpdp.py --workers 4 --output --log-level info`. Four workers, one episode each,
+uniformly random actions drawn from the legal set. No learning algorithm.
+
+| | |
+|---|---|
+| workers | 4 |
+| start method | **forkserver** (SB3's preference where available, not `spawn`) |
+| construct 4 workers | 1.01 s |
+| wall clock, all four episodes | 61.4 s |
+| per-worker episode wall | 60.5 / 60.5 / 61.4 / 60.5 s |
+| per-worker steps | 443 / 443 / 444 / 443 |
+| peak worker RSS | **1.61 GB total, 0.40 GB per worker** |
+| worker exit codes | `[0, 0, 0, 0]` |
+| **orphaned workers after `close()`** | **none** |
+| mp helper processes | 2 (`resource_tracker`, `forkserver`) — live with the parent, not orphans |
+
+Four parallel episodes take 61.4 s against 38.0 s for one alone: a **1.6× slowdown for 4×
+throughput**, so about 2.5× effective speedup on this 10-core machine. Memory is the cheap
+resource here — 0.40 GB per worker, each carrying its own routing engine.
+
+Each worker drew a different seed (1699661, 703395, 2002423, 1513029) and reported
+`unclassified = 0`. Under random actions they rejected 76–85 requests and picked up 196–205,
+against 288 under greedy — the environment behaves sensibly off the greedy path.
+
+### Log files: separate and uncorrupted
+
+With `--log-level info` each worker wrote its own `00_simulation.log` (292–296 KB,
+3803–3870 lines). The format is `%(process)d-%(name)s-…`, so the PID prefix identifies the
+writer:
+
+| Directory | Distinct PID prefixes in its log |
+|---|---|
+| `…_env0_pid27187_ep1` | `27187` only |
+| `…_env1_pid27188_ep1` | `27188` only |
+| `…_env2_pid27189_ep1` | `27189` only |
+| `…_env3_pid27190_ep1` | `27190` only |
+
+**No interleaving** — no worker's lines appear in another's file. All four end with a complete
+newline-terminated line, so none was truncated. Each wrote a full 445-row `1_user-stats.csv`.
+
+At the env's default `log_level = "warning"` the files are created but stay empty, because
+nothing warns. That is why the check above forces `info` — an empty file cannot demonstrate
+separation.
+
+### Caveat worth knowing, not a defect
+
+In RL mode the P1.2 logging guard configures handlers **once per process**, so a *second*
+episode in the same worker with output on would keep logging into the first episode's
+directory. Training runs with `skip_output = 1` and writes no log files at all, and P1.9's
+unique `scenario_name` keeps the user-stats separate regardless, so this only bites someone
+debugging a multi-episode run with output enabled.
+
+---
+
 ## Test suite
 
 | Suite | Tests |

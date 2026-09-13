@@ -1390,6 +1390,14 @@ Order matters.
   `0..K`. Frequent selection of slot 7 means `K` is binding and the truncation is cutting off
   candidates the policy wants; `K` would then need raising. Pair it with the candidate-list
   length distribution from P1.10 (D3).
+- **P2.6** must also log the **per-episode margin between the last dropoff and `end_time`**.
+  Under greedy on the reference day that margin is about **195 s** (last dropoff 69805.3
+  against `end_time` 70000), and the tail adds zero simulated seconds because nothing is in
+  flight (§6.4, P1.10). It is the one Phase 1 measurement a trained policy can move against:
+  accepting more marginal requests pushes dropoffs later and closes the margin. **If it
+  closes, §6.4's branch 7 goes live and `w_horizon = 0.0` stops being a placeholder and
+  becomes a real decision** — so this needs watching from the first training run, not
+  discovering afterwards.
 - **P2.6** `MaskablePPO` training script, `MaskableEvalCallback`, mask-aware
   `evaluate_policy`, callbacks, tensorboard, the reward-breakdown logger
 - **P2.7** Greedy baseline evaluation harness and the KPI comparison table
@@ -1402,6 +1410,44 @@ without the greedy baseline on the same held-out days.**
 function P1.10's exit gate tested — and must not reimplement the selection. A baseline whose
 greedy differs from the greedy proven to reproduce stock FleetPy byte for byte would make the
 whole comparison invalid without anything failing.
+
+---
+
+## 8a. Environment note — import numpy first (temporary workaround)
+
+**Every Phase 2 training and evaluation script must `import numpy` before importing `torch`,
+`stable_baselines3`, `sb3_contrib`, `ax` or anything that pulls them in.** Otherwise the process
+dies immediately:
+
+```
+OMP: Error #15: Initializing libomp.dylib, but found libomp.dylib already initialized.
+Abort trap: 6
+```
+
+`torch` is pip-installed (`pypi_0`) while `numpy` and `scipy` come from conda-forge, so two
+copies of `libomp` are linked and whichever loads second raises. Measured: `import torch` alone
+aborts, `import stable_baselines3` alone aborts, `import torch, numpy` aborts;
+`import numpy, torch` and `import numpy, stable_baselines3` are fine. The condition is present
+in **both** `fleetpy_rl` and `fleetpy_Ax_client`, so it predates and is independent of the RL
+work.
+
+**Do not set `KMP_DUPLICATE_LIB_OK=TRUE`.** The OpenMP message itself warns it "may cause
+crashes or silently produce incorrect results", and anything that perturbs the numeric stack
+invalidates `baseline_user_stats.csv` and every byte-for-byte gate behind it. Import order
+carries no such risk.
+
+**This is a temporary workaround, not the design.** The proper fix — installing `torch` from
+conda-forge so a single OpenMP runtime is linked — is its own task, to be done before Phase 2
+training and followed by **re-running the P1.10 gate**. If the gate still matches, the
+import-order workaround comes out. If it does not, that is itself the finding, and the current
+environment still works.
+
+With `spawn` (the macOS default) each `SubprocVecEnv` worker re-imports `__main__`, so the
+ordering in the entry script carries into the workers — provided the `if __name__ == "__main__":`
+guard is present.
+
+**An alphabetising linter or `isort` run will reintroduce a hard crash.** The import site
+carries a comment saying so; keep it.
 
 ---
 
