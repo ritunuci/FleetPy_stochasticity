@@ -179,11 +179,24 @@ Confirmed structure, and it is short and self-contained:
 
 **This already satisfies the research proposal's §3.1 requirement** that the insertion heuristic
 re-runs after each assignment so an updated vehicle plan is visible for the next
-same-timestamp request. No change needed. **VERIFY** this item as claimed and report to Ritun.
+same-timestamp request. No change needed. Verified under P1.4: the loop at
+`ImmediateDecisionsSimulation.py` line ~91 processes each request completely — `user_request`,
+`get_current_offer`, `receive_offer`, `_rid_chooses_offer` — before starting the next.
 
-Note that step 3 iterates undecided travelers *plus* new arrivals. **VERIFY** whether
-`get_undecided_travelers` is ever non-empty under `ImmediateDecisionsSimulation`; if it is,
-report it, because §1 defines the epoch on actionable requests, and a re-requesting undecided traveller would be a second epoch for the same rid.
+Note that step 3 iterates undecided travelers *plus* new arrivals. **`get_undecided_travelers`
+is never non-empty in this scenario**, verified under P1.4 over a full day: empty at all 4,480
+steps, and all 445 requests reached `user_request` exactly once. No rid produces a second
+decision epoch, so §1's "one gym step = one actionable request" holds with no re-request case
+to handle.
+
+**That guarantee is config-dependent, not structural.** `get_new_travelers` adds every arrival
+to `undecided_rq` (`demand.py` ~line 216) and `_rid_chooses_offer` removes it in all three of
+its branches (`FleetSimulationBase.py` ~lines 759, 784, 797). An entry survives only through
+line ~764 — `choose_offer` returned `None` *and* the rider did not leave the system. What keeps
+that path unreachable is `ImmediateDecisionsSimulation.check_sim_env_spec_inputs`, which raises
+unless `user_max_decision_time` (`G_AR_MAX_DEC_T`) is 0. A non-zero value would let riders stay
+undecided across time steps and silently produce two decision epochs for one rid. If that
+parameter ever changes, this analysis must be redone.
 
 ### 2.3 After the offer
 
@@ -346,7 +359,10 @@ untouched and non-RL scenarios keep running.
 Slot `k` for `k in [0, K)` = "offer the insertion plan for the `k`-th cheapest candidate".
 Slot `K` = "reject". Reject is always legal.
 
-- `K` is a config parameter. Start at `K = 8`. `K` is owned by `SDPDPAssignmentEnv` alone. 
+- `K` is a config parameter. **`K = 8`, confirmed against measured data.** The candidate-list
+  length distribution over the 436 decisions on the reference day is min 1, median 5, mean
+  4.60, max 11, with 13 lists longer than 8. Those 13 lose only their most expensive
+  candidates, which a policy would not select. `K` is owned by `SDPDPAssignmentEnv` alone. 
   `RLPoolingIRSOnly` receives a semantic choice(candidate index or reject), never a raw action.
 - Candidates are used in the order `insertion_with_heuristics` returns them. That list is
   already sorted ascending by `delta_cfv` (`insertion.py` line ~569, a stable sort), so
@@ -864,7 +880,11 @@ important test in Phase 1 — it proves the split does not perturb the simulatio
 
 ### P1.4 — `RLImmediateDecisionsSimulation` generator
 
-**Files:** `src/rl_gym/sim_env_rl.py`, `src/misc/init_modules.py`
+**Files:** `src/rl_gym/sim_env_rl.py`
+
+`src/misc/init_modules.py` needs no edit: P1.1 already registers
+`RLImmediateDecisionsSimulation` through the dev hook, and
+`get_src_simulation_environments()` returns it.
 
 ```
 class RLImmediateDecisionsSimulation(ImmediateDecisionsSimulation):
@@ -890,9 +910,26 @@ self._rid_chooses_offer(rid, rq_obj, sim_time)
 runs the same finalisation, subject to the P1.2 guards. Wrap the loop in `try/finally` so
 `generator.close()` unwinds cleanly.
 
+**Only the loop goes in the `try`, and only teardown goes in the `finally`** —
+`_end_realtime_plot()`. The finalisation (`record_stats`, `save_final_state`,
+`record_remaining_assignments`, `record_remaining_users`, `evaluate`) runs *after* a normally
+completed loop and must stay out of the `finally`: `record_remaining_assignments` advances the
+simulation up to `end_time + 14400` until every vehicle finishes its route, and an aborted
+episode — `close()` on an env being torn down — must not pay that cost or advance the
+simulation past `end_time`. An abandoned episode ends cheaply.
+
+`step_generator` requires every operator to expose `build_assignment_context`, i.e. to be
+`RLPoolingIRSOnly` or a subclass. If one does not, **raise**, naming both the `sim_env` and the
+offending `op_module`. Do not fall back to `user_request`: a silent fallback would train
+against greedy while reporting that it is learning, and the symptom would be a trained policy
+that matches the baseline exactly, discovered weeks later.
+
+Two presentation-only deviations from `run()`, both deliberate: the tqdm progress bar and the
+end-of-scenario timing report are suppressed when `skip_output` is set and kept otherwise.
+Across a thousand training episodes both are noise, and neither touches an output file.
+
 **Do not** add `hook_manager` or any new positional parameter to
-`FleetSimulationBase.__init__`. If `load_simulation_environment` needs a change, make it a
-keyword argument with a default.
+`FleetSimulationBase.__init__`.
 
 **How Ritun verifies:** a small driver script that calls `run_generator()` and sends action 0
 at every yield produces output identical to `baseline_user_stats.csv`. Still no gymnasium
@@ -1095,7 +1132,9 @@ Also report the distribution of wall-clock gaps between consecutive gym steps
 Create if `docs/RL_GYM_PHASE1_RESULTS.md` is absent. Write these figures to `docs/RL_GYM_PHASE1_RESULTS.md` as well as reporting them: step
 count, reservation-branch count, empty-candidate count, wall-clock seconds, steps/second,
 the full `episode_summary()` breakdown, and the candidate-list length distribution
-(min, median, mean, max, and the count exceeding `K`).
+(min, median, mean, max, and the count exceeding `K`). Measured under P1.3 on the reference
+day, as the figure to reproduce: 436 decisions, lengths min 1, median 5, mean 4.60, max 11,
+13 exceeding `K = 8` (D3).
 
 **How Ritun verifies:** the byte comparison, plus a step-count reconciliation:
 step count + reservation-branch count + empty-candidate count + same-origin-destination
@@ -1140,6 +1179,10 @@ Order matters.
 - **P2.3** `RollingStatsTracker` on the P1.7 callbacks
 - **P2.4** Full observation per §5.2, plus `VecNormalize`
 - **P2.5** Reward weight design per §6, including the §6.3 decision
+- **P2.6** must log **slot-selection frequency** — how often the policy picks each slot
+  `0..K`. Frequent selection of slot 7 means `K` is binding and the truncation is cutting off
+  candidates the policy wants; `K` would then need raising. Pair it with the candidate-list
+  length distribution from P1.10 (D3).
 - **P2.6** `MaskablePPO` training script, `MaskableEvalCallback`, mask-aware
   `evaluate_policy`, callbacks, tensorboard, the reward-breakdown logger
 - **P2.7** Greedy baseline evaluation harness and the KPI comparison table

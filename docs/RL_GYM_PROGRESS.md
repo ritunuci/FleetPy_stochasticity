@@ -306,3 +306,91 @@ Decisions:
   computation, not policy inference plus scheduler latency, and it surfaces in evaluation runs
   where the contamination would be worst. Rename `PendingDecision.cpu_t0` to `cpu_elapsed`, a
   duration rather than a timestamp, with commit adding its own span before writing.
+
+---
+
+## P1.4 — STARTED 2026-09-12 17:00
+Files I will touch: src/rl_gym/sim_env_rl.py, docs/SDPDP_GYM_SPEC_v2.md,
+docs/RL_GYM_PROGRESS.md
+
+## P1.4 — DONE 2026-09-12 17:07 — awaiting Ritun's verification
+
+Files changed — one new source file; **no existing source file modified**
+(`git diff --stat -- src/` is empty):
+- `src/rl_gym/sim_env_rl.py` — `RLImmediateDecisionsSimulation` with `step_generator`,
+  `run_generator` and the `_rl_operator` guard
+- `docs/SDPDP_GYM_SPEC_v2.md` — §2.2 undecided-traveller finding, P1.4 Files line, the
+  try/finally scoping reason, the raise-don't-fall-back rule, the two presentation deviations
+- `docs/RL_GYM_PROGRESS.md` — this entry
+
+Verification — everything passed:
+
+1. **Byte-for-byte.** A driver calling `run_generator()` and sending `0` at every yield, with
+   `sim_env = RLImmediateDecisionsSimulation` and `op_module = RLPoolingIRSOnly`, no gymnasium:
+   `1_user-stats.csv` **identical to `docs/baseline_user_stats.csv`** (`cmp` reports no
+   differing byte; md5 `53879ea79cf211d700f670dee1173dd5`).
+2. **436 gym steps**, matching P1.3's 436 decisions exactly. Slot 0 asserted to be the `argmin`
+   and the candidate list asserted non-empty at every yield.
+3. **Wrong operator raises.** With `op_module = PoolingIRSOnly` the generator raises `TypeError`
+   on the first `next()`, and the message names both `RLImmediateDecisionsSimulation` and
+   `PoolingIRSOnly`. No silent fallback to `user_request`.
+4. **`close()` mid-episode is clean and cheap.** After 6 steps, `close()` raised nothing,
+   returned in 0.000 s, left the generator exhausted, and — the point of the try/finally
+   scoping — ran **neither** `record_remaining_assignments` nor `record_remaining_users`.
+5. **Reject through the generator:** `send(None)` committed 8 rejections without error.
+6. **`_started` guard:** a second `run_generator()` on a used simulation object yields nothing
+   (trap 7).
+7. `src/rl_gym/sim_env_rl.py` byte-compiles.
+
+Timing figures, for P1.10's results file: 436 steps in 37.93 s wall, 11.5 steps/second;
+inter-step wall gaps min 0.0068 s, median 0.0759 s, mean 0.0864 s, p95 0.1664 s, max 0.4497 s.
+
+VERIFY findings (both from §2.2, checked here because P1.4 is where `step()` is mirrored):
+- Interleaved per-request processing as claimed: **matched the spec.** The loop at
+  `ImmediateDecisionsSimulation.py` ~line 91 completes `user_request`, `get_current_offer`,
+  `receive_offer` and `_rid_chooses_offer` for one request before starting the next, so the
+  heuristic does re-run against an updated plan for a same-timestamp arrival. The proposal's
+  §3.1 requirement is satisfied natively; no change needed.
+- Whether `get_undecided_travelers` is ever non-empty: **verified empirically — it is not.**
+  Over a full day it was empty at all 4,480 steps, and all 445 requests reached `user_request`
+  exactly once. No rid produces a second decision epoch. Recorded in §2.2 along with *why*:
+  the guarantee is config-dependent, resting on `check_sim_env_spec_inputs` enforcing
+  `user_max_decision_time == 0`; a non-zero value would let riders stay undecided across steps
+  and silently produce two epochs for one rid.
+
+One implementation detail worth recording: `_end_realtime_plot()` is **not** called
+unconditionally in the `finally`. The parent calls it as the last statement of `run()`, after
+finalisation, so calling it right after the loop would reorder teardown relative to
+`record_stats` / `evaluate` on the normal path. It is instead guarded by a `completed` flag —
+the `finally` tears the plot down only on an abort (GeneratorExit or an escaping exception),
+and the normal path calls it at the end exactly where `run()` does. With
+`realtime_plot_flag = 0` in the reference scenario both are no-ops, so this is about not
+leaving a latent ordering bug for whoever enables plotting.
+
+Spec changes made this turn:
+- §2.2: the interleaving item recorded as verified; the undecided-traveller VERIFY replaced
+  with the finding, the mechanism, and the `user_max_decision_time == 0` dependency.
+- P1.4: Files line reduced to `src/rl_gym/sim_env_rl.py`; the `load_simulation_environment`
+  contingency dropped; try/finally scoping and its reason added; the raise-don't-fall-back rule
+  added; the tqdm and timing-report suppression recorded.
+- D3 and P1.10: `K = 8` confirmed against the measured candidate-length distribution
+  (436 decisions, min 1, median 5, mean 4.60, max 11, 13 exceeding K), recorded as the figure
+  P1.10 must reproduce.
+- P2.6: slot-selection frequency must be logged — frequent selection of slot 7 means `K` is
+  binding.
+
+Decisions:
+- Asked: (1) P1.4's Files line lists `src/misc/init_modules.py`, which the P1.1 dev hook makes
+  unnecessary; (2) tqdm and the timing report across a thousand episodes; (3) what belongs in
+  the try/finally.
+  Ritun: all three accepted. Files line is `src/rl_gym/sim_env_rl.py` only and the
+  `load_simulation_environment` contingency is dropped; suppress tqdm and the report under
+  `skip_output` and keep them otherwise; loop in the try with `_end_realtime_plot` in the
+  finally and finalisation only after normal completion, with the reason noted — an aborted
+  episode must not advance the simulation past `end_time`.
+- Asked: raise or fall back when the operator is not RL-capable?
+  Ritun: raise, naming both the `sim_env` and the `op_module`. A silent fallback means training
+  runs greedy while reporting that it is learning, and it would surface weeks later as a
+  trained policy matching the baseline exactly.
+- Ritun: `K` stays at 8, justified by the P1.3 distribution. Record it in P1.10's results file
+  and note in P2.6 that slot-selection frequency should be logged.
