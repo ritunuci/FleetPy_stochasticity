@@ -225,15 +225,27 @@ a stochastic transition. The reward must distinguish operator rejection from rid
 | Undecided leaves system / chose −1 | `FleetSimulationBase` lines ~722, ~747 | Yes |
 | End of day | `Demand.record_remaining_users` | Yes |
 
-`Demand.user_cancels_request` (demand.py:350) also calls `record_user`, but is dead code —
+`user_cancels_request` (demand.py ~line 355) also calls `record_user`, but is dead code —
 nothing invokes it. Do not instrument it. Every reference in the codebase is to
 `operator.user_cancels_request` on `FleetControlBase` / `PoolingIRSOnly`, which is a
-different method and never touches `Demand`.
+different method and never touches `Demand`. Note it is defined on **`SlaveDemand`, not
+`Demand`** (it sits inside `class SlaveDemand(Demand)`), so it is dead twice over: nothing calls
+it, and the class it belongs to is never instantiated here.
 
 Because reward is pickup-anchored, **two callbacks are needed**, not one: `record_boarding`
-for pickup and `record_user` for every terminal outcome. `demand.py` also contains
-`SlaveDemand(Demand)` from line 297 with its own `record_boarding`. **VERIFY** which class
-`ImmediateDecisionsSimulation` instantiates and instrument that one.
+for pickup and `record_user` for every terminal outcome.
+
+`Demand` is the class to instrument, verified under P1.7: `_load_demand_module` takes the
+`SlaveDemand` branch only when `sim_env == "MobiTopp"`, and this project's `sim_env` is
+`RLImmediateDecisionsSimulation`.
+
+Two facts about where the hooks land:
+
+- `record_user` is defined **only** on `Demand`, so one callback there covers both classes.
+- `record_boarding` **is** overridden by `SlaveDemand` (demand.py ~line 363). Instrumenting
+  `Demand.record_boarding` therefore does **not** cover that override. Correct by scope here,
+  since `SlaveDemand` is never instantiated — but it is a silent gap for anyone who later runs
+  MobiTopp, who would get exit events and no pickup events at all.
 
 Callers live in `FleetSimulationBase.update_sim_state_fleets` around lines 647
 (`record_boarding`), 654 (`record_alighting_start`), 669 (`record_no_show`).
@@ -356,13 +368,23 @@ untouched and non-RL scenarios keep running.
 
 ### D3. Action space is `Discrete(K + 1)` over **ranked candidates**.
 
-Slot `k` for `k in [0, K)` = "offer the insertion plan for the `k`-th cheapest candidate".
-Slot `K` = "reject". Reject is always legal.
+Slot `k` for `k in [0, K)` = "offer the insertion plan for the candidate at index `k` in the
+ordering below". Slot `K` = "reject". Reject is always legal.
+
+**The ordering, stated exactly:** ascending by `delta_cfv`, so element 0 holds the **minimum**
+— the most negative value — and each later slot is larger. "Cheapest" is avoided deliberately:
+`delta_cfv` is a *change* in the control objective, and on this scenario it is negative
+throughout (§5.1), because the objective penalises unserved requests and serving one improves
+it. **A more negative `delta_cfv` is a larger improvement to the objective**, so slot 0 is the
+best insertion and slot `K-1` the worst of those kept. Stock's
+`min(list_tuples, key=lambda x: x[2])` selects that same minimum, which is why slot 0 is the
+greedy choice.
 
 - `K` is a config parameter. **`K = 8`, confirmed against measured data.** The candidate-list
   length distribution over the 436 decisions on the reference day is min 1, median 5, mean
-  4.60, max 11, with 13 lists longer than 8. Those 13 lose only their most expensive
-  candidates, which a policy would not select. `K` is owned by `SDPDPAssignmentEnv` alone. 
+  4.60, max 11, with 13 lists longer than 8. Those 13 lose only their tail — the largest
+  `delta_cfv` values, i.e. the weakest insertions — which a policy would not select. `K` is
+  owned by `SDPDPAssignmentEnv` alone. 
   `RLPoolingIRSOnly` receives a semantic choice(candidate index or reject), never a raw action.
 - Candidates are used in the order `insertion_with_heuristics` returns them. That list is
   already sorted ascending by `delta_cfv` (`insertion.py` line ~569, a stable sort), so
@@ -510,10 +532,15 @@ Feature 4 as defined is a coarse fleet-utilisation signal, not a true availabili
 actually serve the request is strictly narrower, and the two notions diverge exactly while a
 no-show is being waited out. That is accepted for Phase 1; see §5.2.
 
-**Padding.** Every feature of an unoccupied candidate slot is `0.0`. Two reasons: it is what
-makes P1.10's warning true — a padded `delta_cfv` of 0.0 wins a naive `argmin` over positive
-real costs, which is why the scripted driver must restrict to `is_valid` — and a large sentinel
-would distort `VecNormalize`'s per-feature running statistics in Phase 2 (§5.3).
+**Padding.** Every feature of an unoccupied candidate slot is `0.0`. The justification is
+`VecNormalize`: a large sentinel would distort its per-feature running mean and variance in
+Phase 2 (§5.3), and 0.0 is neutral there. That is the whole reason.
+
+It is *not* justified by what a naive `argmin` would pick. Measured under P1.6, real
+`delta_cfv` on this scenario is **negative** — transformed range [−14.508, 0.000] over 436
+decisions, where the 0.000 end is padding and the raw minimum is about −2.0e6. So padding at
+0.0 is the **largest** value in the slot, not the smallest, and an unrestricted `argmin` would
+still land on slot 0 here. See P1.10 for why the `is_valid` restriction is nonetheless required.
 
 All wait-related features divide by `op_max_wait_time` read from `scenario_parameters`
 (1500 in the reference scenario), never a literal.
@@ -629,10 +656,33 @@ matters; the first match wins.
 4. `rq.diffusion_cancelled` → post-match cancellation
 5. `rq.rider_declined` → rider declined
 6. `rq.pu_time is None` and `rq.no_show` → no-show
-7. otherwise → unclassified; count it, charge nothing, and report the count in
+7. `rq.pu_time is None` and `rq.chosen_operator_id is not None` → unserved at horizon,
+   `-w_horizon`
+8. otherwise → unclassified; count it, charge nothing, and report the count in
    `episode_summary()`. A non-zero count here means a path was missed.
 
 **There is no fallback to rider decline.** Anything unmatched is unclassified, not a decline.
+
+**Branch 7 is where `-w_horizon` is charged — not in a separate end-of-episode sweep.** A rider
+accepted but never picked up reaches `record_user` through `record_remaining_users` at end of
+day, so it is already an `on_exit` arrival; charging it anywhere else would create a second
+charging site and contradict the rule below that all reward is charged once, in `on_exit`. It
+also keeps branch 8 meaning strictly "a path was missed" rather than doubling as a legitimate
+outcome.
+
+`chosen_operator_id` is initialized to `None` (`TravelerModels.py` ~line 112) and set only
+inside `choose_offer` on acceptance, so "accepted but never picked up" is directly expressible.
+Branches 4–6 run first, so everyone who accepted and then failed another way — diffusion
+cancellation, decline, no-show — is already claimed before branch 7 is reached.
+
+**Branch 7 is unreachable on the reference day, and that is expected, not evidence it is dead.**
+Classifying all 445 baseline rows by this order gives served 288, rider declined 118, diffusion
+cancelled 28, no candidates 9, no-show 2, unclassified 0 — and 288 pickups against 288 dropoffs,
+meaning `record_remaining_assignments` completes every in-flight trip, so nobody is left picked
+up or accepted-and-waiting at the horizon. The branch becomes live on a day where
+`record_remaining_assignments`' four-hour cap binds (`end_time + 14400`, at which point it breaks
+the loop with vehicles still en route), or under a policy that over-commits and leaves accepted
+riders unreachable. Do not delete it for want of a firing on this one day.
 
 `rq.no_show` is set at load time from the demand file column (`TravelerModels.py:555`), so it
 is a rider attribute, not an outcome. It must be checked *after* `diffusion_cancelled` and
@@ -1045,9 +1095,8 @@ self._exit_callback = None
 Called at the end of `Demand.record_boarding` and inside `Demand.record_user` respectively,
 each wrapped in `try/except` so a reward bug can never kill a simulation.
 
-**VERIFY** which of `Demand` / `SlaveDemand` is instantiated by `ImmediateDecisionsSimulation`
-and instrument that one — expected to be `Demand`, with `SlaveDemand` reserved for MobiTopp
-coupling, but confirm before wiring.
+`Demand` is the instantiated class — confirmed, see §2.4. `SlaveDemand` is reserved for MobiTopp
+coupling and is never built here.
 
 Phase 1 uses counting-only weights (§6.6).
 
@@ -1147,11 +1196,27 @@ output. Both must hold.
 **Files:** `tests/test_rl_gym.py`
 
 Drive the env entirely from outside: `obs, _ = env.reset()`, then at each step choose the
-`argmin` of `delta_cfv` restricted to slots where `is_valid = 1` — never over padded slots,
-whose `delta_cfv` is padding rather than a cost and would win. Equivalently, since the list
-arrives sorted and truncation is a prefix, the scripted greedy action is always slot 0
+`argmin` of `delta_cfv` **restricted to slots where `is_valid = 1`**. Equivalently, since the
+list arrives sorted and truncation is a prefix, the scripted greedy action is always slot 0
 whenever any candidate is valid. Step, repeat until `terminated`. Run with
 `skip_output = 0` so a user-stats file is produced.
+
+**The restriction is required independent of the sign of `delta_cfv`.** On this scenario real
+`delta_cfv` happens to be negative (§5.1), so 0.0 padding is the largest value in the slot and
+an unrestricted `argmin` would coincidentally also return slot 0 — meaning **this byte-for-byte
+gate would pass even with the restriction removed, and does not by itself protect against a
+padding bug.** The sign is a property of this objective function
+(`distance_and_user_times_with_walk`, which penalises unserved requests so that serving one
+improves the objective) and could change with a different control function, a different
+scenario, or a Phase 2 reward-shaping change. A padded slot holds padding, not a cost, and must
+never compete. The counter-example — positive costs in the valid slots, where an unrestricted
+`argmin` returns a padded slot — is pinned by
+`tests/test_rl_gym_observers.py::TestPaddingMustNotCompeteInArgmin`.
+
+Those tests pin the contract, not the driver. **P1.10's driver must therefore select its action
+through a tested helper rather than an inline `np.argmin`**, and that helper must be covered by a
+test that fails if the `is_valid` restriction is dropped. A guard with no test that fails when it
+is removed is decoration.
 
 The resulting `1_user-stats.csv` must match `baseline_user_stats.csv` **byte for byte**.
 

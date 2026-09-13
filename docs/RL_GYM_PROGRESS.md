@@ -599,3 +599,169 @@ Decisions:
   in §5.2's global block.
 - Ritun: correct §5.1 to cite `simple_insert` as the live filter and state explicitly that the
   three `== 5` comparisons are inert upstream code, so it does not later read as our bug.
+
+## P1.6 — FOLLOW-UP 2026-09-12 23:09 — corrections after Ritun's verification
+
+Ritun approved correcting the two passages whose reasoning P1.6 disproved, plus the D3 ordering
+language, plus a test with teeth.
+
+Files changed:
+- `docs/SDPDP_GYM_SPEC_v2.md`
+  - §5.1 padding: the `argmin` rationale removed. `VecNormalize` is now stated as the whole
+    justification for 0.0, with the measured fact recorded — real `delta_cfv` is negative
+    (transformed range [−14.508, 0.000] over 436 decisions, raw minimum about −2.0e6), so
+    padding at 0.0 is the largest value in the slot, not the smallest.
+  - P1.10: the rationale replaced. The `is_valid` restriction is required **independent of the
+    sign of `delta_cfv`**, the sign being a property of this objective function
+    (`distance_and_user_times_with_walk` penalises unserved requests, so serving one improves
+    the objective) and changeable with a different control function, scenario, or Phase 2
+    shaping. Records explicitly that the byte-for-byte gate would pass with the restriction
+    removed and so does not by itself protect against a padding bug.
+  - D3: "the `k`-th cheapest candidate" replaced with exact ordering language — ascending by
+    `delta_cfv`, element 0 the minimum and most negative, each later slot larger, and **a more
+    negative `delta_cfv` is a larger improvement to the objective**. "Cheapest" is now avoided
+    deliberately and the reason is stated. The truncation note no longer says "most expensive
+    candidates" but "the largest `delta_cfv` values, i.e. the weakest insertions".
+  - P1.10 additionally now requires its driver to select through a **tested helper** rather than
+    an inline `np.argmin`, with a test that fails if the restriction is dropped — "a guard with
+    no test that fails when it is removed is decoration".
+- `tests/test_rl_gym_observers.py` — new `TestPaddingMustNotCompeteInArgmin`, 6 tests.
+
+Verification: **72 tests pass** (66 before, 6 new), 0.011 s.
+
+The new tests supply the counter-example the real scenario does not, using positive `delta_cfv`
+in the valid slots with 0.0 padding: that padding is then strictly the minimum; that an
+unrestricted `argmin` lands on a **padded** slot and is wrong; that the restricted `argmin`
+returns slot 0; that this holds for every valid-slot count 1..K, with the unrestricted form
+disagreeing whenever a padded slot exists; that the restricted form is also correct under the
+real scenario's negative costs, where the two coincide — so the restriction is harmless as well
+as necessary; and the single-valid-slot case.
+
+**Scope note, stated plainly:** these 6 tests pin the *contract and the counter-example*. They do
+not yet make a removed guard fail, because the guard lives in P1.10's driver, which does not
+exist. That is why the spec now requires P1.10's driver to go through a tested helper. The direct
+"remove the restriction, a test fails" coverage lands in P1.10.
+
+---
+
+## P1.7 — STARTED 2026-09-12 23:54
+Files I will touch: src/rl_gym/reward.py, src/demand/demand.py,
+tests/test_rl_gym_reward.py, docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+## P1.7 — DONE 2026-09-13 00:04 — awaiting Ritun's verification
+
+Note on the working tree: the P1.6 FOLLOW-UP changes above (spec corrections plus
+`TestPaddingMustNotCompeteInArgmin`) were not committed before P1.7 began, so they sit in the
+tree alongside this item. Last commit is 6baf6c1 "RL-GYM: add minimal observation builders".
+
+Files changed:
+- `src/rl_gym/reward.py` — **new.** `RewardTracker` with `on_pickup`, `on_exit`,
+  `note_rejection`, `note_no_candidates`, `flush`, `episode_summary`, plus `classify` and
+  `DEFAULT_REWARD_WEIGHTS` (the §6.1 values).
+- `src/demand/demand.py` — **modified**, +23 lines, three `# RL-GYM:` sites: the two callback
+  attributes defaulting to `None` in `Demand.__init__`, the exit hook in `record_user`, and the
+  boarding hook at the end of `record_boarding`. Both hooks are `None`-guarded and wrapped in
+  `try/except` so a reward bug can never kill a simulation.
+- `tests/test_rl_gym_reward.py` — **new**, 34 stdlib `unittest` tests.
+- `docs/SDPDP_GYM_SPEC_v2.md` — §6.4 eighth branch and its notes; §2.4 corrections.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+Verification — everything passed:
+
+**Unit tests: 106 pass across the suite** (34 new for P1.7), 0.011 s. Covering the §6.1 weight
+values; unknown-weight keys rejected so a config typo cannot silently do nothing; the pickup
+term; last-write-wins across a repeat, including one that straddles a `flush` boundary; the
+dedupe-on-first counter-example (stale 92.9 s vs realized 290 s); every §6.4 branch in order,
+with each earlier branch shown to win against all later flags set; `no_show` gated on
+`pu_time is None` and checked after `diffusion_cancelled`; `chosen_operator_id = 0` counting as
+accepted, since operator 0 is falsy and the check must be `is not None`; no fallback to rider
+decline; `on_exit` idempotent across three calls; labels charging nothing until `on_exit`;
+`w_horizon = 0` counted but not charged, and charged when non-zero; `flush` summing and
+resetting its window; `episode_reward` surviving flushes.
+
+**Full scripted greedy day with both callbacks wired, all 13 reconciliation checks exact:**
+
+| | tracker | baseline |
+|---|---|---|
+| pickups (distinct rids) | 288 | 288 |
+| served | 288 | 288 |
+| rider declined | 118 | 118 |
+| diffusion cancelled | 28 | 28 |
+| no candidates | 9 | 9 |
+| no-show | 2 | 2 |
+| operator rejected | 0 | 0 |
+| **unclassified** | **0** | 0 |
+| unserved at horizon | 0 | 0 |
+| duplicate boardings | 1 | 1 |
+| boarding calls | 289 | 289 |
+| exits | 445 | 445 |
+| terminal outcomes sum | 445 | 445 |
+
+**Byte-for-byte, both ways.** `demand.py` is an existing file every scenario uses, so both
+paths were re-run: the RL greedy day **with** the tracker and both callbacks attached is
+identical to `docs/baseline_user_stats.csv` (md5 `53879ea79cf211d700f670dee1173dd5`), and the
+**stock non-RL** `run_examples.py` scenario with the callbacks left `None` is identical too.
+The hooks perturb nothing, attached or not.
+
+**Independent arithmetic check of the reward.** Recomputing the episode total straight from
+`baseline_user_stats.csv` — 288 pickups at `w_pickup`, less `w_wait` times the summed wait, less
+118 declines, 28 cancellations, 2 no-shows and 9 no-candidates at their weights — gives
+**116.510947**, against the tracker's **116.510947**, difference 0.000000000. Mean wait 588.7 s
+over 288 pickups, consistent with the 0.398 mean normalized offered-wait P1.6 measured against
+`op_max_wait_time = 1500`.
+
+**Flush accounting (D6).** 436 flushes for 436 gym steps, 263 of them non-zero; the flush sum
+equals `episode_reward` exactly and `unflushed_reward` is 0.0, so the final flush did capture
+the episode tail — the events `record_remaining_assignments` and `record_remaining_users`
+produce after `end_time`.
+
+VERIFY findings:
+- Which of `Demand` / `SlaveDemand` `ImmediateDecisionsSimulation` instantiates:
+  **matched the spec — `Demand`.** `_load_demand_module` takes the `SlaveDemand` branch only
+  when `sim_env == "MobiTopp"`; this project's is `RLImmediateDecisionsSimulation`.
+
+Two facts recorded in §2.4 alongside it, both found while wiring:
+- `record_user` is defined **only** on `Demand`, so the single exit hook covers both classes.
+- `record_boarding` **is** overridden by `SlaveDemand` (~line 363), so the boarding hook on
+  `Demand.record_boarding` does not cover that override. Correct by scope here, but a silent gap
+  for anyone who later runs MobiTopp: they would get exit events and no pickup events at all.
+
+§2.4 correction: the dead `user_cancels_request` is on **`SlaveDemand`**, not `Demand` —
+demand.py ~line 355, inside `class SlaveDemand(Demand)`, and the line number had also drifted
+from 350 after P1.2. The conclusion is stronger than the spec stated: dead twice over, since
+nothing calls it *and* its class is never instantiated here. Confirmed no caller anywhere.
+
+Six live `record_user` paths confirmed, matching §6.4's count exactly:
+`FleetSimulationBase.py` ~756 (undecided leaves system), ~781 (chose < 0), ~921 (diffusion
+cancellation), `demand.py` ~253 (`record_no_show`), ~271 (`record_alighting_start`, the success
+path), ~282 (`record_remaining_users`). All five §6.4 request attributes exist on `RequestBase`:
+`no_show` (~66), `diffusion_cancelled` (~80), `rider_declined` (~90), `pu_time` (~116),
+`do_time` (~119), plus `chosen_operator_id` (~112) for the new branch 7.
+
+Spec changes made this turn:
+- §6.4 now has **eight** branches, with `pu_time is None and chosen_operator_id is not None ->
+  unserved at horizon, -w_horizon` inserted at 7 and unclassified moved to 8.
+- §6.4 records why the charge lives there rather than in an env-side end-of-episode sweep: a
+  second charging site would contradict the rule that all reward is charged once in `on_exit`,
+  and it keeps branch 8 meaning strictly "a path was missed".
+- §6.4 records that branch 7 is **unreachable on the reference day** and why that is expected
+  rather than evidence it is dead — 0 unclassified, 288 pickups against 288 dropoffs, so
+  `record_remaining_assignments` completes every in-flight trip — and when it becomes live: a day
+  where the `end_time + 14400` cap binds, or a policy that over-commits.
+- §2.4: `user_cancels_request` reattributed to `SlaveDemand` with the stronger conclusion; the
+  `Demand`-is-instantiated VERIFY replaced with the confirmed finding; the `record_user`-only-on-
+  `Demand` and `record_boarding`-overridden-by-`SlaveDemand` facts recorded.
+
+Decisions:
+- Asked: §6.1 charges `-w_horizon` at "end of episode" but §6.4's classification has no such
+  branch, so an accepted-but-never-picked-up rider falls into "unclassified — charge nothing",
+  which §6.4 says means a path was missed. Explicit branch, or a separate env-side sweep?
+  Ritun: take the recommendation — explicit branch between no-show and unclassified, making
+  §6.4 eight branches. He confirmed `chosen_operator_id` independently: initialized `None` at
+  `TravelerModels.py:112`, set only inside `choose_offer` on acceptance; diffusion-cancelled
+  baseline rows carry 0 while declined and no-candidate rows are empty, so the attribute means
+  what is needed and earlier branches catch everyone who accepted and then failed another way.
+  He also asked that the argument against the env-side sweep be kept in §6.4, and that branch 7's
+  unreachability on this day be recorded so a future reader does not assume it is dead.
+- Ritun: §2.4 correction accepted, with the stronger conclusion recorded, plus the
+  `SlaveDemand.record_boarding` override noted as a silent gap for MobiTopp.

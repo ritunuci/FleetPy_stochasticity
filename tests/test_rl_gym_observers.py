@@ -303,6 +303,76 @@ class TestGlobalStateObserver(unittest.TestCase):
             GlobalStateObserver({})
 
 
+class TestPaddingMustNotCompeteInArgmin(unittest.TestCase):
+    """Pins why the scripted greedy driver must restrict its argmin to `is_valid` slots.
+
+    On the reference scenario real `delta_cfv` is negative, so 0.0 padding is the largest value
+    in the slot and an unrestricted argmin coincidentally also returns slot 0 -- which means
+    P1.10's byte-for-byte gate would pass even with the restriction removed. The sign is a
+    property of this objective function, not of the design, and could change.
+
+    These tests supply the counter-example the real scenario does not: positive `delta_cfv` in
+    the valid slots, where an unrestricted argmin returns a padded slot and is wrong. If the
+    restriction is ever dropped, `test_unrestricted_argmin_is_wrong_under_positive_costs`
+    documents the failure and `test_restricted_argmin_is_correct_under_positive_costs` is the
+    behaviour that must hold.
+    """
+
+    def setUp(self):
+        self.obs = CandidateObserver(K, SCENARIO)
+        # two valid candidates, both POSITIVE, sorted ascending as insertion returns them
+        self.ctx = StubCtx(make_candidates([100.0, 200.0], [3.0, 7.0]))
+        parts = self.obs.observe(None, self.ctx)
+        self.delta = parts["delta_cfv"]
+        self.valid = parts["is_valid"] > 0
+
+    def test_padding_is_the_minimum_when_real_costs_are_positive(self):
+        # the premise: with positive costs, a padded 0.0 slot is strictly below every real slot
+        self.assertTrue(np.all(self.delta[self.valid] > 0.0))
+        self.assertTrue(np.all(self.delta[~self.valid] == 0.0))
+        self.assertLess(float(self.delta[~self.valid].min()), float(self.delta[self.valid].min()))
+
+    def test_unrestricted_argmin_is_wrong_under_positive_costs(self):
+        # what a driver that forgot the restriction would pick: a padded slot, not slot 0
+        picked = int(np.argmin(self.delta))
+        self.assertFalse(bool(self.valid[picked]),
+                         "unrestricted argmin should land on a padded slot here")
+        self.assertNotEqual(picked, 0)
+
+    def test_restricted_argmin_is_correct_under_positive_costs(self):
+        # the required behaviour: argmin over valid slots only, which is slot 0
+        valid_idx = np.flatnonzero(self.valid)
+        picked = int(valid_idx[np.argmin(self.delta[valid_idx])])
+        self.assertEqual(picked, 0)
+
+    def test_restricted_argmin_is_slot_zero_for_any_positive_sorted_list(self):
+        for n in range(1, K + 1):
+            with self.subTest(n_candidates=n):
+                cfvs = [float(i + 1) * 10.0 for i in range(n)]
+                ctx = StubCtx(make_candidates([100.0] * n, cfvs))
+                parts = self.obs.observe(None, ctx)
+                valid_idx = np.flatnonzero(parts["is_valid"] > 0)
+                picked = int(valid_idx[np.argmin(parts["delta_cfv"][valid_idx])])
+                self.assertEqual(picked, 0)
+                if n < K:  # a padded slot exists, so the unrestricted form must disagree
+                    self.assertNotEqual(int(np.argmin(parts["delta_cfv"])), picked)
+
+    def test_restricted_argmin_also_correct_under_negative_costs(self):
+        # the real scenario's sign: restriction must be harmless, not just necessary
+        cfvs = [-500.0, -200.0, -10.0]
+        ctx = StubCtx(make_candidates([100.0] * 3, cfvs))
+        parts = self.obs.observe(None, ctx)
+        valid_idx = np.flatnonzero(parts["is_valid"] > 0)
+        self.assertEqual(int(valid_idx[np.argmin(parts["delta_cfv"][valid_idx])]), 0)
+        self.assertEqual(int(np.argmin(parts["delta_cfv"])), 0)  # coincides here
+
+    def test_single_valid_slot_with_positive_cost(self):
+        ctx = StubCtx(make_candidates([100.0], [42.0]))
+        parts = self.obs.observe(None, ctx)
+        valid_idx = np.flatnonzero(parts["is_valid"] > 0)
+        self.assertEqual(int(valid_idx[np.argmin(parts["delta_cfv"][valid_idx])]), 0)
+
+
 class TestCombinedLength(unittest.TestCase):
 
     def test_sum_of_observer_lengths_is_three_k_plus_four(self):

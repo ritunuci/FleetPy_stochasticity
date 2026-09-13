@@ -58,6 +58,10 @@ class Demand:
         # RL-GYM: suppress the user-stats write; record_user itself keeps running because the
         # reward callbacks ride on it
         self.skip_output = scenario_parameters.get(G_SKIP_OUTPUT, False)
+        # RL-GYM: optional observers for RL reward attribution. Both default to None so non-RL
+        # scenarios are untouched; the env attaches them after building the simulation (P1.8).
+        self._boarding_callback = None
+        self._exit_callback = None
         self.user_stat_buffer = []  # list of dictionaries
         # request data bases
         self.rq_db = {}  # rid > rq
@@ -194,6 +198,15 @@ class Demand:
             self.user_stat_buffer.append(self.rq_db[rid].record_data())
         except KeyError:
             LOG.warning(f"addToUserStatBuffer({rid}): user not found in database!")
+        # RL-GYM: every terminal outcome passes through here (§2.4), so this is where the reward
+        # tracker classifies and charges. Defensive: a reward bug must never kill a simulation.
+        if self._exit_callback is not None:
+            try:
+                rq_obj = self.rq_db.get(rid)
+                if rq_obj is not None:
+                    self._exit_callback(rid, rq_obj)
+            except Exception:
+                LOG.warning(f"RL-GYM exit callback failed for rid {rid}", exc_info=True)
 
     def get_new_travelers(self, simulation_time, *, since=None):
         """
@@ -243,6 +256,16 @@ class Demand:
             del self.waiting_rq[rid]
         else:
             LOG.warning("waiting rq boarding warning : rid {} -> vid {} at {}".format(rid, vid, simulation_time))
+        # RL-GYM: pickup does NOT pass through record_user, so reward needs its own callback here
+        # (trap 4). Placed at the end, after user_boards_vehicle has set pu_time, because the
+        # pickup term prices that value and a repeat call must re-price the final one (§6.4).
+        if self._boarding_callback is not None:
+            try:
+                rq_obj = self.rq_db.get(rid)
+                if rq_obj is not None:
+                    self._boarding_callback(rid, rq_obj)
+            except Exception:
+                LOG.warning(f"RL-GYM boarding callback failed for rid {rid}", exc_info=True)
 
     def record_no_show(self, rid, vid, op_id, simulation_time, pu_pos=None, t_access=None):
         """This method should be called whenever a customer does not show up for boarding
