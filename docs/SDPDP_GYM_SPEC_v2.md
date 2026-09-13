@@ -431,12 +431,35 @@ The final flush includes reward events from `record_remaining_assignments`, whic
 in-flight trips after `end_time`. `w_horizon` therefore applies only to riders never picked
 up even after that tail, which is the intended meaning.
 
-### D7. Per-episode reseeding is mandatory.
+### D7. Per-episode reseeding is mandatory for training, and is switched on by `base_seed`.
 
-`reset(seed=...)` writes a fresh `scenario_parameters[G_RANDOM_SEED]` before the simulation
-is constructed. Per research proposal §3.1.2, each day is replayed under several seeds and the agent
-must see demand variation over the months that Ritun will finally decide to work on. Without this every episode replays one sample
-path.
+`reset(seed=...)` draws an episode seed and writes it to
+`scenario_parameters[G_RANDOM_SEED]` before the simulation is constructed. Per research
+proposal §3.1.2, each day is replayed under several seeds and the agent must see demand
+variation over the months that Ritun will finally decide to work on. Without this every episode
+replays one sample path.
+
+**Reseeding happens only when `base_seed` is set in the env config. With `base_seed` absent,
+the scenario row's own `random_seed` is used unchanged and nothing is overwritten.** That is
+not a weakening of D7; it is what makes D7 compatible with the rest of Phase 1. The
+byte-for-byte gates in P1.3, P1.4 and P1.10 compare against `baseline_user_stats.csv`, which
+was generated at `random_seed = 42`. P1.10 drives *this env* and requires the output to match
+byte for byte, so if `reset()` always overwrote the seed, that gate would fail on a different
+sample path — travel times, declines and no-shows all differ — for a reason having nothing to
+do with the plumbing it exists to test. **Do not "fix" this back to unconditional reseeding:**
+doing so breaks the Phase 1 exit gate and every byte comparison behind it.
+
+`reset(seed=...)` still seeds the env's own `np.random.Generator` in both modes, so the
+Gymnasium contract holds either way. Per-worker streams come from
+`np.random.SeedSequence([base_seed, env_id])` — numpy's intended idiom for independent streams,
+which also sidesteps any question about adjacent seeds correlating.
+
+**The default that is safe for reproducibility is unsafe for training.** If `base_seed` is
+absent during a real training run, every episode silently replays one sample path and nothing
+errors — the agent would overfit a single day's realisation while the logs looked healthy.
+Two guards: `train_sdpdp.py` (P1.11) must **raise** if `base_seed` is missing rather than
+defaulting, and the env records the `G_RANDOM_SEED` actually used for the episode in
+`episode_summary()`, so the seed is visible in training logs rather than inferred.
 
 ### D8. `SubprocVecEnv`, never `DummyVecEnv`.
 
@@ -1196,7 +1219,21 @@ cycles leak no memory and no file handles.
 `reset(seed=None)` seeds the env's own `np.random.Generator` on first call, then draws an
 episode seed from it and writes `scenario_parameters[G_RANDOM_SEED] = int(episode_seed)`
 before construction. Each `SubprocVecEnv` worker gets a different base seed derived from
-`env_id`.
+`env_id`, via `np.random.SeedSequence([base_seed, env_id])`.
+
+**This applies only when `base_seed` is set (D7).** With `base_seed` absent, `reset()` seeds
+the env's own generator but leaves `G_RANDOM_SEED` at whatever the scenario row provides, so
+the byte-for-byte gates keep testing the plumbing rather than the seeding. P1.10 runs in that
+mode.
+
+Episode seeds are drawn from `[0, 2**31)`. `np.random.seed` raises above `2**32 - 1`, and every
+stochastic component in the simulator — rider decline, the diffusion random term, no-show,
+initial vehicle state and SoC, stochastic travel time — draws from the global `np.random`
+stream that `FleetSimulationBase.__init__` seeds from this key, so writing it before
+construction is both sufficient and complete.
+
+The env records the seed actually used in `episode_summary()` under `random_seed`, so a
+training log shows which sample path each episode ran.
 
 **Phase 1 implements seeding only.** The demand day is not per-scenario-row —
 `example_depot_cali_sc_1.csv` carries only `op_module`, `scenario_name` and `random_seed`,
@@ -1209,6 +1246,13 @@ When `skip_output` is False, set
 `scenario_name = f"{base}_env{env_id}_pid{os.getpid()}_ep{counter}"`. Both the pid and the
 counter are needed — pid because independently-launched processes can share an `env_id`,
 counter because `create_or_empty_dir` would otherwise erase the previous episode.
+
+The uniqueness key is therefore `(env_id, pid, episode counter)`. **Two env *instances* sharing
+an `env_id` inside one process still collide** on their first episode, since all three
+components match — verified. That requires constructing several envs in a single process with
+the same `env_id`, which is the `DummyVecEnv` pattern D8 forbids; under `SubprocVecEnv` each
+worker is its own process with its own `env_id`. Give every env a distinct `env_id` and the key
+holds.
 
 **How Ritun verifies:** two resets with the same seed give identical trajectories under a
 fixed action sequence; two resets with different seeds produce different `1_user-stats.csv`
@@ -1294,6 +1338,10 @@ the bucket and report it: a non-zero value means the source changed.
 
 `make_env(cfg, env_id)` closure; envs constructed **inside** `_init()`, never before
 `SubprocVecEnv`. FleetPy objects hold routing engines and file handles and are not picklable.
+
+**`train_sdpdp.py` must raise if `base_seed` is missing from the config, never default it.**
+With `base_seed` absent the env deliberately does not reseed (D7), so a training run would
+replay one sample path every episode with nothing erroring and the logs looking healthy.
 
 4 workers, random masked actions, one episode each. No learning algorithm yet.
 

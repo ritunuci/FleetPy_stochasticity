@@ -864,3 +864,108 @@ Decisions:
   above a few seconds; record the vacuous seed-determinism point so P1.9 does not later look
   redundant; and confirm the `study_name` derivation against a path outside
   `studies/example_study`.
+
+---
+
+## P1.9 — STARTED 2026-09-13 01:27
+Files I will touch: src/rl_gym/gym_env.py, tests/test_rl_gym_env.py,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+## P1.9 — DONE 2026-09-13 01:39 — awaiting Ritun's verification
+
+Files changed — only RL-owned files (`git diff --stat -- src/` touches `src/rl_gym/` alone):
+- `src/rl_gym/gym_env.py` — `MAX_EPISODE_SEED`, `_worker_base_seed`, `_apply_episode_seed`,
+  `_apply_episode_scenario_name`; `reset()` seeds and names the episode; `episode_summary()`
+  reports `random_seed`, `env_id` and `episode`
+- `tests/test_rl_gym_env.py` — `TestSeeding` (11) and `TestScenarioNameUniqueness` (2), plus a
+  second `check_env` test with `base_seed` set
+- `docs/SDPDP_GYM_SPEC_v2.md` — D7 reworded; P1.9 seed range, the `episode_summary` seed field
+  and the uniqueness-key caveat; P1.11 must raise on a missing `base_seed`
+- `docs/RL_GYM_PROGRESS.md` — this entry
+
+**A real bug the tests caught, and it would not have been obvious later.** My first
+implementation drew episode seeds from `[0, 2**31)`. Seven tests then failed with
+`ValueError: Seed must be between 0 and 2**32 - 1` raised from **inside simulation
+construction**, at `demand.py` line 78. `Demand.load_demand_file` does
+`np.random.seed(int(1712 * np_random_seed))` — it **multiplies the seed by 1712** before using
+it, and `load_parcel_demand_file` (~line 132) does the same. The usable range is therefore
+`[0, (2**32 - 1) // 1712]` = `[0, 2_508_742]`, not the full 32-bit range. Fixed by deriving
+`MAX_EPISODE_SEED` from that expression rather than picking a literal, with the derivation in a
+comment. Had this shipped, training would have crashed partway into an episode with a message
+pointing at demand loading rather than at seeding — roughly 99.9% of draws from `[0, 2**31)`
+exceed the bound, so it would have failed almost immediately, but for a reason that reads as
+someone else's fault.
+
+Verification — **145 tests pass across the suite**, 75.3 s, no failures and no skips.
+
+Seeding (11 tests):
+- `base_seed` absent leaves `G_RANDOM_SEED` at the row's **42**, even when `reset(seed=999)` is
+  passed — this is what keeps P1.10's byte gate comparing like with like
+- `base_seed` set gives a distinct seed every episode, none equal to 42, all within
+  `MAX_EPISODE_SEED`
+- same `reset(seed=...)` → same episode seed; different → different
+- **same seed → identical trajectories**: rid sequence, `sim_time`, candidate counts and the
+  full reward sequence compared exactly over 40 steps
+- **different seeds → different trajectories**
+- four `env_id`s with one `base_seed` give four distinct streams; `_worker_base_seed` is
+  reproducible for the same `(base_seed, env_id)` and differs across `env_id`
+- `MAX_EPISODE_SEED` bound asserted directly: `1712 * MAX_EPISODE_SEED` is accepted by
+  `np.random.seed` and `1712 * (MAX_EPISODE_SEED + 1)` raises
+- `episode_summary()` reports `random_seed`, `env_id`, `episode`
+
+File-level, with `skip_output = 0` and truncated episodes:
+- same reset seed → **identical `1_user-stats.csv`** (md5 `5e00f189…` twice)
+- different reset seed → **different `1_user-stats.csv`** (`9a04a9ce…`), episode seeds 335672
+  vs 1934854
+- successive resets on one env write `…_ep1`, `…_ep2`, `…_ep3` — three distinct directories
+- four distinct `env_id`s write four distinct directories at the same episode index
+- all directories cleaned up afterwards; no strays left under `results/`
+
+`check_env` (3): passes through the shim with `base_seed` absent **and** with `base_seed` set.
+Recording why both were run: with `base_seed` absent the seed-determinism check passes
+vacuously, since `reset()` leaves `G_RANDOM_SEED` alone; only with `base_seed` set does it
+actually exercise the seeding path. That was the open point carried over from P1.8, now closed.
+
+**A check of mine that was wrong, not the code.** My first file-level script rolled out three
+*separate env instances* and asserted they would write three distinct directories. They all
+wrote `…_ep1`, because `episode_counter` starts at 1 in each instance — by design. The real
+claims are that successive resets on one env differ, and that distinct `env_id`s differ; both
+verified after correcting the script.
+
+That did surface a genuine edge, now recorded in P1.9's spec text: the uniqueness key is
+`(env_id, pid, episode counter)`, so **two env instances sharing an `env_id` in one process do
+collide** on their first episode. Verified deliberately. It requires the `DummyVecEnv` pattern
+D8 forbids; under `SubprocVecEnv` each worker is its own process with its own `env_id`.
+
+VERIFY findings: P1.9 carries no `VERIFY` markers. The source facts it depends on were checked
+during planning and all held — every stochastic component (rider decline, diffusion random
+term, no-show, initial vehicle state and SoC, stochastic travel time) draws from the global
+`np.random` stream that `FleetSimulationBase.__init__` seeds from `G_RANDOM_SEED`, so writing
+that key before construction is sufficient and complete. The 1712 multiplier above is the one
+thing that planning missed and testing caught.
+
+Spec changes made this turn:
+- **D7 reworded.** It said "Per-episode reseeding is mandatory", which under this change would
+  have contradicted P1.9 — a DECIDED section against a work item, which §0 says to stop on. It
+  now says reseeding is mandatory *for training* and is switched on by `base_seed`; with
+  `base_seed` absent the scenario row's seed is used unchanged, because the byte-for-byte gates
+  in P1.3, P1.4 and P1.10 compare against a baseline generated at seed 42. The reason is stated
+  so nobody restores unconditional reseeding and breaks the exit gate.
+- D7 also records that the default which is safe for reproducibility is unsafe for training —
+  absent `base_seed`, a real run silently replays one sample path with nothing erroring — and
+  names the two guards: `train_sdpdp.py` must raise, and the env reports the seed in
+  `episode_summary()`.
+- P1.9: the `SeedSequence([base_seed, env_id])` idiom, the `[0, MAX_EPISODE_SEED]` range with
+  the 1712 reason, the `episode_summary` seed field, and the uniqueness-key caveat.
+- P1.11: must raise if `base_seed` is missing rather than defaulting it.
+
+Decisions:
+- Asked: if `reset()` always overwrites `G_RANDOM_SEED`, P1.10's byte-for-byte gate cannot pass,
+  since the baseline was generated at seed 42. Make `base_seed` the switch, with absent meaning
+  "do not reseed"?
+  Ritun: yes — the only resolution that keeps P1.10 testing the plumbing. The D7/P1.10 collision
+  was his, written without checking the two were compatible. `SeedSequence([base_seed, env_id])`
+  agreed as numpy's intended idiom. Amend D7 in the same turn, since a DECIDED section
+  contradicting a work item is a stop condition; note that the reproducibility-safe default is
+  training-unsafe, with `train_sdpdp.py` raising and the seed recorded in `episode_summary`; and
+  exercise `check_env`'s seed-determinism check in both modes.

@@ -17,9 +17,13 @@ indistinguishable from a real learned preference. `gymnasium.utils.env_checker.c
 samples actions without regard to the mask and so cannot be run against this env directly --
 see the shim in `tests/test_rl_gym_env.py`.
 
-Per-episode seeding and the unique `scenario_name` are P1.9. Until then `reset()` accepts the
-seed argument for API conformance but builds with the scenario row's own `random_seed`, so two
-resets are identical trivially rather than because seeding works.
+**Seeding is switched on by `base_seed` (D7).** With `base_seed` set, each `reset()` draws an
+episode seed and writes it to `scenario_parameters[G_RANDOM_SEED]` before construction, which
+is what gives the agent demand variation across episodes. With `base_seed` absent, the scenario
+row's own `random_seed` is used unchanged -- that is what lets P1.10's byte-for-byte gate
+compare against a baseline generated at seed 42 and so keep testing the plumbing rather than the
+seeding. `reset(seed=...)` seeds the env's own generator in both modes, so the Gymnasium
+contract holds either way.
 """
 
 import logging
@@ -32,6 +36,7 @@ import numpy as np
 from src.misc import config
 from src.misc.globals import (
     G_OP_MODULE,
+    G_RANDOM_SEED,
     G_RL_MODE,
     G_SCENARIO_NAME,
     G_SIM_ENV,
@@ -47,6 +52,14 @@ LOG = logging.getLogger(__name__)
 
 RL_SIM_ENV = "RLImmediateDecisionsSimulation"
 RL_OP_MODULE = "RLPoolingIRSOnly"
+
+#: Upper bound for an episode seed, and it is **not** 2**32.
+#: `Demand.load_demand_file` (demand.py ~line 78) and `load_parcel_demand_file` (~line 132)
+#: both do `np.random.seed(int(1712 * np_random_seed))`, multiplying the seed before using it.
+#: `np.random.seed` rejects anything above 2**32 - 1, so the seed itself must stay below
+#: (2**32 - 1) // 1712. Drawing from the full 32-bit range raises ValueError partway through
+#: simulation construction, not at reset, which makes it look like a demand-loading fault.
+MAX_EPISODE_SEED = (2 ** 32 - 1) // 1712  # 2_508_742
 
 
 def derive_study_name(constant_cfg_path: str) -> str:
@@ -80,9 +93,13 @@ class SDPDPAssignmentEnv(gym.Env):
         self.skip_output = bool(cfg.get("skip_output", True))
         self.reward_weights = cfg.get("reward_weights")
         self.env_id = int(cfg.get("env_id", 0))
-        # accepted for forward compatibility; P1.9 owns seeding, Phase 2 owns day rotation
+        # base_seed absent => do not reseed; the scenario row's own random_seed is used
+        # unchanged, which is what the byte-for-byte gates require (D7)
         self.base_seed = cfg.get("base_seed")
+        # accepted for forward compatibility; Phase 2 owns multi-day rotation
         self.scenario_pool = cfg.get("scenario_pool")
+        self._generator_seeded = False
+        self._episode_seed = None
 
         self.scenario_parameters = self._build_scenario_parameters()
 
@@ -149,11 +166,17 @@ class SDPDPAssignmentEnv(gym.Env):
         makes a used object unrunnable (trap 7), and reusing one would leak stochastic
         travel-time state, dynamic network state and RNG state across episodes.
         """
+        if seed is None and not self._generator_seeded and self.base_seed is not None:
+            seed = self._worker_base_seed()
         super().reset(seed=seed)
+        if seed is not None:
+            self._generator_seeded = True
         self.close()
 
         scenario_parameters = dict(self.scenario_parameters)
-        # P1.9 will derive a per-episode seed and a unique scenario_name here
+        self.episode_counter += 1
+        self._apply_episode_seed(scenario_parameters)
+        self._apply_episode_scenario_name(scenario_parameters)
 
         self.sim = load_simulation_environment(scenario_parameters)
         self._tracker = RewardTracker(self.reward_weights)
@@ -164,7 +187,6 @@ class SDPDPAssignmentEnv(gym.Env):
         self._generator = self.sim.run_generator()
         self._terminated = False
         self.step_counter = 0
-        self.episode_counter += 1
 
         try:
             self._pending = next(self._generator)
@@ -235,6 +257,46 @@ class SDPDPAssignmentEnv(gym.Env):
     # internals
     # ---------------------------------------------------------------- #
 
+    def _worker_base_seed(self) -> int:
+        """This worker's stream seed, from `base_seed` and `env_id`.
+
+        `SeedSequence` rather than `base_seed + env_id`: it is numpy's intended idiom for
+        independent streams and sidesteps any question about adjacent seeds correlating.
+        """
+        ss = np.random.SeedSequence([int(self.base_seed), int(self.env_id)])
+        return int(ss.generate_state(1, dtype=np.uint32)[0])
+
+    def _apply_episode_seed(self, scenario_parameters: dict) -> None:
+        """Draw and write this episode's `G_RANDOM_SEED` -- only when `base_seed` is set.
+
+        With `base_seed` absent the scenario row's own seed is left untouched, which is what
+        keeps P1.10's byte-for-byte gate comparing like with like (D7). Every stochastic
+        component draws from the global `np.random` stream that `FleetSimulationBase.__init__`
+        seeds from this key, so writing it here is sufficient and complete.
+        """
+        if self.base_seed is None:
+            self._episode_seed = scenario_parameters.get(G_RANDOM_SEED)
+            return
+        # bounded by the 1712 multiplier inside load_demand_file, not by 2**32 -- see
+        # MAX_EPISODE_SEED
+        self._episode_seed = int(self.np_random.integers(0, MAX_EPISODE_SEED + 1))
+        scenario_parameters[G_RANDOM_SEED] = self._episode_seed
+
+    def _apply_episode_scenario_name(self, scenario_parameters: dict) -> None:
+        """Make the output directory unique per worker, process and episode.
+
+        Only matters when output is on: `create_or_empty_dir` wipes the directory it is given,
+        so two workers sharing a `scenario_name` would erase each other (trap 1). The pid is
+        needed because independently launched processes can share an `env_id`, and the counter
+        because otherwise each episode would erase the previous one.
+        """
+        if self.skip_output:
+            return
+        base = self.scenario_parameters[G_SCENARIO_NAME]
+        scenario_parameters[G_SCENARIO_NAME] = (
+            f"{base}_env{self.env_id}_pid{os.getpid()}_ep{self.episode_counter}"
+        )
+
     def _translate(self, action: int) -> Optional[int]:
         """Raw action -> semantic choice. `K` is reject; `k < K` is a candidate index."""
         if not self.action_space.contains(action):
@@ -270,9 +332,17 @@ class SDPDPAssignmentEnv(gym.Env):
     def _episode_info(self) -> Dict[str, Any]:
         info = {"episode_steps": self.step_counter, "episode": self.episode_counter}
         if self._tracker is not None:
-            info["episode_summary"] = self._tracker.episode_summary()
+            info["episode_summary"] = self.episode_summary()
         return info
 
     def episode_summary(self) -> Dict[str, Any]:
-        """The tracker's event breakdown for the current or just-finished episode."""
-        return self._tracker.episode_summary() if self._tracker is not None else {}
+        """The tracker's event breakdown for the current or just-finished episode.
+
+        Carries `random_seed`, the seed the episode actually ran under, so a training log shows
+        which sample path each episode saw rather than leaving it to be inferred (D7).
+        """
+        summary = self._tracker.episode_summary() if self._tracker is not None else {}
+        summary["random_seed"] = self._episode_seed
+        summary["env_id"] = self.env_id
+        summary["episode"] = self.episode_counter
+        return summary

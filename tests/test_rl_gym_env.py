@@ -24,7 +24,11 @@ from src.misc.globals import (  # noqa: E402
     G_SKIP_OUTPUT,
     G_STUDY_NAME,
 )
-from src.rl_gym.gym_env import SDPDPAssignmentEnv, derive_study_name  # noqa: E402
+from src.rl_gym.gym_env import (  # noqa: E402
+    MAX_EPISODE_SEED,
+    SDPDPAssignmentEnv,
+    derive_study_name,
+)
 
 SCS = os.path.join(os.path.dirname(__file__), "..", "studies", "example_study", "scenarios")
 K = 8
@@ -349,6 +353,177 @@ class TestCheckEnv(unittest.TestCase):
             check_env(MaskRespectingShim(env), skip_render_check=True)
         finally:
             env.close()
+
+    def test_check_env_passes_with_base_seed_set(self):
+        # with base_seed absent the seed-determinism check passes vacuously, because reset()
+        # leaves G_RANDOM_SEED alone; with base_seed set it is a real check of the seeding
+        warnings.filterwarnings("ignore")
+        from gymnasium.utils.env_checker import check_env
+        env = SDPDPAssignmentEnv(make_cfg(base_seed=20260913))
+        try:
+            check_env(MaskRespectingShim(env), skip_render_check=True)
+        finally:
+            env.close()
+
+
+class TestSeeding(unittest.TestCase):
+    """P1.9. `base_seed` absent means do not reseed; set means per-episode reseeding (D7)."""
+
+    def test_base_seed_absent_leaves_the_scenario_seed_untouched(self):
+        env = SDPDPAssignmentEnv(make_cfg())
+        self.assertIsNone(env.base_seed)
+        env.reset()
+        self.assertEqual(env.episode_summary()["random_seed"], 42,
+                         "the byte-for-byte gates depend on this staying at the row's seed")
+        env.reset(seed=999)
+        self.assertEqual(env.episode_summary()["random_seed"], 42,
+                         "an explicit reset seed must not override the scenario seed here")
+        env.close()
+
+    def test_base_seed_set_reseeds_every_episode(self):
+        env = SDPDPAssignmentEnv(make_cfg(base_seed=12345))
+        seeds = []
+        for _ in range(3):
+            env.reset()
+            seeds.append(env.episode_summary()["random_seed"])
+        env.close()
+        self.assertEqual(len(set(seeds)), 3, f"episodes reused a seed: {seeds}")
+        self.assertNotIn(42, seeds, "the scenario row's seed should have been replaced")
+        for s in seeds:
+            self.assertTrue(0 <= s <= MAX_EPISODE_SEED,
+                            f"seed {s} above MAX_EPISODE_SEED; load_demand_file multiplies "
+                            f"by 1712 and np.random.seed would raise")
+
+    def test_episode_seed_bound_respects_the_1712_multiplier(self):
+        # demand.py seeds with int(1712 * seed), so the usable range is far below 2**32.
+        # Drawing from the full range raises inside simulation construction, which reads as a
+        # demand-loading fault rather than a seeding bug.
+        self.assertEqual(MAX_EPISODE_SEED, (2 ** 32 - 1) // 1712)
+        self.assertLess(1712 * MAX_EPISODE_SEED, 2 ** 32)
+        np.random.seed(int(1712 * MAX_EPISODE_SEED))          # must not raise
+        with self.assertRaises(ValueError):
+            np.random.seed(int(1712 * (MAX_EPISODE_SEED + 1)))
+
+    def test_many_draws_all_stay_in_range(self):
+        env = SDPDPAssignmentEnv(make_cfg(base_seed=2024))
+        gen = np.random.default_rng(env._worker_base_seed())
+        draws = gen.integers(0, MAX_EPISODE_SEED + 1, size=5000)
+        self.assertTrue(draws.min() >= 0)
+        self.assertTrue(draws.max() <= MAX_EPISODE_SEED)
+
+    def test_same_reset_seed_gives_the_same_episode_seed(self):
+        env = SDPDPAssignmentEnv(make_cfg(base_seed=12345))
+        env.reset(seed=7)
+        first = env.episode_summary()["random_seed"]
+        env.reset(seed=7)
+        second = env.episode_summary()["random_seed"]
+        env.close()
+        self.assertEqual(first, second)
+
+    def test_different_reset_seeds_give_different_episode_seeds(self):
+        env = SDPDPAssignmentEnv(make_cfg(base_seed=12345))
+        env.reset(seed=1)
+        a = env.episode_summary()["random_seed"]
+        env.reset(seed=2)
+        b = env.episode_summary()["random_seed"]
+        env.close()
+        self.assertNotEqual(a, b)
+
+    def test_same_seed_gives_identical_trajectories(self):
+        def rollout(seed):
+            env = SDPDPAssignmentEnv(make_cfg(base_seed=555))
+            obs, info = env.reset(seed=seed)
+            trace = [(info["rid"], info["sim_time"], info["n_candidates"])]
+            rewards = []
+            for _ in range(40):
+                obs, r, term, _, info = env.step(greedy_action(env, obs))
+                rewards.append(r)
+                if term:
+                    break
+                trace.append((info["rid"], info["sim_time"], info["n_candidates"]))
+            seed_used = env.episode_summary()["random_seed"]
+            env.close()
+            return trace, rewards, seed_used
+        a_trace, a_rew, a_seed = rollout(31337)
+        b_trace, b_rew, b_seed = rollout(31337)
+        self.assertEqual(a_seed, b_seed)
+        self.assertEqual(a_trace, b_trace)
+        np.testing.assert_allclose(a_rew, b_rew, rtol=0, atol=0)
+
+    def test_different_seeds_give_different_trajectories(self):
+        def rollout(seed):
+            env = SDPDPAssignmentEnv(make_cfg(base_seed=555))
+            obs, info = env.reset(seed=seed)
+            rewards = []
+            for _ in range(80):
+                obs, r, term, _, _ = env.step(greedy_action(env, obs))
+                rewards.append(r)
+                if term:
+                    break
+            env.close()
+            return rewards
+        self.assertNotEqual(rollout(1), rollout(2),
+                            "different seeds produced an identical reward sequence")
+
+    def test_env_id_gives_each_worker_a_different_stream(self):
+        seeds = []
+        for env_id in range(4):
+            env = SDPDPAssignmentEnv(make_cfg(base_seed=99, env_id=env_id))
+            env.reset()
+            seeds.append(env.episode_summary()["random_seed"])
+            env.close()
+        self.assertEqual(len(set(seeds)), 4, f"workers shared a seed: {seeds}")
+
+    def test_worker_base_seed_is_reproducible(self):
+        a = SDPDPAssignmentEnv(make_cfg(base_seed=99, env_id=2))._worker_base_seed()
+        b = SDPDPAssignmentEnv(make_cfg(base_seed=99, env_id=2))._worker_base_seed()
+        c = SDPDPAssignmentEnv(make_cfg(base_seed=99, env_id=3))._worker_base_seed()
+        self.assertEqual(a, b)
+        self.assertNotEqual(a, c)
+
+    def test_episode_summary_reports_the_seed_and_worker(self):
+        env = SDPDPAssignmentEnv(make_cfg(base_seed=7, env_id=3))
+        env.reset()
+        s = env.episode_summary()
+        env.close()
+        self.assertIn("random_seed", s)
+        self.assertEqual(s["env_id"], 3)
+        self.assertEqual(s["episode"], 1)
+
+
+class TestScenarioNameUniqueness(unittest.TestCase):
+
+    def test_scenario_name_untouched_when_output_is_skipped(self):
+        env = SDPDPAssignmentEnv(make_cfg(skip_output=True))
+        env.reset()
+        self.assertEqual(env.sim.scenario_name,
+                         env.scenario_parameters["scenario_name"])
+        env.close()
+
+    def test_scenario_name_carries_env_pid_and_counter_when_output_is_on(self):
+        env = SDPDPAssignmentEnv(make_cfg(skip_output=False, env_id=2))
+        made = []
+        try:
+            for _ in range(2):
+                env.reset()
+                made.append(env.sim.scenario_name)
+            env.close()
+            base = env.scenario_parameters["scenario_name"]
+            for i, name in enumerate(made, start=1):
+                self.assertTrue(name.startswith(base))
+                self.assertIn("_env2_", name)
+                self.assertIn(f"_pid{os.getpid()}_", name)
+                self.assertTrue(name.endswith(f"_ep{i}"))
+            self.assertEqual(len(set(made)), 2,
+                             "episodes reused a directory; create_or_empty_dir would erase it")
+        finally:
+            import shutil
+            results = os.path.join(os.path.dirname(__file__), "..", "studies",
+                                   "example_study", "results")
+            for name in made:
+                d = os.path.join(results, name)
+                if os.path.isdir(d):
+                    shutil.rmtree(d)
 
 
 if __name__ == "__main__":
