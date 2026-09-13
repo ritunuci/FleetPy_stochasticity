@@ -969,3 +969,107 @@ Decisions:
   contradicting a work item is a stop condition; note that the reproducibility-safe default is
   training-unsafe, with `train_sdpdp.py` raising and the seed recorded in `episode_summary`; and
   exercise `check_env`'s seed-determinism check in both modes.
+
+---
+
+## P1.10 — STARTED 2026-09-13 01:57
+Files I will touch: src/rl_gym/policies.py, tests/test_rl_gym.py,
+tests/test_rl_gym_observers.py, docs/RL_GYM_PHASE1_RESULTS.md,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+## P1.10 — DONE 2026-09-13 02:08 — awaiting Ritun's verification
+
+# # # THE PHASE 1 EXIT GATE PASSES, BYTE FOR BYTE. # # #
+
+Files changed — no existing source file modified (`git diff --stat -- src/` empty):
+- `src/rl_gym/policies.py` — **new.** `greedy_action(obs, mask, k_max)` and `greedy_choice`
+- `tests/test_rl_gym.py` — **new.** The exit gate, 7 tests
+- `tests/test_rl_gym_observers.py` — `TestGreedyActionHelper`, 9 tests
+- `docs/RL_GYM_PHASE1_RESULTS.md` — **new**, all figures below
+- `docs/SDPDP_GYM_SPEC_v2.md` — P1.10 Files line and the `policies.py` rationale; P2.7 must
+  import the same helper; §6.4 branch-7 correction (below)
+- `docs/RL_GYM_PROGRESS.md` — this entry
+
+### The gate
+
+`1_user-stats.csv` from a scripted greedy rollout driven entirely through the Gym API is
+**identical to `docs/baseline_user_stats.csv`** — md5 `53879ea79cf211d700f670dee1173dd5` both,
+117,056 bytes, zero differing bytes. `base_seed` absent so `G_RANDOM_SEED` stayed at 42 (D7).
+
+Reconciliation, exact: 436 decisions + 0 reservation + 9 empty-candidate + 0 same-origin-
+destination + 0 duplicate-rid = **445**.
+
+Reward counts reconcile against the baseline again through the gym path: pickups 288, served
+288, declined 118, diffusion-cancelled 28, no-candidates 9, no-show 2, operator-rejected 0,
+**unclassified 0**, exits 445, duplicate boardings 1, `episode_reward` 116.510947 with
+`unflushed_reward` 0.0 and the flush sum matching it exactly.
+
+Throughput: 436 steps in 38.00 s, 11.47 steps/second.
+
+### Gaps between decision epochs
+
+Simulated seconds, all gaps: min 0.0, median 60.0, mean 99.2, p95 300.0, max 660.0.
+**Zero-gap count reported separately as its own figure: 119 of 435, 27.4%.** Those windows
+carry no simulated time at all — two requests in the same time step — so they can contain only
+the action's own immediate consequence. Excluding them: min 60.0, median 120.0, mean 136.5,
+p95 360.0, max 660.0. Two distinct regimes, which is what matters for P2.5.
+
+Wall clock, for throughput only: min 0.0071, median 0.0771, mean 0.0872, p95 0.1707,
+max 0.4494 s.
+
+### The `record_remaining_assignments` tail — and a correction it forced
+
+**The tail adds zero simulated seconds, with zero riders in flight at `end_time`.** The cap
+(`end_time + 14400`) is 0% used, so it is nowhere near binding.
+
+The instrumentation confirmed `record_remaining_assignments` was entered, so this is a real
+measurement, not a missed hook. The reason is that the day finishes its work early: last
+request at `rq_time` 68400, latest pickup 69064.2, latest dropoff 69805.3, all below
+`end_time` 70000. The baseline has no row with a pickup or dropoff past 70000.
+
+**This corrects a claim I made in the P1.7 entry and wrote into §6.4.** I had said 288 pickups
+against 288 dropoffs meant "`record_remaining_assignments` completes every in-flight trip".
+That inference was wrong. The tail completes *nothing*, because nothing is in flight. Same
+conclusion — nobody stranded — but a different mechanism, and the difference matters: the
+margin is only about **195 simulated seconds** between the last dropoff and `end_time`. A later
+demand tail, heavier load, longer trips, or a policy that defers pickups would push work past
+`end_time` and the tail would start doing real work. §6.4 now states the measured reason and
+records that `w_horizon = 0.0` is a placeholder resting on that 195 s margin, not a settled
+decision.
+
+So, to Ritun's question about the tail being a surprise at scale: **on this day it costs
+nothing**, and the thing to watch is the 195 s margin rather than the tail itself.
+
+### Candidate lengths
+
+436 decisions, min 1, median 5, mean 4.60, max 11, 13 exceeding `K = 8` — reproducing P1.3
+exactly through a different code path.
+
+### The tested helper
+
+`greedy_action` lives in `src/rl_gym/policies.py`, one file and one function, with the
+`obs[K:2K]` layout dependency stated in its docstring. Nine tests, beside
+`TestPaddingMustNotCompeteInArgmin`: it picks slot 0 on sorted negative and sorted positive
+lists; **an unrestricted `argmin` lands on a padded slot and disagrees** under positive costs;
+it selects by value rather than assuming index 0, so it does not silently depend on
+`insertion.py`'s ordering; it rejects when no candidate is valid; the returned action is legal
+under the mask for every candidate count 0..11; shape mismatches raise; and the `delta_cfv`
+slice is pinned so a reordering of `CandidateObserver`'s dict fails here rather than silently
+selecting on `is_valid` or `offered_wait`.
+
+Suite total: **161 tests pass**, 114.9 s, no failures and no skips. No stray result directories.
+
+VERIFY findings: P1.10 carries no `VERIFY` markers. Its reconciliation rests on §2.8's 445
+requests and P1.3's bucket counts, both re-established independently here through the gym API.
+
+Decisions:
+- Asked: where should the tested greedy helper live — `observers.py` (owns the layout),
+  `spaces.py`, or a new `policies.py`?
+  Ritun: `policies.py`. The deciding factor is P2.7: the greedy baseline for the RL comparison
+  is this same function, and if it diverged from the greedy P1.10 tested, the headline result
+  would be quietly invalid. One file, one function, layout dependency in the docstring rather
+  than implied by co-location; add it to P1.10's Files line and note in P2.7 that it imports
+  from there.
+- Ritun: report the zero-gap count as its own figure rather than folded into the distribution,
+  since same-timestamp windows are a distinct regime; and if the tail approached +14400, treat
+  it as a finding and say so plainly. It did not — it is 0.

@@ -25,7 +25,8 @@ from src.rl_gym.observers import (  # noqa: E402
     GlobalStateObserver,
     signed_log1p,
 )
-from src.rl_gym.spaces import candidate_slot_validity  # noqa: E402
+from src.rl_gym.policies import greedy_action, greedy_choice  # noqa: E402
+from src.rl_gym.spaces import build_action_mask, candidate_slot_validity  # noqa: E402
 
 K = 8
 MAX_WT = 1500.0
@@ -371,6 +372,95 @@ class TestPaddingMustNotCompeteInArgmin(unittest.TestCase):
         parts = self.obs.observe(None, ctx)
         valid_idx = np.flatnonzero(parts["is_valid"] > 0)
         self.assertEqual(int(valid_idx[np.argmin(parts["delta_cfv"][valid_idx])]), 0)
+
+
+class TestGreedyActionHelper(unittest.TestCase):
+    """`policies.greedy_action` — the helper P1.10 drives with and P2.7's baseline imports.
+
+    These are the tests that fail if the `is_valid` restriction is removed. The byte-for-byte
+    gate cannot catch that, because real `delta_cfv` on this scenario is negative and an
+    unrestricted argmin coincidentally agrees; the positive-cost cases below are where the two
+    diverge.
+    """
+
+    def setUp(self):
+        self.obs_builder = CandidateObserver(K, SCENARIO)
+        self.glob = GlobalStateObserver(SCENARIO)
+
+    def _full_obs(self, ctx):
+        fc = StubFleetCtrl([VRL_STATES.IDLE])
+        return np.concatenate([self.obs_builder.observe_vector(None, ctx),
+                               self.glob.observe_vector(fc, ctx)])
+
+    def test_picks_slot_zero_on_a_sorted_negative_list(self):
+        ctx = StubCtx(make_candidates([100.0] * 4, [-500.0, -200.0, -50.0, -1.0]))
+        obs = self._full_obs(ctx)
+        mask = build_action_mask(4, K)
+        self.assertEqual(greedy_action(obs, mask, K), 0)
+
+    def test_picks_slot_zero_on_a_sorted_positive_list(self):
+        # the case that separates restricted from unrestricted
+        ctx = StubCtx(make_candidates([100.0] * 3, [3.0, 7.0, 11.0]))
+        obs = self._full_obs(ctx)
+        mask = build_action_mask(3, K)
+        self.assertEqual(greedy_action(obs, mask, K), 0)
+
+    def test_unrestricted_argmin_would_disagree_under_positive_costs(self):
+        # documents precisely what a dropped restriction would do
+        ctx = StubCtx(make_candidates([100.0] * 3, [3.0, 7.0, 11.0]))
+        obs = self._full_obs(ctx)
+        mask = build_action_mask(3, K)
+        naive = int(np.argmin(obs[K:2 * K]))          # no is_valid restriction
+        self.assertNotEqual(naive, greedy_action(obs, mask, K))
+        self.assertFalse(mask[naive], "the naive pick lands on a padded slot")
+
+    def test_selects_by_value_not_by_assuming_index_zero(self):
+        # an unsorted list must still give the true minimum, so the helper does not silently
+        # depend on insertion.py's ordering
+        ctx = StubCtx(make_candidates([100.0] * 4, [9.0, 2.0, 40.0, 5.0]))
+        obs = self._full_obs(ctx)
+        mask = build_action_mask(4, K)
+        self.assertEqual(greedy_action(obs, mask, K), 1)
+
+    def test_rejects_when_no_candidate_is_valid(self):
+        ctx = StubCtx([])
+        obs = self._full_obs(ctx)
+        mask = build_action_mask(0, K)
+        self.assertEqual(greedy_action(obs, mask, K), K)
+
+    def test_returned_action_is_always_legal_under_the_mask(self):
+        for n in range(0, 12):
+            with self.subTest(n_candidates=n):
+                ctx = StubCtx(make_candidates([100.0] * n, [float(i) for i in range(n)]))
+                obs = self._full_obs(ctx)
+                mask = build_action_mask(n, K)
+                a = greedy_action(obs, mask, K)
+                self.assertTrue(mask[a], f"greedy returned masked action {a}")
+
+    def test_greedy_choice_maps_reject_to_none(self):
+        ctx = StubCtx([])
+        obs = self._full_obs(ctx)
+        self.assertIsNone(greedy_choice(obs, build_action_mask(0, K), K))
+        ctx = StubCtx(make_candidates([100.0], [1.0]))
+        obs = self._full_obs(ctx)
+        self.assertEqual(greedy_choice(obs, build_action_mask(1, K), K), 0)
+
+    def test_shape_mismatches_raise(self):
+        ctx = StubCtx(make_candidates([100.0], [1.0]))
+        obs = self._full_obs(ctx)
+        with self.assertRaises(ValueError):
+            greedy_action(obs[:-1], build_action_mask(1, K), K)
+        with self.assertRaises(ValueError):
+            greedy_action(obs, build_action_mask(1, K)[:-1], K)
+
+    def test_reads_delta_cfv_from_the_documented_slice(self):
+        # pins obs[K:2K]; if CandidateObserver reorders its dict, this fails here rather than
+        # silently selecting on is_valid or offered_wait
+        ctx = StubCtx(make_candidates([100.0] * 3, [5.0, 1.0, 9.0]))
+        parts = self.obs_builder.observe(None, ctx)
+        obs = self._full_obs(ctx)
+        np.testing.assert_allclose(obs[K:2 * K], parts["delta_cfv"], atol=0)
+        self.assertEqual(greedy_action(obs, build_action_mask(3, K), K), 1)
 
 
 class TestCombinedLength(unittest.TestCase):

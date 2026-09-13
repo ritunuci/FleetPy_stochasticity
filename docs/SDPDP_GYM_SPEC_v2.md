@@ -705,12 +705,22 @@ cancellation, decline, no-show — is already claimed before branch 7 is reached
 
 **Branch 7 is unreachable on the reference day, and that is expected, not evidence it is dead.**
 Classifying all 445 baseline rows by this order gives served 288, rider declined 118, diffusion
-cancelled 28, no candidates 9, no-show 2, unclassified 0 — and 288 pickups against 288 dropoffs,
-meaning `record_remaining_assignments` completes every in-flight trip, so nobody is left picked
-up or accepted-and-waiting at the horizon. The branch becomes live on a day where
-`record_remaining_assignments`' four-hour cap binds (`end_time + 14400`, at which point it breaks
-the loop with vehicles still en route), or under a policy that over-commits and leaves accepted
-riders unreachable. Do not delete it for want of a firing on this one day.
+cancelled 28, no candidates 9, no-show 2, unclassified 0.
+
+The reason nobody is stranded is narrower than it looks, and was measured under P1.10 rather
+than inferred: **the day simply finishes its work before `end_time`.** The last request arrives
+at `rq_time = 68400`, the latest pickup is 69064.2 and the latest dropoff 69805.3, all below
+`end_time = 70000`. Nothing is in flight when the main loop ends, so
+`record_remaining_assignments` completes no trips and advances the simulation **zero** extra
+seconds — it is not that the tail rescues in-flight riders, it is that there are none. The
+margin is only about **195 simulated seconds**.
+
+The branch becomes live as soon as that margin closes: a later demand tail, heavier fleet load,
+longer trips, or a policy that defers pickups would push trips past `end_time` into the tail,
+and a day where the tail's cap binds (`end_time + 14400`, at which point it breaks the loop with
+vehicles still en route) would strand riders outright. Do not delete the branch for want of a
+firing on this one day, and do not treat `w_horizon = 0.0` as settled — it is a placeholder that
+rests on that 195 s margin.
 
 `rq.no_show` is set at load time from the demand file column (`TravelerModels.py:555`), so it
 is a rider attribute, not an outcome. It must be checked *after* `diffusion_cancelled` and
@@ -1264,7 +1274,14 @@ output. Both must hold.
 
 ### P1.10 — Phase 1 exit gate: scripted greedy rollout
 
-**Files:** `tests/test_rl_gym.py`
+**Files:** `src/rl_gym/policies.py`, `tests/test_rl_gym.py`
+
+`policies.py` holds `greedy_action(obs, mask, k_max)` — one file, one function. It is the
+tested helper the driver selects through, and **P2.7's greedy baseline imports the same
+function**: if the baseline's greedy ever diverged from the greedy this gate tested, the
+headline RL-versus-greedy comparison would be quietly invalid. Its dependence on the
+observation layout (`delta_cfv` at `obs[K:2K]`) is stated in its docstring rather than implied
+by where the file sits.
 
 Drive the env entirely from outside: `obs, _ = env.reset()`, then at each step choose the
 `argmin` of `delta_cfv` **restricted to slots where `is_valid = 1`**. Equivalently, since the
@@ -1380,6 +1397,11 @@ Order matters.
 For P2.7, the KPI set: served count, mean wait, mean in-vehicle detour, decline rate,
 post-match cancellation rate, no-show rate, total fleet VKT. **The RL result is meaningless
 without the greedy baseline on the same held-out days.**
+
+**P2.7's greedy baseline must import `greedy_action` from `src/rl_gym/policies.py`** — the same
+function P1.10's exit gate tested — and must not reimplement the selection. A baseline whose
+greedy differs from the greedy proven to reproduce stock FleetPy byte for byte would make the
+whole comparison invalid without anything failing.
 
 ---
 
