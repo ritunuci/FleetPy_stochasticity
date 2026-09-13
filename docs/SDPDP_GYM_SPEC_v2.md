@@ -487,6 +487,11 @@ candidate and global feature sets, reward weight design, training.
 
 Length `3 * K + 4`. For `K = 8` that is **28**. `float32`.
 
+**The space is `Box(low=-inf, high=inf, shape=(3*K + 4,), dtype=np.float32)`.** Unbounded is the
+honest declaration: `delta_cfv` has no a priori bound even after the `sign * log1p` transform,
+and inventing one would either clip real values or be a lie the checker cannot catch. Bounding
+happens in Phase 2 where it belongs, via `VecNormalize(clip_obs=10.0)` (§5.3).
+
 **Per candidate slot `k`** (3 features × K):
 1. `is_valid` — 1 if a candidate occupies this slot
 2. `delta_cfv_k`, transformed as `sign(x) * log1p(|x|)`. No further scaling in Phase 1 —
@@ -1154,8 +1159,30 @@ After `reset()` builds the simulation, attach the tracker before advancing the g
 
 Keep all diagnostic state in this class. Do not put subclass-specific state in a base class.
 
-**How Ritun verifies:** `gymnasium.utils.env_checker.check_env(env)` passes; `reset()` returns
-the declared shape and dtype; 10 arbitrary valid actions step without error; 20 reset/close
+**`check_env` and the assert are in direct conflict — resolved with a test-only shim.**
+`gymnasium.utils.env_checker.check_env` calls
+`env_step_passive_checker(env, env.action_space.sample())`, a uniform draw over `Discrete(K+1)`
+that ignores the mask entirely. Measured on a stand-in with 3 valid slots, `check_env` failed
+**24 of 40 runs**, and nondeterministically, which reads as a flaky environment rather than a
+contract mismatch. Both requirements were written without noticing they exclude each other.
+
+The resolution: **keep the assert, and run `check_env` against a thin shim defined in the test
+file** whose `step` maps an illegal sampled action onto the nearest legal one before delegating.
+`check_env` then still exercises everything it is good for — space validity and limits,
+reset/step return types, observation-in-space, reset-seed determinism, step determinism — while
+the real env keeps a hard assert, which gets its own direct unit test so it is not decoration.
+The shim never appears in `gym_env.py`.
+
+Do **not** resolve it by clamping an invalid action to reject: a policy bug would then surface
+as an apparent preference for rejecting riders, which is exactly the class of silent corruption
+this design keeps engineering out. Do not add a config flag that disables masking for the check
+either — that puts a production code path in the tree solely for a test.
+
+`check_env` performs several resets and each builds a full FleetPy simulation, so it takes
+seconds, not milliseconds.
+
+**How Ritun verifies:** `check_env` passes through the shim; `reset()` returns the declared
+shape and dtype; 10 arbitrary valid actions step without error; 20 reset/close
 cycles leak no memory and no file handles.
 
 **Commit:** `RL-GYM: add SDPDPAssignmentEnv gymnasium environment`
@@ -1355,6 +1382,14 @@ without the greedy baseline on the same held-out days.**
 Do not implement, do not add config keys or spaces for. Do keep the code shaped so a second
 decision point can be added without touching `SDPDPAssignmentEnv`.
 
+- **Caching the routing engine or any simulation object across `reset()`.** Each episode
+  constructs a fresh simulation; that is what keeps stochastic travel-time state, dynamic
+  network state and RNG state from leaking between episodes, and `_started` makes a reused
+  object unrunnable anyway (trap 7). Measured under P1.8, `reset()` takes **~0.46 s** (median
+  over five; 1.07 s on the first, cold, then 0.43–0.47 s) against a ~38 s episode — **about 1.5%
+  of episode wall clock.** Caching would trade a correctness risk for a saving that is
+  invisible. Settled — do not implement it, do not make it config-switchable, and do not propose
+  it when reporting wall-clock figures.
 - Repositioning or rebalancing as an action
 - Rerouting or reassignment of already-committed plans
 - Dynamic pricing or fare as an action

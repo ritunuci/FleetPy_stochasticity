@@ -765,3 +765,102 @@ Decisions:
   unreachability on this day be recorded so a future reader does not assume it is dead.
 - Ritun: §2.4 correction accepted, with the stronger conclusion recorded, plus the
   `SlaveDemand.record_boarding` override noted as a silent gap for MobiTopp.
+
+---
+
+## P1.8 — STARTED 2026-09-13 01:02
+Files I will touch: src/rl_gym/gym_env.py, tests/test_rl_gym_env.py,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+## P1.8 — DONE 2026-09-13 01:10 — awaiting Ritun's verification
+
+Files changed — two new; **no existing source file modified** (`git diff --stat -- src/` empty):
+- `src/rl_gym/gym_env.py` — `SDPDPAssignmentEnv` and `derive_study_name`
+- `tests/test_rl_gym_env.py` — 25 tests, including the `MaskRespectingShim` used only by the
+  `check_env` test
+- `docs/SDPDP_GYM_SPEC_v2.md` — §5.1 Box bounds; P1.8 collision and shim resolution; §10
+  caching entry
+- `docs/RL_GYM_PROGRESS.md` — this entry
+
+Verification — **131 tests pass across the suite, no failures and no skips**, 37.8 s
+(the env tests build real simulations).
+
+- `check_env` **passes** through the shim, in 5.3 s.
+- `reset()` returns the declared shape `(28,)` and dtype `float32`, in-space.
+- 10 valid actions step without error; reject is legal at every step; mask is `(K+1,)`, bool,
+  never all-False, and agrees slot-for-slot with the observation's `is_valid` block.
+- `action_masks()` returns the same array across repeated calls without advancing the
+  simulation.
+- 20 reset/close cycles leak no file handles (`psutil.num_fds`, tolerance 2).
+- Termination: driving reject to the horizon gives `terminated=True`, `truncated=False` (D6),
+  a zeros observation that is in-space, `episode_summary` in `info`, and a mask with reject as
+  the only legal action.
+- `close()` idempotent and safe before `reset()`; `step()` before reset and after termination
+  both raise `RuntimeError`; out-of-space actions raise `ValueError`.
+
+**The masked-action assert is genuinely exercised.** My first version of that test skipped —
+the first decision of the day happens to fill all 8 slots, so there was no masked slot to send.
+A skipped test on the central guard is exactly the decoration problem, so the test now advances
+until it finds a decision with a masked slot, then asserts on **every** masked slot rather than
+just the first, with a complementary test that valid slots (including the last valid one, not
+only slot 0) do not assert.
+
+**`reset()` wall clock, measured for the §10 decision:** 1.068 s on the first, cold reset, then
+0.455 / 0.460 / 0.431 / 0.469 s — **median 0.46 s, mean 0.577 s** over five. Against a ~38 s
+episode that is **~1.5% of episode wall clock**, materially below the 2–4 s that had been
+assumed. Recorded in §10: caching the routing engine or any simulation object across `reset()`
+is out of scope, because the saving is invisible and the correctness risk — stochastic
+travel-time state, dynamic network state and RNG state leaking across episodes — is not.
+
+**`check_env`'s seed-determinism check passes vacuously at P1.8.** Until P1.9 wires per-episode
+seeding, `reset()` accepts the `seed` argument for API conformance but builds the simulation
+with the scenario row's own `random_seed`, so two resets with the same seed match trivially
+rather than because seeding works. P1.9's verification — same seed giving identical
+trajectories, different seeds giving different output — is therefore **not** redundant with this;
+it is the first real test of seeding.
+
+VERIFY findings:
+- `ConstantConfig` / `ScenarioConfig` API and the config-addition idiom: **matched the spec.**
+  `ConstantConfig` is a `dict` subclass loading CSV or YAML by extension, so plain
+  `cfg[key] = value` is the idiom; `__add__` returns a **new** `ConstantConfig` via
+  `{**self, **other}`, non-mutating, right operand winning; `ScenarioConfig` is a `list` of
+  `ConstantConfig` rows whose `read_csv` passes `comment="#"`, which is what drops the nine
+  disabled rows so the reference scenario file yields exactly one.
+
+Two facts the idiom does not make obvious, both handled:
+- **`study_name` must be derived, not hardcoded.** `run_scenarios` computes
+  `basename(dirname(dirname(abspath(path))))` and `get_directory_dict` depends on it.
+  `derive_study_name` reproduces it and was confirmed against four paths **outside**
+  `studies/example_study` — an absolute path under a different study, a path with no `studies`
+  segment at all, a path containing `..`, and a `.yaml` — matching `run_examples`' own
+  computation on every one. Hardcoding was the failure mode caught during planning; deriving it
+  wrongly in the other direction would have been invisible on the reference scenario alone.
+- **`n_cpu_per_sim` is mandatory**, read as `scenario_parameters["n_cpu_per_sim"]` in
+  `FleetControlBase.__init__` with no default. Set to 1, as P1.8 specifies.
+
+Spec changes made this turn:
+- §5.1: the observation space declared as `Box(low=-inf, high=inf, shape=(3K+4,),
+  dtype=np.float32)`, with the reason — `delta_cfv` has no a priori bound even after
+  `sign * log1p`, and bounding belongs in Phase 2's `VecNormalize(clip_obs=10.0)`.
+- P1.8: the `check_env`-versus-assert collision stated outright, with the measurement
+  (24 of 40 runs failed, nondeterministically) and the shim resolution, plus explicit
+  instructions not to resolve it by clamping to reject or by a masking-off config flag.
+- §10: caching the routing engine or any simulation object across `reset()` added as out of
+  scope, with the measured 0.46 s figure.
+
+Decisions:
+- Asked: P1.8 requires both "assert on masked actions" and "`check_env` passes", which exclude
+  each other — `check_env` samples uniformly from `Discrete(K+1)` ignoring the mask. Measured
+  24/40 failures on a stand-in.
+  Ritun: the collision is real and was his; keep the assert and run `check_env` through the
+  test-only shim; the argument against clamping is decisive, since a policy bug appearing as a
+  preference for rejecting riders is the silent corruption this design keeps engineering out.
+  Amend P1.8 so the next reader does not try to reconcile the two requirements again.
+- Asked: terminal observation, P1.8/P1.9 split, and `info` contents.
+  Ritun: all three accepted, including zeros for the terminal observation — that was in v1 and
+  was lost in v2.
+- Ritun: declare the Box bounds in §5.1; report the `reset()` wall clock and write the §10
+  caching entry with the measured figure, but report and stop instead if it came out materially
+  above a few seconds; record the vacuous seed-determinism point so P1.9 does not later look
+  redundant; and confirm the `study_name` derivation against a path outside
+  `studies/example_study`.
