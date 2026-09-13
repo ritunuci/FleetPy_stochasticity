@@ -1126,8 +1126,18 @@ contaminate every stochastic result reported later. Report it and stop.
 Also report: step count, wall-clock seconds, steps/second, reward-event breakdown, and how
 many requests took the reservation branch or returned an empty candidate list.
 
-Also report the distribution of wall-clock gaps between consecutive gym steps
-(min, median, mean, 95th percentile, max).
+Also report the distribution of gaps between consecutive decision epochs
+(min, median, mean, 95th percentile, max), in **both** of these, separately labelled:
+
+- **simulated seconds** — `sim_time` elapsed between one epoch and the next. This is the
+  one that matters for the reward question: the simulated gap is how much world each reward
+  window sweeps up, so it bounds how many pickups, declines, cancellations and no-shows can
+  land in a single `flush()`. A long tail here means high per-step reward variance.
+- **wall-clock seconds** — compute time between epochs, for throughput planning only.
+
+Measured under P1.4 with a scripted greedy driver, wall-clock: 436 steps in 37.93 s,
+11.5 steps/second, gaps min 0.0068 s, median 0.0759 s, mean 0.0864 s, p95 0.1664 s,
+max 0.4497 s. The simulated-second distribution has not been measured yet.
 
 Create if `docs/RL_GYM_PHASE1_RESULTS.md` is absent. Write these figures to `docs/RL_GYM_PHASE1_RESULTS.md` as well as reporting them: step
 count, reservation-branch count, empty-candidate count, wall-clock seconds, steps/second,
