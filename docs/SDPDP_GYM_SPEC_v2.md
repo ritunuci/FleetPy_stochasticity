@@ -1398,11 +1398,9 @@ Order matters.
 - **P2.3** `RollingStatsTracker` on the P1.7 callbacks
 - **P2.4** Full observation per §5.2, plus `VecNormalize`
 - **P2.5** Reward weight design per §6, including the §6.3 decision
-- **P2.6** must log **slot-selection frequency** — how often the policy picks each slot
-  `0..K`. Frequent selection of slot 7 means `K` is binding and the truncation is cutting off
-  candidates the policy wants; `K` would then need raising. Pair it with the candidate-list
-  length distribution from P1.10 (D3).
-- **P2.6** must also log the **per-episode margin between the last dropoff and `end_time`**.
+- **P2.6** `MaskablePPO` training script, `MaskableEvalCallback`, mask-aware
+  `evaluate_policy`, callbacks, tensorboard, the reward-breakdown logger. Must log **slot-selection frequency** — how often the policy picks each slot `0..K`. Frequent selection of slot 7 means `K` is binding and the truncation is cutting off
+  candidates the policy wants; `K` would then need raising. Pair it with the candidate-list length distribution from P1.10 (D3). Must also log the **per-episode margin between the last dropoff and `end_time`**.
   Under greedy on the reference day that margin is about **195 s** (last dropoff 69805.3
   against `end_time` 70000), and the tail adds zero simulated seconds because nothing is in
   flight (§6.4, P1.10). It is the one Phase 1 measurement a trained policy can move against:
@@ -1410,8 +1408,6 @@ Order matters.
   closes, §6.4's branch 7 goes live and `w_horizon = 0.0` stops being a placeholder and
   becomes a real decision** — so this needs watching from the first training run, not
   discovering afterwards.
-- **P2.6** `MaskablePPO` training script, `MaskableEvalCallback`, mask-aware
-  `evaluate_policy`, callbacks, tensorboard, the reward-breakdown logger
 - **P2.7** Greedy baseline evaluation harness and the KPI comparison table
 
 For P2.7, the KPI set: served count, mean wait, mean in-vehicle detour, decline rate,
