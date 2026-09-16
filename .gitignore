@@ -1,1 +1,4 @@
 studies/example_study/results/
+__pycache__/
+*.pyc
+.DS_Store
