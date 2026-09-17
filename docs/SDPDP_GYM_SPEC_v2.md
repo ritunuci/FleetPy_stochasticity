@@ -588,9 +588,12 @@ week, month; number of passengers; cancellation rate over the last 15–20 min i
 zone plus its 6 H3 neighbors; rejection-rate anomaly for the destination zone plus its 6
 neighbors over the last 15 min.
 
-**Candidate block** (per slot): vehicle location as H3 zone; residual capacity; directionality
-score in `{−1, 0, +1}`; ETA to the current request's pickup; the vehicle's ETA health for
-already-assigned riders; insertion cost; number of assigned-but-unserved requests in the vehicle plan.
+**Candidate block** (per slot): `is_valid`, carried forward from §5.1 and still derived from
+`spaces.candidate_slot_validity` per trap 12 — it must remain the first feature of the block
+so padding stays distinguishable from a real candidate with small values; vehicle location as H3 zone;
+residual capacity; directionality score in `{−1, 0, +1}`; ETA to the current request's pickup;
+the vehicle's ETA health for already-assigned riders; insertion cost;
+number of assigned-but-unserved requests in the vehicle plan.
 
 **Global block**: fraction of fleet idle; **a proper availability count** — the fraction of the
 fleet that could actually receive the current request, i.e. excluding both `OUT_OF_SERVICE` and
