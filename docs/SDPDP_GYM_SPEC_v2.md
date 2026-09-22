@@ -591,9 +591,15 @@ neighbors over the last 15 min.
 **Candidate block** (per slot): `is_valid`, carried forward from §5.1 and still derived from
 `spaces.candidate_slot_validity` per trap 12 — it must remain the first feature of the block
 so padding stays distinguishable from a real candidate with small values; vehicle location as H3 zone;
-residual capacity; directionality score in `{−1, 0, +1}`; ETA to the current request's pickup;
+residual capacity; directionality score in `[−1, +1]`; ETA to the current request's pickup;
 the vehicle's ETA health for already-assigned riders; insertion cost;
-number of assigned-but-unserved requests in the vehicle plan.
+number of assigned-but-unserved requests in the vehicle plan. Two things to consider - (a) discretizing to 
+{−1, 0, +1} is worse than it looks. It preserves order but destroys resolution, and resolution is where the 
+information is — the difference between 0.95 and 0.2 is "barely a detour" versus "significant detour". (b) idle vehicles, 
+vehicles parked at their route's end, and vehicles genuinely travelling perpendicular all map to 0.
+The agent cannot separate them, so it will learn one blended response to three different situations — and "idle vehicle" is 
+probably the most valuable of the three, since it's maximally flexible. 
+A companion flag, or letting idle map to something distinct, would recover that. Varify (a) and (b) independently before acting on them.
 
 **Global block**: fraction of fleet idle; **a proper availability count** — the fraction of the
 fleet that could actually receive the current request, i.e. excluding both `OUT_OF_SERVICE` and
@@ -1395,7 +1401,7 @@ Order matters.
   an afterthought.
 
 - **P2.1** H3 zone system: `h3` dependency, node→hex mapping preprocessing, neighbour lookup,
-  integration as a FleetPy zone system
+  integration as a FleetPy zone system. H3 zone system would be useed only for rolling stats, both request location and vehicle location would use lat/lon
 - **P2.2** Offline historical baselines from the 11 months (or whatever the number of months Ritun decides) of demand files: per-zone arrival
   rates, rejection rates, 95th-percentile normalizers
 - **P2.3** `RollingStatsTracker` on the P1.7 callbacks
