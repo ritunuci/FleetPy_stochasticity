@@ -1399,7 +1399,7 @@ Order matters.
   moved `numpy` or `scipy` would change floating-point results and invalidate the baseline with
   no visible symptom — which is exactly why the re-verification is part of the task rather than
   an afterthought.
-  
+
 - **P2.0b — Per-epoch reward breakdown** 
   **Files:** `src/rl_gym/reward.py`, `src/rl_gym/gym_env.py`, `tests/test_rl_gym_reward.py`
   `RewardTracker._add` takes an optional `kind` and `rid` and appends `(kind, rid, amount)` to 
@@ -1449,6 +1449,28 @@ without the greedy baseline on the same held-out days.**
 function P1.10's exit gate tested — and must not reimplement the selection. A baseline whose
 greedy differs from the greedy proven to reproduce stock FleetPy byte for byte would make the
 whole comparison invalid without anything failing.
+
+**2.9 The demand corpus**
+  Training and evaluation days live in a single flat directory:
+
+      data/demand/example_demand/matched/example_network/corpus/
+
+  `day_dir_name = "corpus"` for every Phase 2 run; `rq_file` is the date, e.g. `2024-06-20.csv`.
+  Weekday and month for §5.2's request block are derived from the filename — the demand rows
+  carry `rq_time` as seconds from midnight and no date column, so **the filename is the only
+  record of which day a file is**.
+
+  **The reference scenario is not part of this.** `thursday/2024-06-20.csv` stays exactly where
+  it is, and `constant_config_depot_cali_sc_1.csv` keeps `day_dir_name = thursday`. The
+  byte-for-byte gates compare against a baseline generated from that path, and nothing about
+  the corpus may be able to affect them. If that date also belongs to the training range, place
+  a copy in `corpus/` — the duplication is deliberate.
+
+  **The corpus is frozen before P2.2 runs.** Its per-zone arrival rates, rejection rates and
+  95th-percentile normalizers are derived from whichever days are present. Adding or removing a
+  file afterward shifts every anomaly feature and silently invalidates anything trained against
+  the old values. The train/eval split is fixed at the same moment and recorded here; P2.7's
+  comparison is only meaningful if the held-out days were held out from the start.
 
 ---
 
