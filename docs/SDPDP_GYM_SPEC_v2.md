@@ -1399,6 +1399,28 @@ Order matters.
   moved `numpy` or `scipy` would change floating-point results and invalidate the baseline with
   no visible symptom — which is exactly why the re-verification is part of the task rather than
   an afterthought.
+  
+- **P2.0b — Per-epoch reward breakdown** 
+  **Files:** `src/rl_gym/reward.py`, `src/rl_gym/gym_env.py`, `tests/test_rl_gym_reward.py`
+  `RewardTracker._add` takes an optional `kind` and `rid` and appends `(kind, rid, amount)` to 
+  a per-window event list. `flush()` returns the total as now; a companion `flush_events()` 
+  returns the list and clears it. `SDPDPAssignmentEnv` puts the list in `info["reward_events"]` 
+  on each step.
+
+  Behind a config key, `track_events`, defaulting to `False` — training does not need it and 
+  7,000 episodes should not pay for it. `flush()`'s return value must be unchanged in both modes.
+
+  **How Ritun verifies:** a scripted greedy run with `track_events = True` produces, for every 
+  step, the reward total and the events composing it — each with its kind, rid and amount, and 
+  for pickups the wait used. Write the first 40 steps and any step with three or more events to 
+  `docs/RL_GYM_REWARD_TRACE.md`. Report any step where the listed amounts do not sum to the 
+  step's reward, and confirm the sum over all steps equals `episode_reward`.
+
+  The point is to check the §6.4 ladder assigns the right label per event, which the
+  episode-level counts cannot show — 118 declines could be the correct total with several
+  individually misclassified.
+
+  **Commit:** `RL-GYM: add per-epoch reward event breakdown`
 
 - **P2.1** H3 zone system: `h3` dependency, node→hex mapping preprocessing, neighbour lookup,
   integration as a FleetPy zone system. H3 zone system would be useed only for rolling stats, both request location and vehicle location would use lat/lon
