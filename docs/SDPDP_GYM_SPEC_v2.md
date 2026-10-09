@@ -135,8 +135,11 @@ vehicle serves each incoming request.
 observation and a counting-only reward. No learning. Exit gate: a scripted greedy policy
 driven through the Gym API reproduces the stock greedy simulation byte for byte.
 
-**Phase 2 — learning.** Full observation (H3 zones, rolling statistics), the real reward
-weights, MaskablePPO, baselines, training runs.
+**Phase 2 — learning machinery.** The full observation (§5.2), rolling statistics, the frozen
+corpus with multi-day rotation, `VecNormalize`, MaskablePPO, and the stock-greedy evaluation
+harness. Exit gate: a short test training run that exercises all of it end to end (P2.15).
+Performance is not judged in Phase 2; the weight sweep, repositioning and full-length training
+come after it (§8).
 
 ---
 
@@ -335,6 +338,91 @@ active — the rest are disabled by a `#` prefix on `op_module`. `baseline_user_
 was generated from that row; the run's own output directory is
 `studies/example_study/results/example_depot_time_pool_irsonly_rs_42/`.
 
+### 2.9 The demand corpus — frozen
+
+Training and evaluation days live in three sibling directories under
+`data/demand/example_demand/matched/example_network/`:
+
+| Directory | Days | Role |
+|---|---|---|
+| `corpus/` | 101 | training |
+| `corpus_eval/` | 26 | held-out evaluation |
+| `corpus_excluded/` | 5 | kept on record, never read |
+
+That is 132 demand days, 2 Jan – 31 Oct 2024, exactly 44 each of Tuesday, Wednesday and
+Thursday. `rq_file` is the date, e.g. `2024-06-20.csv`. Weekday and month for §5.2's request
+block are derived from the filename — the demand rows carry `rq_time` as seconds from midnight
+and no date column, so **the filename is the only record of which day a file is**. Every file
+has the reference column set, unique request ids and minute-aligned `rq_time`. Four requests
+(one each on 02-29 and 03-05, two on 03-06) fall before `start_time` and are dropped by
+`load_demand_file`'s `[start_time, end_time)` filter; request counts anywhere in Phase 2 use the
+post-filter number.
+
+**Excluded — calendar-explained days only:** 2024-01-02, 2024-01-03, 2024-01-04 (the week
+after New Year; 237–264 requests), 2024-06-19 (Juneteenth; 295), 2024-07-04 (Independence
+Day; 216). No day is excluded on volume alone.
+
+**Demand level shift.** From the week of 24 Sep the daily level rises: 24–26 Sep run 551–579
+and all 15 October days run 507–600 (median 556), against about 450 for January to
+mid-September. Within October no day stands out (robust z −2.2 to +2.0 against October's own
+median and MAD), and 24–26 Sep sit inside October's range, so this is a level change, not a set
+of outliers. Those days stay in. Jun 4–6 (553–634) and the single-day volume outliers (Apr 9,
+Feb 22, Apr 16, Aug 8) also stay in: none has a calendar explanation, and in both high
+clusters the uplift is spread over the whole day and the core H3 cells, with no new cells,
+unchanged passengers per request, and no dominant origin–destination pair.
+
+**Split rule.** Per month, `round(0.2 × kept days)` are held out (Python `round`), drawn with
+`numpy.random.default_rng(20260929)`, months in calendar order. A month holding out 3 takes one
+day per weekday. A month holding out 2 takes the two weekdays with the fewest held-out days so
+far, ties broken by the generator, one day each. Within a weekday the day is drawn uniformly
+from the sorted list. Result: 26 evaluation days (Tue 8, Wed 9, Thu 9) and 101 training days
+(Tue 35, Wed 33, Thu 33); every month appears in both splits, with 9–12 training days each.
+
+**Evaluation days (26):**
+2024-01-11, 2024-01-30, 2024-02-07, 2024-02-08, 2024-02-27, 2024-03-19, 2024-03-20,
+2024-04-09, 2024-04-11, 2024-04-17, 2024-05-07, 2024-05-15, 2024-05-23, 2024-06-12,
+2024-06-20, 2024-07-09, 2024-07-25, 2024-07-31, 2024-08-13, 2024-08-15, 2024-08-28,
+2024-09-04, 2024-09-12, 2024-10-01, 2024-10-09, 2024-10-24
+
+The training days are the remaining 101. Files are **moved, not copied** — no day can sit in
+two splits.
+
+**The reference scenario is not part of this.** `thursday/2024-06-20.csv` stays exactly where
+it is, and `constant_config_depot_cali_sc_1.csv` keeps `day_dir_name = thursday`. The
+byte-for-byte gates compare against a baseline generated from that path, and nothing about the
+corpus may be able to affect them. 2024-06-20 happens to fall in the evaluation split, so its
+corpus copy lives in `corpus_eval/`. The two files have identical content but different line
+endings, so their checksums differ — compare them with pandas, not md5.
+
+**Frozen.** Adding, removing or moving a demand file after P2.2 shifts the arrival baseline
+(P2.6) and silently invalidates anything trained against it. P2.6 records the hash of the
+training-day list, and the env refuses to start when `corpus/` no longer matches (trap 16).
+
+### 2.10 Network coordinate reference — corrected
+
+`data/networks/example_network/base/crs.info` said `EPSG:32632` (UTM zone 32N, central
+Europe). The network is in **`EPSG:32610`** (UTM zone 10N). The evidence:
+
+- `base/nodes.csv` carries `lat` and `lon` columns alongside `pos_x`/`pos_y`. Converting all
+  4,084 `pos_x`/`pos_y` pairs from EPSG:32610 reproduces those columns to within 4.5e-9° of
+  latitude and 6.2e-10° of longitude.
+- Read as EPSG:32632, the same coordinates land at longitude 9.89°–10.08°, exactly 132° (22 UTM
+  zones) east of the network. Latitudes survive the error (37.29°–37.41°), which is why it went
+  unnoticed.
+
+Who reads the file: `NetworkBasic.__init__` reads it into `self.crs` at every construction.
+Only `return_network_bounding_box` and `return_positions_lon_lat` use `self.crs`, and only the
+realtime plot calls them (`FleetSimulationBase` ~1093, ~1126), which is off in the reference
+scenario (`realtime_plot` unset). Outside a simulation run: `ReplayFromResult.py` (post-hoc
+replay, which draws the network in Germany until the fix), `NetworkTTMatrix` (not this
+scenario's network type), and a zone preprocessing script. The correction is therefore expected
+to have no runtime effect; P2.1 makes the byte gate the arbiter. `base - Copy/crs.info` carries
+the same wrong value; nothing loads that directory and it is left alone.
+
+Phase 2's position features read `lat`/`lon` from `nodes.csv` (§5.2), not those helpers —
+`return_positions_lon_lat` builds a new pyproj transformer on every call. Directionality works
+in `pos_x`/`pos_y` metres through `return_position_coordinates` and is unaffected either way.
+
 ---
 
 ## 3. DECIDED design choices
@@ -466,6 +554,24 @@ defaulting, and the env records the `G_RANDOM_SEED` actually used for the episod
 `FleetSimulationBase.__init__` reconfigures process-global logging and global RNG state.
 One env per OS process.
 
+### D9. The greedy baseline for evaluation is stock `PoolingIRSOnly`.
+
+P2.14 runs unmodified FleetPy — no gym, no observation, no normalization — on the same
+(day, seed) pairs as the RL evaluation. P1.10 proved that env-driven greedy reproduces stock
+greedy byte for byte, so stock is the same policy with nothing in between that could differ.
+`greedy_action` in `policies.py` stays, but only to drive the P1.10 gate and the P2.4 corpus
+sweep. It is not the evaluation baseline.
+
+### D10. Training days rotate in global shuffled passes.
+
+Every training day is visited the same number of times, ±1, across all workers. Pass `p` uses
+one permutation of the sorted training-day list, drawn from
+`np.random.SeedSequence([base_seed, p])` — identical in every worker. Worker `env_id` of
+`n_workers` takes the days at positions `env_id, env_id + n_workers, …` of that permutation,
+then moves on to pass `p + 1`. Episode seeds stay independent per D7. Drawing a day uniformly
+at random per episode is not used: it balances only on average, and over a short run can skip
+days entirely.
+
 ---
 
 ## 4. Relationship to the project proposal
@@ -476,16 +582,17 @@ Decision epochs are per actionable request. In practice a request with no availa
 destination, reservation branch, or no feasible candidate — is resolved inside
 `build_assignment_context` and generates no gym step, because there is nothing for the policy
 to decide. One episode per day; days replayed across seeds and
-across 11 months (Ritun may change the number of months to be used later) of demand files;
+across the frozen 132-day demand corpus (§2.9);
 `K+1` action space with reject always available; no immediate positive reward for acceptance; 
 delayed credit; explicit penalty for post-match
 cancellation; FIFO handling of same-timestamp arrivals with the heuristic re-running between
 them (already native to `ImmediateDecisionsSimulation`).
 
-### Deferred to Phase 2
+### Phase 2 and after
 
-H3 zone indexing, all rolling-window statistics, the rate-anomaly features, the full
-candidate and global feature sets, reward weight design, training.
+Phase 2 implements the full observation — H3-zoned rolling statistics, the arrival anomaly, the
+full candidate and global feature sets (§5.2) — plus the multi-day training machinery and a
+short test training run (§8). The reward weight sweep and full-length training follow Phase 2.
 
 ### Gaps that need decisions from Ritun
 
@@ -501,6 +608,8 @@ candidate and global feature sets, reward weight design, training.
    `no_show_wait_time`. Since rider no-show is a headline uncertainty, it needs its own
    penalty term or the policy has no gradient toward avoiding no-show-prone assignments.
    §6 includes one; the weight is Ritun's call or check with Ritun if he wants to consider the no-show in the reward signal at all.
+   **Decided:** `w_noshow = 0.0` (§6.1). A no-show rider forfeits the pickup reward and nothing
+   more.
 
 ---
 
@@ -571,7 +680,9 @@ decisions, where the 0.000 end is padding and the raw minimum is about −2.0e6.
 still land on slot 0 here. See P1.10 for why the `is_valid` restriction is nonetheless required.
 
 All wait-related features divide by `op_max_wait_time` read from `scenario_parameters`
-(1500 in the reference scenario), never a literal.
+(1500 in the reference scenario), never a literal. Phase 2 routes this through
+`wait_normalizer_s` (§5.3), whose fallback when absent is exactly `op_max_wait_time`, so these
+values do not change.
 
 Feature 2 is required for the Phase 1 exit gate — the scripted greedy driver picks
 `argmin` over the `delta_cfv` slots, so it must be readable from the observation.
@@ -579,65 +690,197 @@ Do NOT add an implied-decline-probability feature, in either phase. It is deriva
 from feature 3 and `scenario_parameters`, and Ritun has excluded it from the state
 design. Do not propose it.
 
-### 5.2 Phase 2 — full
+### 5.2 Phase 2 — full (DECIDED)
 
-Per proposal §3.1.1–§3.1.3. Same `Box`, same observer→dict→concat mechanism, wider vector.
+Per proposal §3.1.1–§3.1.3, as settled with Ritun. Same `Box`, same observer→dict→concat
+mechanism, wider vector. For `K = 8` the length is **139**:
 
-**Request block**: H3 zone ID for pickup and dropoff; direct travel time; time of day, day of
-week, month; number of passengers; cancellation rate over the last 15–20 min in the request
-zone plus its 6 H3 neighbors; rejection-rate anomaly for the destination zone plus its 6
-neighbors over the last 15 min.
+| Block | Features | Length at `K = 8` |
+|---|---|---|
+| Candidate | 12 per slot | 96 |
+| Request | 24 | 24 |
+| Global | 19 | 19 |
 
-**Candidate block** (per slot): `is_valid`, carried forward from §5.1 and still derived from
-`spaces.candidate_slot_validity` per trap 12 — it must remain the first feature of the block
-so padding stays distinguishable from a real candidate with small values; vehicle location as H3 zone;
-residual capacity; directionality score in `[−1, +1]`; ETA to the current request's pickup;
-the vehicle's ETA health for already-assigned riders; insertion cost;
-number of assigned-but-unserved requests in the vehicle plan. Two things to consider - (a) discretizing to 
-{−1, 0, +1} is worse than it looks. It preserves order but destroys resolution, and resolution is where the 
-information is — the difference between 0.95 and 0.2 is "barely a detour" versus "significant detour". (b) idle vehicles, 
-vehicles parked at their route's end, and vehicles genuinely travelling perpendicular all map to 0.
-The agent cannot separate them, so it will learn one blended response to three different situations — and "idle vehicle" is 
-probably the most valuable of the three, since it's maximally flexible. 
-A companion flag, or letting idle map to something distinct, would recover that. Varify (a) and (b) independently before acting on them.
+Block order in the vector is candidate, request, global. Inside the candidate block the layout
+stays feature-major, as in Phase 1 — each feature is a length-`K` vector — and the three
+Phase 1 features keep their positions, so `delta_cfv` is still at `obs[K:2K]`. **Nothing may
+depend on that.** P2.8 publishes a layout map, and every consumer reads features by name.
 
-**Global block**: fraction of fleet idle; **a proper availability count** — the fraction of the
-fleet that could actually receive the current request, i.e. excluding both `OUT_OF_SERVICE` and
-`no_show_event` vehicles, which is what `simple_insert` really filters on. Phase 1's feature 4
-uses only the `OUT_OF_SERVICE` half (§5.1), so the two diverge exactly while a no-show is being
-waited out; fraction of fleet carrying an infeasible-plan flag
-(latest pickup violated, max trip time violated, latest arrival violated); per-minute arrivals
-over the last 5/10/20 min normalized by the 95th-percentile historical rate; rejection rate;
-fraction cancelled over the last 5/20 min; mean and median promised-vs-realized ETA gap for
-cancelled riders and separately for picked-up riders; fraction of riders declining the initial
-quote.
+#### Candidate block
 
-**Position encoding is a config key, not a fixed choice.** `position_encoding` takes
-`"h3"` (zone ID), `"xy"` (normalized coordinates from
-`routing_engine.return_network_bounding_box()`), or `"relative"` (offset from the request
-origin). It applies to the request origin and destination and to each candidate's vehicle
-location. Every observer branches on it internally and reports its own contribution to the
-observation length, so switching is a config change and never a code change. H3 remains the
-aggregation key for all rolling statistics regardless of this setting.
+Padding is 0.0 for every feature of an unoccupied slot (§5.1).
 
-Two new components are needed and neither exists yet:
+| # | Feature | Definition | Scaling |
+|---|---|---|---|
+| 1 | `is_valid` | unchanged from §5.1, from `spaces.candidate_slot_validity` (trap 12). Stays first. | — |
+| 2 | `delta_cfv` | unchanged from §5.1. Kept for now; Ritun may drop it later (note below). | `sign·log1p` |
+| 3 | `offered_wait` | unchanged from §5.1 | ÷ `wait_normalizer_s` |
+| 4–5 | `veh_lat`, `veh_lon` | vehicle's current position | [−1, 1] over the node bbox |
+| 6 | `free_seats` | `max_pax − Σ rq.nr_pax` over `veh_obj.pax` (passengers, not riders) | ÷ `max_pax` |
+| 7 | `remaining_stops` | `len(list_plan_stops)` of the **pre-insertion** plan | raw count |
+| 8 | `directionality` | cosine in [−1, 1], formula of `SelectRV.filter_directionality`, pre-insertion | — |
+| 9 | `lateness_pre` | max over pending riders of planned pickup in the re-timed pre-insertion plan − quoted pickup | ÷ `wait_normalizer_s` |
+| 10 | `lateness_post` | max over pending riders of planned pickup in plan `k` − quoted pickup | ÷ `wait_normalizer_s` |
+| 11 | `added_distance` | route distance of plan `k` − route distance of the pre-insertion plan | km |
+| 12 | `added_pickup_delay` | Σ over pending riders of planned pickup in plan `k` − planned pickup in the re-timed pre-insertion plan | ÷ `wait_normalizer_s` |
 
-- **`RollingStatsTracker`** — subscribes to the same callbacks as the reward tracker, keeps
-  deques of recent events keyed by H3 cell, exposes windowed aggregates.
-- **Historical baselines** — an offline preprocessing step over the 11 months of demand
-  files producing per-zone arrival rates and rejection rates. "Anomaly" is undefined without
-  them.
+What the features mean together: 4–9 describe the vehicle as it is, independent of the
+decision. 10–12 describe what inserting this request into plan `k` does. `lateness_pre` is how
+late the vehicle already runs against its promises; `added_pickup_delay` is how much further
+this insertion pushes the riders already waiting for it; `lateness_post` is the worst promise
+after the insertion. Riders already onboard can no longer cancel and the reward carries no
+ride-time term (§10), so their delay is deliberately not counted.
+
+Definitions:
+
+- **Pre-insertion plan** = `veh_plans[vid]`, the vehicle's committed plan without the new
+  request. **Plan `k`** = the candidate plan from `insertion_with_heuristics`, which already
+  contains the new rider (P1.6 reads its `pax_info` for `offered_wait`).
+- **Re-timed copy.** Stored plan times refresh only at leg events — the vehicle finishes a leg,
+  or starts boarding or alighting — because `update_sim_state_fleets` runs with
+  `force_update_plan=False`. After a stochastic travel-time update they are stale until the
+  vehicle's next leg event. Candidate plans do not have this problem: `insertion.py` copies the
+  plan (~line 45) and re-times the copy with `update_tt_and_check_plan` at decision time.
+  Features 9 and 12 do the same: `copy()` the pre-insertion plan, call
+  `update_tt_and_check_plan(veh_obj, sim_time, routing_engine)` on the copy exactly as
+  `insertion.py` does, read the times, discard the copy. One re-timed copy per candidate
+  vehicle per decision, shared by both features. **Never re-time, reassign or otherwise touch
+  `veh_plans[vid]` itself (trap 14).** VERIFY the call signature, and that re-timing a copy
+  leaves the stored plan's stops, `pax_info` and utility unchanged.
+- **Pending riders** of a vehicle: riders with a boarding entry in the pre-insertion plan's
+  stops who are not in `veh_obj.pax`. The new rider is never pending. VERIFY how a rider whose
+  boarding is in progress appears, and record it.
+- **Quoted pickup** of pending rider `i` = `prq_i.rq_time` + the offered wait the operator
+  quoted in `_create_user_offer`, as stored on the operator side (`prq.offer`, set by
+  `set_service_offered`). VERIFY the attribute and that the quote is not overwritten after
+  acceptance. **Never read `rq_obj.expected_pickup_time`, `ETA_update_time_stamp`,
+  `diffusion_state_*`, or any other diffusion-model attribute** — the operator has no knowledge
+  of the behavioural model (proposal §3.1.2).
+- **No pending riders** → 0.0 for features 9, 10 and 12.
+- **Signs are kept.** Lateness is negative when a rider will be picked up ahead of the quote,
+  which will be common while the planner assumes 300 s per stop against a realized mean of about
+  56 s (§4 gap 1). `added_distance` and `added_pickup_delay` can be slightly negative because
+  routes minimise time rather than distance, and stops can merge. Do not clip any of them.
+- **`added_distance`**: remaining route distance from `veh_obj.pos` through the plan's stops,
+  summing `routing_engine.return_travel_costs_1to1(last_pos, pos)[2]` and skipping consecutive
+  equal positions — exactly the distance term of `distance_and_user_times_with_walk` in
+  `objectives.py` — computed the same way for both plans. It is an observation, never a reward
+  term (§10).
+- **`remaining_stops`**: pre-insertion. With repositioning off, 0 means idle, and that is what
+  separates idle vehicles from perpendicular ones in feature 8, so no companion flag is added.
+  VERIFY whether the stop currently being served still counts. The "0 means idle" equivalence
+  must be rechecked when repositioning goes on.
+- **`directionality`**: re-implement the dot product of `SelectRV.filter_directionality`
+  (lines ~15–38); do not call the function — the heuristic behind it is off in this scenario,
+  and it returns a filtered vehicle list, not scores. Request vector: destination minus origin
+  coordinates. Vehicle vector: coordinates of the destination of the last leg of
+  `veh_obj.assigned_route` minus the vehicle's current coordinates. Both through
+  `routing_engine.return_position_coordinates` (`pos_x`/`pos_y` metres — never lat/lon, which
+  would skew every angle by cos 37.35° ≈ 0.79). Unit-normalise; a zero-length vector gives 0.
+  `assigned_route` is the committed route, so this is pre-insertion by construction.
+- **Vehicle position**: `veh_obj.pos` is `(node, None, None)` at a node or
+  `(o_node, d_node, rel_pos)` on an edge; interpolate linearly between the two nodes' lat/lon by
+  `rel_pos`. VERIFY that `rel_pos` is the fraction already travelled.
+- **Why `delta_cfv` carries almost nothing.** The objective subtracts `LARGE_INT = 1,000,000`
+  per rider in the plan (`objectives.py`), so raw `delta_cfv` is about −1,000,000 plus a few
+  hundred cents of real cost. After `sign·log1p` the real cost moves only the sixth significant
+  digit — one float32 step is about one cent, i.e. 40 m or 2.2 s of rider time — and Phase 1's
+  raw minimum near −2.0e6 shows the offset occasionally doubles, which will set the slot's scale
+  under `VecNormalize`. Features 11 and 12 carry the insertion-cost signal instead.
+
+#### Request block
+
+| Feature | Definition | Scaling |
+|---|---|---|
+| `o_lat`, `o_lon`, `d_lat`, `d_lon` | request origin and destination node | [−1, 1] over the node bbox |
+| `n_pax` | `prq.nr_pax` | raw |
+| `dow_*` (3) | one-hot over the weekday vocabulary (Tue, Wed, Thu) | — |
+| `month_*` (10) | one-hot over the month vocabulary (Jan–Oct) | — |
+| `zone_arrivals_30`, `zone_arrivals_60` | arrivals in the request's zone set | raw count |
+| `zone_declines_30`, `zone_declines_60` | rider declines in the zone set | raw count |
+| `zone_cancels_30`, `zone_cancels_60` | post-match cancellations in the zone set | raw count |
+
+- Vocabularies come from P2.6's manifest, never literals. An unknown weekday or month raises.
+- VERIFY the `PlanRequest` attributes for the origin and destination nodes.
+- **Zone set** = the request's origin H3 cell (resolution 7) plus its neighbours from P2.5's
+  table. Events are keyed to **the event rider's origin cell**.
+
+#### Global block
+
+| Feature | Definition |
+|---|---|
+| `time_sin`, `time_cos`, `day_progress`, `idle_fraction` | unchanged from §5.1 |
+| `arrivals_30`, `arrivals_60` | fleet-wide arrivals in the window — also the anomaly's "observed" |
+| `arrivals_expected_30`, `arrivals_expected_60` | P2.6 baseline mean for this month at this minute of day |
+| `arrivals_z_30`, `arrivals_z_60` | `(observed − expected) / max(sd, 1.0)`, `sd` from P2.6 |
+| `declines_30`, `declines_60` | fleet-wide rider declines |
+| `cancels_30`, `cancels_60` | fleet-wide post-match cancellations |
+| `wait_gap_30`, `wait_gap_60` | mean of (realized wait − quoted wait) over riders picked up in the window; 0.0 if none; ÷ `wait_normalizer_s` |
+| `active_now`, `active_30`, `active_60` | scheduled active vehicles now, at +30 min and at +60 min, ÷ fleet size |
+
+- The fleet-wide arrival count and the anomaly's observed count are the same number and appear
+  once.
+- **`wait_gap`**: realized wait = `pu_time − rq_time`; the quoted wait is the operator's quote as
+  above. Mean rather than median: on the reference day under greedy, 17% of pickups land within
+  1 s of their quote, so a 30-minute window's median sits within 1 s of zero in 26% of windows,
+  while the mean responds to the late tail (6% of pickups arrive more than 5 min after their
+  quote). One entry per distinct rid, following `on_pickup`'s last-write-wins (§6.4).
+- **`active_*`**: from the fleet-sizing module's own parsed schedule (`TimeBasedFS`, reading
+  `example_active_fleetsize.csv`), not a re-parse of the file:
+  `min(max(round(share × nr_vehicles), 0), nr_vehicles)` exactly as `TimeBasedFS` computes it,
+  with the share from the schedule row in force at the query time, and the last row beyond the
+  end. VERIFY the lookup semantics. The fleet is `default_vehtype:12` and the schedule is the
+  same on every day, so these are a deterministic function of clock time, included as an
+  explicit signal.
+
+#### Windows
+
+All windows are trailing and half-open: an event counts when its time is in
+`[sim_time − W, sim_time)`, `W ∈ {30, 60}` minutes. Arrivals are timed by `rq_time`, declines
+and cancellations by the moment they fire, pickups by pickup time. Requests with the same
+timestamp that were processed earlier in the same step are therefore not counted. P2.6's
+offline baseline uses the identical definition, which is what keeps observed and expected
+comparable.
+
+#### Positions
+
+**Position encoding** is a config key, `position_encoding ∈ {"latlon", "relative"}`, default
+`"latlon"`. `"relative"` replaces a candidate's `veh_lat`, `veh_lon` with its offset from the
+request origin, scaled by the bbox half-spans; request coordinates stay absolute. The length is
+the same either way. The earlier `"h3"` option is removed: a raw cell id is not a usable
+network input, and a one-hot would add 37 dimensions per position. H3 is the aggregation key
+for rolling statistics only.
+
+**Node coordinates** come from the `lat`/`lon` columns of `base/nodes.csv` (§2.10), loaded once
+at env construction as static data. The bbox is the min/max over all nodes.
+
+#### Not in the observation
+
+Settled; do not add, and see §10: infeasible-plan fractions, a rejection-rate anomaly, a
+separate availability fraction, plan-independent proximity (distance or ETA to pickup), slack
+to a latest-pickup bound, H3 centroid coordinates, an idle companion flag, the ETA gap for
+cancelled riders, an implied-decline-probability feature, the request's direct travel time.
 
 ### 5.3 Normalization
 
-FleetPy quantities are raw seconds and metres. Two layers:
+Two layers.
 
-1. Manual scaling using values read from `scenario_parameters` — `op_max_wait_time`, the
-   network bounding box from `routing_engine.return_network_bounding_box()`. **Never hardcode
-   any wait-time literal** or any other scenario-dependent constant.
-2. `VecNormalize(norm_obs=True, norm_reward=True, clip_obs=10.0)` on top (Phase 2). Save and
-   reload its statistics with the model — evaluating with mismatched `VecNormalize` stats is
-   a silent and very common failure.
+1. **Manual scaling**, as listed per feature in §5.2. Wait-type features (`offered_wait`,
+   `lateness_pre`, `lateness_post`, `added_pickup_delay`, `wait_gap_*`) divide by
+   **`wait_normalizer_s`**, an env config key. **Absent → `op_max_wait_time` from
+   `scenario_parameters`** (1500 in the reference scenario), which reproduces Phase 1's
+   `offered_wait` bit for bit. Set it explicitly once `op_max_wait_time` is relaxed, so that
+   relaxing the operator's bound does not silently rescale every wait feature. Positions scale
+   to [−1, 1] over the node bbox, so 0.0 padding sits mid-range. Distances are in km, counts are raw. 
+   No other wait-time or scenario-dependent literal anywhere.
+2. **`VecNormalize(norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.999)`.** Its `gamma`
+   must equal PPO's (§6.5) and come from the same config value: `VecNormalize` scales rewards
+   by a running estimate of the discounted return, and its default of 0.99 would normalise
+   against the wrong horizon. Save its statistics with every checkpoint and reload them with the
+   model; at evaluation set `training = False` and `norm_reward = False`. Evaluating with
+   mismatched statistics is a silent and very common failure.
+
+The env raises if any observation value is non-finite (P2.12).
 
 ---
 
@@ -660,8 +903,20 @@ frozen while the agent decides, so the window boundaries are exact.
 | Unserved at horizon | End of episode | `-w_horizon` per request accepted but never picked up (pu_time is None) at end of episode |
 | No candidates | `record_user`; labelled by `build_assignment_context` when the list is empty | `-w_no_candidates` |
 
-Starting weights, to be tuned by Ritun:
-`w_pickup=1.0, w_wait=0.05, w_reject=0.5, w_decline=0.1, w_cancel=0.6, w_noshow=0.8, w_horizon=0.0, w_no_candidates=0.0`.
+**Phase 2 weights (DECIDED for the short test training, P2.15):**
+`w_pickup=1.0, w_wait=0.05, w_reject=1.0, w_decline=0.1, w_cancel=0.6, w_noshow=0.0, w_horizon=0.0, w_no_candidates=0.0`.
+
+`w_noshow = 0.0` is Ritun's decision on §4 gap 2: a no-show rider forfeits the pickup reward and
+nothing more. The weights are revised by a sweep over `w_pickup`, `w_wait`, `w_reject`,
+`w_cancel` and `w_decline` after Phase 2 and before full-length training (§8, After Phase 2).
+
+How these weights shape rejection: with `w_reject = w_pickup`, an offer's own outcome rarely
+scores below rejection's −1 while `w_decline < 1` — a pickup at the 1500 s cap scores −0.25, a
+cancellation −0.6, a declined offer `−w_decline`. Rejection then pays mainly when an insertion
+delays riders already assigned. Once `w_decline > 1`, an offer near 1500 s (decline probability
+approaching 1) scores below rejection. The implicit ETA threshold of research question 2 is
+therefore partly set by `w_decline / w_reject`, and the sweep should span values on both sides
+of 1.
 
 All weights come from the env config. Do not hardcode.
 
@@ -1286,11 +1541,10 @@ output. Both must hold.
 **Files:** `src/rl_gym/policies.py`, `tests/test_rl_gym.py`
 
 `policies.py` holds `greedy_action(obs, mask, k_max)` — one file, one function. It is the
-tested helper the driver selects through, and **P2.7's greedy baseline imports the same
-function**: if the baseline's greedy ever diverged from the greedy this gate tested, the
-headline RL-versus-greedy comparison would be quietly invalid. Its dependence on the
-observation layout (`delta_cfv` at `obs[K:2K]`) is stated in its docstring rather than implied
-by where the file sits.
+tested helper the driver selects through. Its dependence on the observation layout
+(`delta_cfv` at `obs[K:2K]`) is stated in its docstring rather than implied by where the file
+sits. *Superseded in Phase 2:* the evaluation baseline is stock `PoolingIRSOnly` (D9), not this
+function, and P2.8 makes it select `delta_cfv` by name through the layout map.
 
 Drive the env entirely from outside: `obs, _ = env.reset()`, then at each step choose the
 `argmin` of `delta_cfv` **restricted to slots where `is_valid = 1`**. Equivalently, since the
@@ -1383,94 +1637,514 @@ after `env.close()`, no interleaved or corrupted log files.
 
 ## 8. Phase 2 work items
 
-Do not begin any P2 item until Ritun confirms Phase 1 is closed and this section
-has been expanded into full work items. These bullets are topics, not specifications.
+Phase 1 is closed: the exit gate passes byte for byte and the results are in
+`docs/RL_GYM_PHASE1_RESULTS.md`. The items below were expanded from the Phase 2 topics in the
+design sessions of 27–29 Sep 2026. §0's protocol applies unchanged. **Order matters.**
 
-Order matters.
+Phase 2 builds **machinery**. It ends with a short test training run (P2.15) that exercises
+every component end to end, with repositioning off. Performance is not judged in Phase 2; the
+weight sweep, the scenario changes and full-length training come after it (end of this
+section).
 
-- **P2.0 — resolve the duplicate OpenMP runtime, before any training.** Install `torch` from
-  conda-forge so `fleetpy_rl` links a single `libomp`, then **re-run the P1.10 gate**. If
-  `1_user-stats.csv` still matches `baseline_user_stats.csv` byte for byte, remove the
-  import-order workaround in `train_sdpdp.py` and delete §8a. If it does not match, that is the
-  finding — report it and stop; the environment as it stands works and has passed every gate,
-  so nothing is lost by leaving the workaround in place.
+**Every item that touches the env or the observation (P2.3, P2.8–P2.12) re-runs the P1.10 gate
+as part of its verification.** Reading a feature must never change the simulation (trap 14), and
+the gate is the only check that would notice.
 
-  This is its own task, not a step inside another. It moves `torch`, and a resolution that also
-  moved `numpy` or `scipy` would change floating-point results and invalidate the baseline with
-  no visible symptom — which is exactly why the re-verification is part of the task rather than
-  an afterthought.
+---
 
-- **P2.0b — Per-epoch reward breakdown** 
-  **Files:** `src/rl_gym/reward.py`, `src/rl_gym/gym_env.py`, `tests/test_rl_gym_reward.py`
-  `RewardTracker._add` takes an optional `kind` and `rid` and appends `(kind, rid, amount)` to 
-  a per-window event list. `flush()` returns the total as now; a companion `flush_events()` 
-  returns the list and clears it. `SDPDPAssignmentEnv` puts the list in `info["reward_events"]` 
-  on each step.
+### P2.0 — Resolve the duplicate OpenMP runtime, before any training
 
-  Behind a config key, `track_events`, defaulting to `False` — training does not need it and 
-  7,000 episodes should not pay for it. `flush()`'s return value must be unchanged in both modes.
+**Files:** `train_sdpdp.py`; §8a of this spec
 
-  **How Ritun verifies:** a scripted greedy run with `track_events = True` produces, for every 
-  step, the reward total and the events composing it — each with its kind, rid and amount, and 
-  for pickups the wait used. Write the first 40 steps and any step with three or more events to 
-  `docs/RL_GYM_REWARD_TRACE.md`. Report any step where the listed amounts do not sum to the 
-  step's reward, and confirm the sum over all steps equals `episode_reward`.
+Install `torch` from conda-forge so `fleetpy_rl` links a single `libomp` — **Ritun does the
+install** (§0: Claude Code does not install packages) — then **re-run the P1.10 gate**. If
+`1_user-stats.csv` still matches `baseline_user_stats.csv` byte for byte, remove the
+import-order workaround in `train_sdpdp.py` and delete §8a. If it does not match, that is the
+finding — report it and stop; the environment as it stands works and has passed every gate, so
+nothing is lost by leaving the workaround in place.
 
-  The point is to check the §6.4 ladder assigns the right label per event, which the
-  episode-level counts cannot show — 118 declines could be the correct total with several
-  individually misclassified.
+This is its own task, not a step inside another. It moves `torch`, and a resolution that also
+moved `numpy` or `scipy` would change floating-point results and invalidate the baseline with no
+visible symptom — which is exactly why the re-verification is part of the task rather than an
+afterthought.
 
-  **Commit:** `RL-GYM: add per-epoch reward event breakdown`
+**How Ritun verifies:** the P1.10 gate, byte for byte, after the install.
 
-- **P2.1** H3 zone system: `h3` dependency, node→hex mapping preprocessing, neighbour lookup,
-  integration as a FleetPy zone system. H3 zone system would be useed only for rolling stats, both request location and vehicle location would use lat/lon
-- **P2.2** Offline historical baselines from the 11 months (or whatever the number of months Ritun decides) of demand files: per-zone arrival
-  rates, rejection rates, 95th-percentile normalizers
-- **P2.3** `RollingStatsTracker` on the P1.7 callbacks
-- **P2.4** Full observation per §5.2, plus `VecNormalize`
-- **P2.5** Reward weight design per §6, including the §6.3 decision
-- **P2.6** `MaskablePPO` training script, `MaskableEvalCallback`, mask-aware
-  `evaluate_policy`, callbacks, tensorboard, the reward-breakdown logger. Must log **slot-selection frequency** — how often the policy picks each slot `0..K`. Frequent selection of slot 7 means `K` is binding and the truncation is cutting off
-  candidates the policy wants; `K` would then need raising. Pair it with the candidate-list length distribution from P1.10 (D3). Must also log the **per-episode margin between the last dropoff and `end_time`**.
-  Under greedy on the reference day that margin is about **195 s** (last dropoff 69805.3
-  against `end_time` 70000), and the tail adds zero simulated seconds because nothing is in
-  flight (§6.4, P1.10). It is the one Phase 1 measurement a trained policy can move against:
-  accepting more marginal requests pushes dropoffs later and closes the margin. **If it
-  closes, §6.4's branch 7 goes live and `w_horizon = 0.0` stops being a placeholder and
-  becomes a real decision** — so this needs watching from the first training run, not
-  discovering afterwards.
-- **P2.7** Greedy baseline evaluation harness and the KPI comparison table
+**Commit:** `RL-GYM: single OpenMP runtime; remove import-order workaround`
 
-For P2.7, the KPI set: served count, mean wait, mean in-vehicle detour, decline rate,
-post-match cancellation rate, no-show rate, total fleet VKT. **The RL result is meaningless
-without the greedy baseline on the same held-out days.**
+---
 
-**P2.7's greedy baseline must import `greedy_action` from `src/rl_gym/policies.py`** — the same
-function P1.10's exit gate tested — and must not reimplement the selection. A baseline whose
-greedy differs from the greedy proven to reproduce stock FleetPy byte for byte would make the
-whole comparison invalid without anything failing.
+### P2.0b — Per-epoch reward breakdown
 
-**2.9 The demand corpus**
-  Training and evaluation days live in a single flat directory:
+**Files:** `src/rl_gym/reward.py`, `src/rl_gym/gym_env.py`, `tests/test_rl_gym_reward.py`
 
-      data/demand/example_demand/matched/example_network/corpus/
+`RewardTracker._add` takes an optional `kind` and `rid` and appends `(kind, rid, amount)` to a
+per-window event list. `flush()` returns the total as now; a companion `flush_events()` returns
+the list and clears it. `SDPDPAssignmentEnv` puts the list in `info["reward_events"]` on each
+step.
 
-  `day_dir_name = "corpus"` for every Phase 2 run; `rq_file` is the date, e.g. `2024-06-20.csv`.
-  Weekday and month for §5.2's request block are derived from the filename — the demand rows
-  carry `rq_time` as seconds from midnight and no date column, so **the filename is the only
-  record of which day a file is**.
+Behind a config key, `track_events`, defaulting to `False` — training does not need it and 7,000
+episodes should not pay for it. `flush()`'s return value must be unchanged in both modes.
 
-  **The reference scenario is not part of this.** `thursday/2024-06-20.csv` stays exactly where
-  it is, and `constant_config_depot_cali_sc_1.csv` keeps `day_dir_name = thursday`. The
-  byte-for-byte gates compare against a baseline generated from that path, and nothing about
-  the corpus may be able to affect them. If that date also belongs to the training range, place
-  a copy in `corpus/` — the duplication is deliberate.
+**How Ritun verifies:** a scripted greedy run with `track_events = True` produces, for every step,
+the reward total and the events composing it — each with its kind, rid and amount, and for
+pickups the wait used. Write the first 40 steps and any step with three or more events to
+`docs/RL_GYM_REWARD_TRACE.md`. Report any step where the listed amounts do not sum to the step's
+reward, and confirm the sum over all steps equals `episode_reward`.
 
-  **The corpus is frozen before P2.2 runs.** Its per-zone arrival rates, rejection rates and
-  95th-percentile normalizers are derived from whichever days are present. Adding or removing a
-  file afterward shifts every anomaly feature and silently invalidates anything trained against
-  the old values. The train/eval split is fixed at the same moment and recorded here; P2.7's
-  comparison is only meaningful if the held-out days were held out from the start.
+The point is to check the §6.4 ladder assigns the right label per event, which the episode-level
+counts cannot show — 118 declines could be the correct total with several individually
+misclassified.
+
+**Commit:** `RL-GYM: add per-epoch reward event breakdown`
+
+---
+
+### P2.1 — Correct the network CRS
+
+**Files:** `data/networks/example_network/base/crs.info`
+
+Change `EPSG:32632` to `EPSG:32610` (§2.10). Every other byte of the file stays as it is,
+trailing newline included. **No `# RL-GYM:` comment** — the file is read raw into `self.crs` and
+handed to pyproj, so a comment line would corrupt it (trap 15). Search the repository again for
+readers of `crs.info` and users of `self.crs`; the list in §2.10 comes from drafting, so report
+any addition. Leave `base - Copy/` alone.
+
+**How Ritun verifies:** the P1.10 gate, byte for byte; `return_network_bounding_box()` now
+returns longitudes inside −122.11 … −121.91 and latitudes inside 37.29 … 37.41, the range of
+the `lat`/`lon` columns in `nodes.csv`.
+
+**Commit:** `RL-GYM: correct example_network CRS to EPSG:32610`
+
+---
+
+### P2.2 — Split and freeze the demand corpus
+
+**Files:** the demand directories named in §2.9 only.
+
+Create `corpus_eval/` and `corpus_excluded/` beside `corpus/`, and move the 26 evaluation files
+and the 5 excluded files per §2.9's lists. Filesystem moves only — no git commands (§0); Ritun
+commits, and git records the moves as renames. Before moving anything, re-derive the evaluation
+list from §2.9's rule and seed and confirm it reproduces the 26 listed days exactly; if it does
+not, report the difference and stop.
+
+**How Ritun verifies:** 101 / 26 / 5 files, 132 in total, no filename in two directories;
+weekday counts Tue 35 / Wed 33 / Thu 33 for training and 8 / 9 / 9 for evaluation; every month
+present in both; each moved file's checksum unchanged by the move; `thursday/2024-06-20.csv`
+untouched; the P1.10 gate still byte for byte, since the reference path never reads the corpus.
+
+**Commit:** `RL-GYM: split demand corpus into train, eval and excluded`
+
+---
+
+### P2.3 — Multi-day episodes and day rotation
+
+**Files:** `src/rl_gym/gym_env.py`, `train_sdpdp.py`, `tests/test_rl_gym_env.py`
+
+P1.9 deferred this here. The env writes the demand directory and file into
+`scenario_parameters` before construction (research proposal §3.1.2). New config keys:
+
+- `day_dir` — demand directory name: `corpus` for training, `corpus_eval` for evaluation.
+  **Absent → the scenario's own `day_dir_name` / `rq_file` are used unchanged**, which is the
+  reference path the gates need.
+- `day` — optional fixed day (filename stem). When set, every episode runs that day. Used by
+  P2.4 and P2.14.
+- `n_workers` — required by D10 whenever `day_dir` is set and `day` is not.
+
+With `day_dir` set and `day` absent, days rotate per D10. `episode_summary()` records the day.
+The env parses weekday and month from the filename and exposes them for the request block
+(P2.9). `scenario_pool` stays accepted and unused.
+
+VERIFY: the `scenario_parameters` keys that carry the demand directory and file, and that no
+component caches the demand path before construction.
+
+**How Ritun verifies:**
+1. With `day_dir` absent, the P1.10 gate, byte for byte.
+2. With `day_dir = "corpus_eval"`, `day = "2024-06-20"` and `base_seed` absent, the scripted
+   greedy run's `1_user-stats.csv` is byte-identical to `baseline_user_stats.csv`. The input
+   differs from `thursday/` only in line endings, which the demand loader does not see.
+3. A unit test with 3 workers and a 10-day list: over two full passes every day appears exactly
+   twice across the workers; each worker's day sequence is deterministic given `base_seed`;
+   episode seeds still differ from episode to episode.
+
+**Commit:** `RL-GYM: add multi-day episodes and shuffled-pass day rotation`
+
+---
+
+### P2.4 — Corpus sanity sweep under greedy
+
+**Files:** `src/rl_gym/tools/corpus_sweep.py` (new); report `docs/RL_GYM_CORPUS_SWEEP.md`
+
+Every Phase 1 figure comes from one day. Run the P1.10 greedy driver through the env on each of
+the 127 kept days (fixed-day mode from P2.3, `base_seed` absent so the row's seed 42 applies),
+one env per process (D8), in parallel. No change to the env or the simulation.
+
+Per day, report:
+- requests in the file, requests loaded after the window filter, gym steps, and the
+  reconciliation buckets of P1.10 (empty candidate list, reservation, origin = destination,
+  duplicate rid) — every loaded request in exactly one bucket;
+- `unclassified` (must be 0) and duplicate boardings;
+- candidate-list length: max, p95, and the count exceeding `K`;
+- last dropoff, the margin to `end_time`, and simulated seconds added by the
+  `record_remaining_assignments` tail, measured as in P1.10;
+- pickups, declines, post-match cancellations, no-shows;
+- episode wall clock.
+
+Summarise: any day with `unclassified ≠ 0` (stop and report — a new §6.4 path exists), the days
+where lists most exceed `K`, the days with the thinnest horizon margin, and any day where the
+tail does real work. Decisions on `K` and `w_horizon` stay with Ritun.
+
+**How Ritun verifies:** the 2024-06-20 row reproduces P1.10's figures exactly — 445 loaded,
+436 steps, 9 empty lists, max list 11, 13 lists over `K`, margin about 195 s, 288 pickups, 118
+declines, 28 cancellations, 2 no-shows.
+
+**Commit:** `RL-GYM: add corpus sanity sweep and report`
+
+---
+
+### P2.5 — H3 neighbour table
+
+**Files:** `src/rl_gym/offline/build_zone_table.py` (new),
+`data/rl_gym/example_network/h3_neighbours.csv` (new), `src/rl_gym/zones.py` (new),
+`tests/test_rl_gym_zones.py` (new)
+
+The cells are the 37 resolution-7 cells in the `h3_id` column of `base/nodes.csv` (checked
+against `h3` 4.5.0 `latlng_to_cell` for all 4,084 nodes during drafting). Neighbours are
+computed from `data/networks/example_network/h3_hexagons.geojson` with shapely, which
+`fleetpy_rl` already has: two cells are neighbours when their polygons lie within 1e-9° of each
+other, which in a hexagonal tiling is exactly edge-sharing. Output rows `(cell, neighbour)`,
+including `(cell, cell)`, restricted to the 37 cells — neighbours outside them contain no nodes,
+so no event can land there. **Nothing imports `h3`** (§10).
+
+`zones.py` loads the node → cell map from `nodes.csv` and the table, and exposes
+`cell_of_node(node)` and `zone_set(cell)`.
+
+**How Ritun verifies:** against `h3` 4.5.0 `grid_disk(cell, 1)` restricted to the 37 cells,
+checked during drafting: 88 undirected neighbour pairs, every cell with 2–6 neighbours inside
+the set, 17 cells with all 6. Also: the relation is symmetric, and the geojson's 37 ids equal
+the `nodes.csv` set.
+
+**Commit:** `RL-GYM: add H3 neighbour table and zone lookup`
+
+---
+
+### P2.6 — Arrival baseline and corpus manifest
+
+**Files:** `src/rl_gym/offline/build_arrival_baseline.py` (new),
+`data/rl_gym/example_network/arrival_baseline.csv` (new),
+`data/rl_gym/example_network/corpus_manifest.json` (new), `tests/test_rl_gym_baseline.py` (new)
+
+Inputs: **training days only** (`corpus/`), never evaluation or excluded days.
+
+For each training day `d`, each minute `t` in `[start_time, end_time)` of the reference scenario,
+and `W ∈ {30, 60}`: `c_d(t, W)` = requests in the file with `rq_time` in `[t − W, t)` and inside
+`[start_time, end_time)` — the §5.2 window definition, so observed and expected are comparable.
+
+- `mean(m, t, W)` = mean of `c_d(t, W)` over the training days of month `m`.
+- `sd(t, W)` = sample standard deviation, over **all** training days, of
+  `c_d(t, W) − mean(month(d), t, W)`. Pooled across months, because 9–12 days per month are too
+  few to estimate spread.
+
+Online (P2.11): `expected = mean(month, t, W)` and `z = (observed − expected) / max(sd, 1.0)`,
+with `t` = `sim_time` floored to the minute.
+
+**Why month, not weekday.** Month explains 50% of the variance in daily request totals; weekday
+explains none (Tue, Wed and Thu average 453–454). Against a weekday baseline, October days read
+about +0.7 SD high on average (+0.66 at 10:00, +0.78 at 15:30), so the feature would mostly
+report "it is October", which the month one-hot already says. Weekday does matter around the
+15:00–16:00 peak — at 15:30, Tuesdays average 22.1 arrivals per 30 min against 27.2 overall —
+and the weekday one-hot stays in the observation for that. Averaged over the day, the typical
+residual spread is 4.9 with the month baseline, 5.3 with weekday, 5.6 with none; a weekday shape
+scaled by month level gave 5.07. September's mean blends 7 training days before the level shift
+with 3 after it (§2.9); accepted.
+
+**Manifest:** the sorted training-day list and its SHA-256, the month vocabulary (Jan–Oct), the
+weekday vocabulary (Tue, Wed, Thu), `start_time`, `end_time`, the windows, and the SD floor. The
+env reads the manifest at construction, recomputes the hash over the files present in
+`corpus/`, and raises on mismatch (trap 16).
+
+**How Ritun verifies:** for 3 random training days and 3 random minutes, `c_d` recomputed by
+hand from the CSV matches; a plot of `mean(m, t, 30)` per month shows October above the rest;
+the manifest hash matches the directory.
+
+**Commit:** `RL-GYM: add month-conditioned arrival baseline and corpus manifest`
+
+---
+
+### P2.7 — `RollingStatsTracker`
+
+**Files:** `src/rl_gym/rolling_stats.py` (new), `src/rl_gym/reward.py` (shared classifier),
+`src/rl_gym/fleetctrl_rl.py` and/or `src/rl_gym/sim_env_rl.py` (arrival hook),
+`src/rl_gym/gym_env.py` (wiring), `tests/test_rl_gym_rolling_stats.py` (new)
+
+Events:
+- **arrival** — rid, `rq_time`, origin cell — at the single entry point every loaded request
+  passes through, including origin = destination, reservation and no-candidate requests.
+  VERIFY that this is `build_assignment_context`.
+- **decline** and **post-match cancellation** — from the same exit callback as `RewardTracker`,
+  labelled by one §6.4 classification function shared by both trackers (trap 13); keyed to the
+  rider's origin cell, timed when they fire.
+- **pickup** — from the boarding callback; stores pickup time and realized minus quoted wait,
+  last-write-wins per rid (§6.4). Quoted wait from the operator side (§5.2); nothing from the
+  diffusion model.
+
+Queries, all over `[t − W, t)`: counts for a zone set, fleet-wide counts, and the mean wait gap
+(`None` when empty; the observer writes 0.0). Per-kind deques, pruned beyond 60 minutes; a
+60-minute window holds a few dozen events fleet-wide, so zone counts can scan the deque. The
+tracker is rebuilt with the simulation at every reset (§10).
+
+**How Ritun verifies**, on a greedy reference-day run:
+- end-of-day totals match P1.10: 445 arrivals, 118 declines, 28 cancellations, 288 distinct
+  pickups;
+- at 20 random decision times, every windowed count and the wait-gap mean equal an independent
+  recomputation from `1_user-stats.csv`. VERIFY which columns carry each event's time — expected
+  `rq_time`, `decision_time` for declines, `diffusion_decision_time` for cancellations,
+  `pickup_time` — and the quoted wait in `offers` (`t_wait`);
+- online fleet-wide arrival counts at every decision equal P2.6's definition recomputed from the
+  demand file;
+- the P1.10 gate, byte for byte.
+
+**Commit:** `RL-GYM: add rolling statistics tracker`
+
+---
+
+### P2.8 — Observation layout map; greedy by name
+
+**Files:** `src/rl_gym/observers.py`, `src/rl_gym/gym_env.py`, `src/rl_gym/policies.py`,
+`src/rl_gym/spaces.py` (docstring), `tests/test_rl_gym.py`, `tests/test_rl_gym_observers.py`
+
+No feature changes in this item — the vector stays identical to Phase 1.
+
+- The env publishes `observation_layout`: an ordered mapping from feature name to slice, built
+  at construction from the observers' dicts (the same insertion-order mechanism as
+  `observe_vector`).
+- `greedy_action(obs, mask, layout)` finds `delta_cfv` by name and keeps the `is_valid`
+  restriction (P1.10). The hardcoded `(3K + 4,)` shape check goes.
+- Fix two stale docstrings: `spaces.py`'s "k-th cheapest candidate" becomes "k-th candidate in
+  ascending `delta_cfv` order" (D3); `observers.py`'s padding rationale is replaced by §5.1's
+  (`VecNormalize` is the whole reason).
+
+**How Ritun verifies:** the P1.10 gate, byte for byte; the layout's slices tile
+`[0, obs_len)` with no gap or overlap; `check_env` through `MaskRespectingShim` passes with
+`base_seed` absent and set.
+
+**Commit:** `RL-GYM: add observation layout map; greedy selects by feature name`
+
+---
+
+### P2.9 — Request block
+
+**Files:** `src/rl_gym/observers.py` (`RequestObserver`), `src/rl_gym/gym_env.py`,
+`tests/test_rl_gym_observers.py`
+
+Per §5.2's request block. Node lat/lon and the bbox are loaded once at env construction from
+`nodes.csv` (§2.10); vocabularies from P2.6's manifest; zone counts from P2.7 through P2.5's
+zone sets.
+
+**How Ritun verifies:** the P1.10 gate, byte for byte, with the block present; for 10 decisions,
+every feature matches a hand computation — coordinates from `nodes.csv`, one-hots from the
+filename, zone counts from P2.7's recomputation; observation length +24.
+
+**Commit:** `RL-GYM: add Phase 2 request observation block`
+
+---
+
+### P2.10 — Candidate block
+
+**Files:** `src/rl_gym/observers.py` (`CandidateObserver`), `src/rl_gym/gym_env.py` (config
+keys `wait_normalizer_s`, `position_encoding`), `tests/test_rl_gym_observers.py`
+
+Per §5.2's candidate block: features 4–12 appended after the three Phase 1 features. One
+re-timed pre-insertion copy per candidate vehicle per decision, shared by features 9 and 12.
+
+**How Ritun verifies:**
+- **the P1.10 gate, byte for byte — the critical check for this item**, since it re-times plan
+  copies (trap 14). A test also asserts that `veh_plans[vid]` — stops, `pax_info`, utility — is
+  unchanged across an observation;
+- with `wait_normalizer_s` absent, `offered_wait` is bit-identical to Phase 1's;
+- for 10 decisions where some candidate has two or more pending riders, features 9–12 match a
+  hand computation;
+- `directionality` matches `filter_directionality`'s formula on constructed cases, including an
+  idle vehicle (0) and a vehicle whose route ends at its own position (0);
+- a distribution table over the reference day for features 6–12 (min, median, p95, max, share
+  exactly zero). Expect `lateness_pre` to be mostly ≤ 0 (§5.2);
+- throughput: steps per second against Phase 1's 11.47, and `reset()` time.
+
+**Commit:** `RL-GYM: add Phase 2 candidate observation block`
+
+---
+
+### P2.11 — Global block
+
+**Files:** `src/rl_gym/observers.py` (`GlobalStateObserver`), `src/rl_gym/gym_env.py`,
+`tests/test_rl_gym_observers.py`
+
+Per §5.2's global block: rolling counts and the wait gap from P2.7, the anomaly from P2.6's
+baseline, `active_*` from `TimeBasedFS`.
+
+**How Ritun verifies:** the P1.10 gate, byte for byte; for 10 decisions, every feature matches a
+hand computation; across the reference day `active_now` × 12 steps 8 → 11 at 08:00, 11 → 12 at
+10:00 and 12 → 11 at 17:00, with `active_30` and `active_60` leading by 30 and 60 min; total
+observation length 139 at `K = 8`.
+
+**Commit:** `RL-GYM: add Phase 2 global observation block`
+
+---
+
+### P2.12 — `VecNormalize` and the full-observation check
+
+**Files:** `train_sdpdp.py`, `src/rl_gym/gym_env.py`, `tests/test_rl_gym_env.py`
+
+- Wrap the `SubprocVecEnv` in `VecNormalize` per §5.3, `gamma` taken from the same config value
+  as PPO's.
+- Save/load helpers: `vecnormalize.pkl` beside each checkpoint; the evaluation loader sets
+  `training = False` and `norm_reward = False`.
+- The env raises `ValueError` on any non-finite observation value, at reset and at step.
+
+**How Ritun verifies:** `check_env` through `MaskRespectingShim` on the full observation, with
+`base_seed` absent and set; a save → load round trip reproduces identical normalised observations
+for a fixed input; the P1.10 gate, byte for byte (`VecNormalize` sits outside the env, and the
+gate runs the unwrapped env).
+
+**Commit:** `RL-GYM: add VecNormalize wiring and non-finite observation guard`
+
+---
+
+### P2.13 — Training script
+
+**Files:** `train_sdpdp.py`, `src/rl_gym/callbacks.py` (new), `tests/test_rl_gym_train.py` (new)
+
+- `MaskablePPO` (`sb3-contrib`), `MlpPolicy`, `SubprocVecEnv` (D8), `VecNormalize` (P2.12),
+  training days by D10 rotation (`day_dir = "corpus"`), `base_seed` required (the D7 guard
+  stays), reward weights from config (§6.1), `skip_output = True`.
+- Hyperparameters are config keys with these defaults: `gamma = 0.999` (§6.5),
+  `gae_lambda = 0.95`, `learning_rate = 3e-4`, `n_steps = 1024` per env, `batch_size = 256`,
+  `n_epochs = 10`, `clip_range = 0.2`, `ent_coef = 0.0`, `net_arch = [256, 256]`.
+- `MaskableEvalCallback` on a separate evaluation `VecEnv` over `corpus_eval` with fixed
+  (day, seed) pairs, sharing the training `VecNormalize` statistics (synced, `training = False`).
+  Its size and frequency are config keys and small by default.
+- TensorBoard, per episode: reward; the `episode_summary()` counts (pickups, declines,
+  cancellations, no-shows, rejections, no-candidates, and `unclassified`, which must stay 0);
+  day and seed; steps per second. Aggregated: the day-visit histogram (D10) and the
+  candidate-list length distribution. Two more that must be logged:
+  - **Slot-selection frequency** — how often the policy picks each slot `0..K`. Frequent
+    selection of slot `K − 1` means `K` is binding: the truncation is cutting off candidates
+    the policy wants, and `K` would need raising. Read it together with the candidate-list
+    lengths from P1.10 and P2.4 (D3).
+  - **The per-episode margin between the last dropoff and `end_time`.** Under greedy on the
+    reference day it is about 195 s, and the tail adds zero simulated seconds because nothing
+    is in flight (§6.4, P1.10). It is the one Phase 1 measurement a trained policy can move
+    against: accepting more marginal requests pushes dropoffs later and closes the margin. **If
+    it closes, §6.4's branch 7 goes live and `w_horizon = 0.0` stops being a placeholder and
+    becomes a real decision** — so this is watched from the first training run, not
+    discovered afterwards.
+- Checkpoints every N episodes with their `VecNormalize` statistics; resume from a checkpoint.
+
+**How Ritun verifies:** a 2-worker, ~8-episode run completes and TensorBoard shows every listed
+scalar; a checkpoint reloads and, with `deterministic = True` on a fixed (day, seed), reproduces
+the same action sequence as before saving; no orphaned workers after `close()` (P1.11's check).
+
+**Commit:** `RL-GYM: add MaskablePPO training script and callbacks`
+
+---
+
+### P2.14 — Evaluation harness: stock greedy baseline and KPI table
+
+**Files:** `src/rl_gym/evaluate.py` (new), `src/rl_gym/kpis.py` (new),
+`docs/RL_GYM_EVAL_SEEDS.csv` (new), `tests/test_rl_gym_kpis.py` (new)
+
+**The RL result is meaningless without the greedy baseline on the same held-out days.**
+
+- **Seeds.** `eval_seeds_per_day` (default 10) per evaluation day, drawn once from
+  `np.random.SeedSequence(eval_seed_root)` into `[0, MAX_EPISODE_SEED]`, written to
+  `docs/RL_GYM_EVAL_SEEDS.csv`, and reused for every policy ever evaluated. The comparison is
+  **unpaired**: rider decline, the diffusion random term and stochastic travel time all draw from
+  one global stream (§2.5, P1.9), so two policies on the same seed share a sample path only until
+  their first different decision. The seed list buys reproducibility, not common random numbers.
+- **Greedy baseline (D9).** Stock FleetPy through the same entry point `run_examples.py` uses,
+  reference scenario, with the demand directory set to `corpus_eval`, the file to the day, and
+  `G_RANDOM_SEED` to the seed; output on; one process per run. VERIFY that the entry point
+  accepts these overrides without editing the scenario files.
+- **RL policy.** The env in fixed-day mode with the same (day, seed), `skip_output = False`, the
+  checkpoint and its `VecNormalize` statistics (`training = False`), deterministic actions.
+  Keep the log level at `warning` (the P1.11 logging caveat).
+- **KPI script** reads only the output directory, identically for both policies:
+  - served count;
+  - mean wait (`pickup_time − rq_time`) over served;
+  - mean in-vehicle detour ratio, `(dropoff_time − pickup_time) / direct_route_travel_time`, over
+    served;
+  - decline rate (declines / offers made);
+  - post-match cancellation rate (cancellations / accepted offers);
+  - no-show rate (no-shows / accepted offers);
+  - operator rejections and no-candidate requests;
+  - total fleet VKT = Σ `driven_distance` in `2-0_op-stats.csv` / 1000, as
+    `evaluation/standard.py` computes `op_total_km`.
+
+  Tabulated per day, per month and overall, as mean ± standard error over seeds.
+
+**How Ritun verifies:** the greedy baseline on (2024-06-20, seed 42) writes a `1_user-stats.csv`
+byte-identical to `baseline_user_stats.csv`; the KPI script's counts on that run reconcile with
+P1.10's `episode_summary()`; the env-driven greedy on the same pair gives an identical KPI row,
+which is D9's premise.
+
+**Commit:** `RL-GYM: add evaluation harness and KPI table`
+
+---
+
+### P2.15 — Short test training (Phase 2 exit gate)
+
+**Files:** no code; report `docs/RL_GYM_PHASE2_RESULTS.md`
+
+Purpose: prove that all the machinery works together, with repositioning off. **Not a
+performance test, and not a learning test.** It is sized to exercise every component a few
+times, nothing more: about 20–25 minutes on the M4 MacBook.
+
+Setup: §6.1's Phase 2 weights (`w_decline = 0.1`); 4 workers; 12 episodes per worker, 48 in
+total — about half of pass 0 over the 101 training days (D10); P2.13's default hyperparameters except `n_steps = 256` for this run only, so the update path runs about 20 times instead of about 5; an evaluation callback that fires at least 3 times; checkpoints at least twice. At the end, P2.14's harness on 5 evaluation days — 2024-01-11, 2024-03-19, 2024-06-20, 2024-08-13, 2024-10-01 — × the first 2 seeds of each from `docs/RL_GYM_EVAL_SEEDS.csv`, for the trained
+checkpoint and for stock greedy on the same pairs. All 26 days and the full `eval_seeds_per_day` belong to real training runs.
+
+**Pass criteria:**
+1. The run completes; worker exit codes are 0; no orphaned workers.
+2. `unclassified = 0` in every episode.
+3. No non-finite observation (the env would have raised).
+4. No masked action is ever selected.
+5. No training day is visited twice, and the days visited are exactly those D10 assigns:
+   worker `env_id` runs positions `env_id, env_id + 4, …` of pass 0's permutation, in that
+   order. Pass boundaries are covered by P2.3's unit test, not here.
+6. A reloaded checkpoint reproduces its deterministic actions on a fixed (day, seed).
+7. The KPI table exists for both policies on identical (day, seed) pairs.
+8. Every TensorBoard scalar from P2.13 is present.
+
+**Reported, not judged:** slot-selection frequency (is `K` binding?); the
+horizon margin (does branch 7 approach?); throughput — steps per second and episode wall clock
+under the full observation; peak RSS per worker; and the projected wall clock of a full-length
+run. The learning curve is logged but not read: 48 episodes say nothing about learning, and it is not
+used to size the weight sweep.
+
+**Commit:** `RL-GYM: Phase 2 short test training and results`
+
+---
+
+### After Phase 2 — Ritun's steps, not work items
+
+In this order:
+
+1. **Reward weight sweep** over `w_pickup`, `w_wait`, `w_reject`, `w_cancel` and `w_decline`,
+   with repositioning off, to set the weights for full-length training. Its design — the rule
+   for choosing a winner, validation days carved out of the training split (never the
+   evaluation days), the per-point budget from a short training run on the simulator as it will be trained, 
+   since P2.15 is too short to size it — is settled then. Only ratios to `w_pickup` affect the optimal policy,
+   and `VecNormalize` rescales rewards anyway.
+2. **Planner stop duration.** Ritun may change `op_const_boarding_time` from 300 s to 40–60 s.
+   This is his decision; Claude Code does not touch it (§10).
+3. **Turn on stock repositioning.** It needs a FleetPy zone system and forecast inputs.
+4. **Regenerate both baselines**: the byte-gate file — keeping the current one under a new name,
+   so the repositioning-off configuration stays testable — and the stock-greedy KPI runs. A
+   single training run at the swept weights then checks that they carry over.
+5. **Full-length training** (~7,000 episodes).
+
+Steps 2–4 change the simulation. They invalidate every earlier baseline comparison, and the
+gates must be re-established against the new baselines.
 
 ---
 
@@ -1569,6 +2243,20 @@ carries a comment saying so; keep it.
     "simplification" of `is_valid` to an inline `k < len(candidates)` in `CandidateObserver`
     (P1.6), which looks equivalent and is the same expression the shared function evaluates —
     until one side changes.
+13. **One classifier for reward and statistics.** `RewardTracker` and `RollingStatsTracker`
+    must label every exit — decline, post-match cancellation, no-show, rejection,
+    no-candidates — with the same §6.4 ladder, from one function. Two copies drift and nothing
+    raises: the reward would charge as a decline what the statistics count as a cancellation.
+14. **Observation code never mutates simulation state.** Read `veh_plans[vid]`; never re-time,
+    reassign or edit it — re-time copies only (§5.2). Never write a `PlanRequest` field, such as
+    `t_pu_latest`, to compute a feature: that changes insertion feasibility for every later
+    request. The P1.10 gate re-run in each observation item is what catches a violation.
+15. **`crs.info` carries no comment.** It is read raw into `self.crs` and handed to pyproj, so
+    §0's `# RL-GYM:` rule cannot apply to it. The change is recorded in §2.10 and its commit
+    message instead.
+16. **Artifacts are tied to the frozen corpus.** P2.6's arrival baseline stores the hash of the
+    training-day list, and the env raises when `corpus/` no longer matches. A baseline computed
+    over a different set of days produces plausible-looking anomalies that are simply wrong.
 
 ---
 
@@ -1603,3 +2291,14 @@ decision point can be added without touching `SDPDPAssignmentEnv`.
   no substitute for any of these under a different name. In-vehicle time and fleet
   kilometres are deliberately unpriced. Do not add them, do not make them
   config-switchable, and do not propose them.
+- **Phase 2 observation exclusions**, settled with Ritun: infeasible-plan features, a
+  rejection-rate anomaly, an availability fraction separate from `idle_fraction`,
+  plan-independent proximity (distance or ETA to pickup), slack to a latest-pickup bound, H3
+  centroid coordinates, an `"h3"` position encoding, an `is_idle` companion flag, the ETA gap
+  for cancelled riders, the request's direct travel time. Do not add them and do not add config keys for them.
+- **`h3` as a dependency of anything under `src/`.** Neighbour relations come from P2.5's table.
+- **Registering H3 as a FleetPy zone system.** The zones are an RL-internal lookup. A FleetPy
+  zone system becomes relevant only when repositioning goes on, after Phase 2.
+- **Repositioning, `op_const_boarding_time`, and the reward weight sweep.** All three are
+  Ritun's steps after Phase 2 (§8), not work items. Stock repositioning stays off throughout
+  Phase 2.
