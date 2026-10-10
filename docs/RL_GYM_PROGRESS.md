@@ -1477,3 +1477,119 @@ whether to restore or keep it. For later items I will drive the byte check from 
 or a scratchpad driver instead, so a committed report is not rewritten as a side effect.
 
 Nothing failed, so there is no fix to propose. **Stopping here** — not starting P2.2.
+
+---
+
+## P2.2 — STARTED 2026-10-10 14:08
+Files I will touch:
+data/demand/example_demand/matched/example_network/corpus_eval/ (new, 26 files moved in),
+data/demand/example_demand/matched/example_network/corpus_excluded/ (new, 5 files moved in),
+data/demand/example_demand/matched/example_network/corpus/ (132 -> 101 csv),
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.1 committed as 2ef25f3, trace-report change discarded by Ritun, tree clean.
+
+Approved before starting:
+- Filesystem moves only, no git commands (§0). The 26 evaluation days and 5 excluded days come
+  from §2.9's literal lists, which P2.2 makes authoritative; §2.9's algorithm is re-derived
+  first as a cross-check, and a mismatch is a stop condition.
+- `.DS_Store` stays in `corpus/`. It is untracked and `git ls-files` counts exactly 132 files
+  under `corpus/`, so only CSVs move.
+- Two §2.9 additions: (a) `thursday/` also holds `2024-01-18.csv`, byte-identical to its corpus
+  copy and unused by any scenario, which stays a training day; (b) a new rule that every reader
+  of the corpus directories lists demand days by `*.csv` only and ignores every other entry,
+  since macOS creates and rewrites `.DS_Store` on its own — binding on P2.3's rotation, P2.4's
+  sweep, P2.6's manifest and P2.9's corpus check, with P2.9 additionally carrying a test that a
+  stray `.DS_Store` does not make construction raise. Ritun asked for the rule; I am also
+  putting the test requirement into P2.9's verification list so it is not missed when P2.9 is
+  implemented.
+
+## P2.2 — DONE 2026-10-10 14:14 — awaiting Ritun's verification
+
+Files changed — filesystem moves only, no git commands:
+- `data/demand/example_demand/matched/example_network/corpus_eval/` — **new**, the 26
+  evaluation days from §2.9's list.
+- `…/corpus_excluded/` — **new**, the 5 calendar-explained excluded days.
+- `…/corpus/` — **132 → 101** CSVs. The untracked `.DS_Store` was left in place; only `.csv`
+  files moved.
+- `docs/SDPDP_GYM_SPEC_v2.md` — two §2.9 additions and one line in P2.9.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+No code file touched; `git diff --stat -- src/ tests/` is empty.
+
+Verification — everything passed, nothing failed:
+
+1. **The cross-check P2.2 requires, run before anything moved.** Re-deriving the evaluation
+   list with §2.9's algorithm — `default_rng(20260929)`, months in calendar order, running
+   per-weekday counts — reproduced §2.9's literal 26-day list **exactly**, so the stop
+   condition at P2.2 line 1882 did not trigger. Per-month `n` came out 2,3,2,3,3,2,3,3,2,3 over
+   127 kept days. The 31 files were then moved **by name from §2.9's literal lists**, which
+   P2.2 makes authoritative, not from the derivation.
+2. **Counts: 101 / 26 / 5, 132 in total.** No filename in two of the three directories (all
+   three pairwise intersections empty).
+3. **Weekday counts exact:** training **Tue 35 / Wed 33 / Thu 33**, evaluation
+   **Tue 8 / Wed 9 / Thu 9**.
+4. **Every month 1–10 present in both splits.** Training days per month 9, 10, 10, 10, 11, 9,
+   10, 10, 10, 12 — inside §2.9's stated 9–12.
+5. **Checksums unchanged by the move.** md5 was snapshotted for all 132 files before the first
+   move and recompared afterwards across all three directories: **zero mismatches, all 132
+   accounted for**.
+6. **`thursday/2024-06-20.csv` untouched** — md5 `2ad73f37ce40dac2eade120470bf7e8e` and mtime
+   `1788379479.6600573`, both identical to the pre-move snapshot. `thursday/` still holds
+   exactly its two files.
+7. **The P1.10 gate, byte for byte.** Full suite **179 tests pass**, 123.4 s, no failures and
+   no skips; the gate alone re-run verbosely, all 7 tests `ok` including
+   `test_user_stats_matches_baseline_byte_for_byte`. Driven from the gate this time rather than
+   `reward_trace.py`, so no committed report was rewritten — the lesson from P2.1. No stray
+   result directories.
+
+Pre-flight checks, all of which held:
+- 132 days, 44 each of Tue/Wed/Thu, Jan 2 – Oct 31 2024, no missing or extra date: **matched**.
+- All 26 evaluation and 5 excluded days present in `corpus/` before the move, the two lists
+  disjoint: **matched**.
+- **Nothing in any `.py` reads `corpus/`**: **matched** — only `docs/` mentions it, so the move
+  could not break code. This is why no test needed changing.
+- `corpus/` has no subdirectories: **matched**.
+- `.DS_Store` untracked, `git ls-files corpus/` counting exactly 132: **matched**.
+
+**A mistake of mine, caught by its own failure.** My first attempt moved the files with a shell
+`for d in $EVAL` loop. zsh does not word-split unquoted parameter expansions, so `$EVAL` stayed
+one word and `mv` was handed a single 300-character filename. It failed with
+`File name too long` **before writing anything**, and because the loop was in an `&&` chain the
+`corpus_excluded` moves never ran either. Verified the state afterwards rather than assuming:
+`corpus/` still held all 132, both new directories were empty, no file with a space in its name
+existed anywhere under the demand tree, and `git status` on the demand tree was clean. Redone in
+Python with `shutil.move` and a pre-flight assertion per file — every source present, every
+destination absent — which is what the move should have been from the start, since the file list
+is data rather than shell words.
+
+**What `git status` shows, so it is not a surprise:** 31 deletions under `corpus/` plus two
+untracked directories, not 31 renames. Rename detection runs against staged content, so the
+pairing appears once the new directories are `git add`-ed; the contents are bit-identical
+(check 5), so the similarity index will be 100%.
+
+VERIFY findings: **P2.2 carries no `VERIFY` markers.** The §2.9 claims it rests on were each
+checked and are recorded above — the split algorithm, the 132-day inventory, the weekday and
+month structure, and the `thursday/` carve-out.
+
+Spec changes made this turn (§2.9, plus one line in P2.9):
+- **The second content-identical twin recorded.** `thursday/2024-01-18.csv` is byte-identical
+  to its corpus copy — same md5, 426 rows — rather than a line-ending twin like 2024-06-20. No
+  scenario reads it, and 2024-01-18 is not in the evaluation split, so it stays a **training**
+  day in `corpus/`. §2.9 previously read as though 2024-06-20 were the only overlap, so a later
+  reader checking "no day sits in two places" would have found this and not known whether it
+  was expected.
+- **New rule: list demand days by `*.csv` only.** Every reader of the corpus directories
+  enumerates by extension and ignores every other entry, because macOS creates and rewrites
+  `.DS_Store` in these directories on its own and it is untracked — it can appear, change or
+  vanish between runs with no demand file changing. A reader enumerating directory entries
+  would see a phantom day, and in P2.6's manifest a `.DS_Store` would put a volatile hash into
+  a frozen artifact and fail every later corpus check for no real reason. Stated as binding on
+  **P2.3's rotation, P2.4's sweep, P2.6's manifest and P2.9's corpus check**, with "do not
+  delete these files to work around it — they come back."
+- **P2.9's verification** gains the test Ritun asked for: dropping a stray `.DS_Store` into the
+  temporary corpus copy must leave construction working. Put into P2.9's own text, not only
+  §2.9, so it is not missed when P2.9 is implemented — otherwise it is the kind of rule that
+  passes every test and then fails the first time Finder opens the directory.
+
+Nothing failed, so there is no fix to propose. **Stopping here** — not starting P2.3.

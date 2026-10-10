@@ -441,6 +441,23 @@ corpus may be able to affect them. 2024-06-20 happens to fall in the evaluation 
 corpus copy lives in `corpus_eval/`. The two files have identical content but different line
 endings, so their checksums differ — compare them with pandas, not md5.
 
+`thursday/` also holds **`2024-01-18.csv`**, which is **byte-identical** to its corpus copy
+(same md5, 426 rows) rather than a line-ending twin. No scenario reads it —
+`constant_config_depot_cali_sc_1.csv` names `rq_file = 2024-06-20.csv` — and 2024-01-18 is not
+in the evaluation split, so it stays a **training** day in `corpus/`. Recorded so that a later
+reader checking "no day sits in two places" does not mistake it for a split error: the three
+corpus directories are disjoint, and `thursday/` sits outside the split system by design.
+
+**List demand days by `*.csv` only.** Every reader of the corpus directories enumerates days by
+the `.csv` extension and ignores every other entry. macOS creates and rewrites `.DS_Store` in
+these directories on its own — `corpus/` holds one now — and it is untracked, so it can appear,
+change or vanish between runs without any demand file changing. A reader that enumerates
+directory entries instead would see a phantom day, and in P2.6's manifest a `.DS_Store` would
+put a volatile hash into a frozen artifact and make every later corpus check fail for no real
+reason. This binds **P2.3's day rotation, P2.4's sweep, P2.6's manifest and P2.9's corpus
+check**; P2.9 additionally carries a test that a stray `.DS_Store` does not make construction
+raise. Do not delete these files to work around it — they come back.
+
 **Frozen.** Adding, removing or moving a demand file after P2.2 shifts the arrival baseline
 (P2.6) and silently invalidates anything trained against it. P2.6's manifest records a hash of
 every training file's name and contents, and from P2.9 on the env refuses to start when
@@ -2132,13 +2149,16 @@ recomputes `corpus_hash` over the files in the corpus directory exactly as P2.6 
 on a mismatch raises, naming the files that are missing, extra or changed (from the manifest's
 per-file list). The corpus directory comes from a new config key, `corpus_dir`, defaulting to
 `data/demand/example_demand/matched/example_network/corpus`, so a test can point it at a
-temporary copy.
+temporary copy. Like every other corpus reader it enumerates days by `*.csv` only (§2.9).
 
 **How Ritun verifies:** the P1.10 gate, byte for byte, with the block present; for 10 decisions,
 every feature matches a hand computation — coordinates from `nodes.csv`, one-hots from the
 filename, zone counts from P2.7's recomputation; observation length +24; and with `corpus_dir`
 pointed at a temporary copy of `corpus/`, removing one file makes construction raise and name
-it, and editing one file does the same.
+it, and editing one file does the same. **Also: dropping a stray `.DS_Store` into that copy must
+leave construction working** — §2.9's `*.csv`-only rule, which is otherwise the kind of thing
+that passes every test here and then fails on Ritun's machine the first time Finder opens the
+directory.
 
 **Commit:** `RL-GYM: add Phase 2 request observation block`
 
