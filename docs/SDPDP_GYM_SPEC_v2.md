@@ -71,7 +71,10 @@ differences are what all four of these look like. Ritun decides what happens nex
 - Every item marked **VERIFY** must be checked against the actual source in this repository
   before you rely on it. If a `VERIFY` item contradicts this document, **stop and report**
   rather than working around it — the design decisions depend on those facts.
-- Every edit to a file outside `src/rl_gym/` and `dev/` carries a `# RL-GYM:` comment.
+- Every edit to a **source-code** file outside `src/rl_gym/` and `dev/` carries a `# RL-GYM:`
+  comment. Data files under `data/` (CSV, JSON, `crs.info`) and documentation (`docs/`, any
+  `*.md`) are exempt: a comment would break their readers or adds nothing. Record such changes in
+  the commit message and the progress log instead.
 - Prefer adding a parameter with a safe default over changing an existing default.
 - **Do not install, upgrade, or remove any package.** If an import fails, stop and report
   which package is missing. Ritun manages the environment — a dependency resolution that
@@ -79,6 +82,32 @@ differences are what all four of these look like. Ritun decides what happens nex
   `baseline_user_stats.csv`.
 - If you run into any confusion or have any questions, pause and ask Ritun, do not assume something.
   Ritun will tell you what to do and then you can continue.
+
+**Verify, don't trust — this document included.**
+
+This spec was written from reading the code and the data, by people and by an AI, across many
+sessions. It can be wrong, out of date, or inconsistent with itself; a review before Phase 2
+found and corrected about twenty such problems, and more may remain. Treat it accordingly:
+
+- Every factual claim here — what a function does, line numbers, column contents, file names,
+  counts, the figures a verification expects — is a hypothesis until you have checked it.
+  `VERIFY` marks the claims already known to be load-bearing; hold every other claim that your
+  work item or its verification depends on to the same standard. Line numbers are approximate:
+  find code by symbol, not by line.
+- Before relying on such a claim, check it independently: read the source, inspect the data, or
+  run a short experiment. Prefer evidence you produced in this session over anything written
+  here, including in the progress log.
+- If something does not hold — a claim is false; two sections disagree; a verification cannot
+  pass as written, or could pass while the thing it guards is broken; a Files list omits a file
+  the item clearly needs; or following an instruction would break a gate or a DECIDED choice —
+  **stop and report before writing code that depends on it.** Say what the spec says (section
+  and line), what you found (file and line, or command output), why it matters, and the
+  correction you propose. Do not silently choose an interpretation, and do not work around it.
+- Skepticism is not licence to redesign. DECIDED choices stay decided: propose a change, never
+  substitute one.
+- Record each such check in the DONE entry next to the `VERIFY` findings — the ones that
+  confirmed the spec as well as the ones that did not. A silent match cannot be told apart from
+  a skipped check.
 
 **If a session is interrupted — usage limit, crash, closed window:**
 
@@ -268,6 +297,15 @@ Plus rider decline on offer (`stochastic_rider_service_decline`) and dynamic fle
 **Do not disable, seed-freeze, or short-circuit any of these.** They are the point of the
 formulation.
 
+**Known defect, deliberately left in place through Phase 2.** `NetworkBasic._set_stoch_edge_tt`
+writes each realized travel-time draw into the edge object (`edge_obj.set_tt`). `Router.py`'s
+Dijkstra reads edge objects, so operator routing computed after a redraw uses the realized draw
+instead of `operator_exp_tt`, and `NetworkBasicWithStore` caches that result in
+`travel_time_infos` until the next operator file load (07:00, 09:00, 12:00, 16:00, 18:00).
+Ritun will correct this after P2.15 and regenerate the baselines (§8, After Phase 2). Until then
+**do not fix it** (§10): every gate depends on the current behaviour. It is also why observation
+code must leave the routing cache exactly as it found it (§5.2, trap 14).
+
 ### 2.6 Constructor side effects — the reset problem
 
 `FleetSimulationBase.__init__` does all of this on **every** instantiation:
@@ -371,12 +409,21 @@ Feb 22, Apr 16, Aug 8) also stay in: none has a calendar explanation, and in bot
 clusters the uplift is spread over the whole day and the core H3 cells, with no new cells,
 unchanged passengers per request, and no dominant origin–destination pair.
 
-**Split rule.** Per month, `round(0.2 × kept days)` are held out (Python `round`), drawn with
-`numpy.random.default_rng(20260929)`, months in calendar order. A month holding out 3 takes one
-day per weekday. A month holding out 2 takes the two weekdays with the fewest held-out days so
-far, ties broken by the generator, one day each. Within a weekday the day is drawn uniformly
-from the sorted list. Result: 26 evaluation days (Tue 8, Wed 9, Thu 9) and 101 training days
-(Tue 35, Wed 33, Thu 33); every month appears in both splits, with 9–12 training days each.
+**Split rule.** Per month, `n = round(0.2 × kept days)` days are held out (Python `round`; here
+`n` is always 2 or 3). One generator, `rng = numpy.random.default_rng(20260929)`, is used
+throughout, months in calendar order, with a running count of held-out days per weekday that
+starts at 0:
+
+1. If `n = 3`, the weekdays are taken in the order Tue, Wed, Thu, with no draw.
+2. If `n = 2`, draw `keys = rng.random(3)` — one key each for Tue, Wed, Thu, in that order —
+   sort the three weekdays ascending by (running count, key), and take the first two, in that
+   order.
+3. For each chosen weekday, in that order, the day is `pool[rng.integers(len(pool))]`, where
+   `pool` is that month's kept days of that weekday, sorted; then add 1 to its running count.
+
+This reproduces the list below exactly (checked). Result: 26 evaluation days (Tue 8, Wed 9,
+Thu 9) and 101 training days (Tue 35, Wed 33, Thu 33); every month appears in both splits, with
+9–12 training days each.
 
 **Evaluation days (26):**
 2024-01-11, 2024-01-30, 2024-02-07, 2024-02-08, 2024-02-27, 2024-03-19, 2024-03-20,
@@ -395,8 +442,9 @@ corpus copy lives in `corpus_eval/`. The two files have identical content but di
 endings, so their checksums differ — compare them with pandas, not md5.
 
 **Frozen.** Adding, removing or moving a demand file after P2.2 shifts the arrival baseline
-(P2.6) and silently invalidates anything trained against it. P2.6 records the hash of the
-training-day list, and the env refuses to start when `corpus/` no longer matches (trap 16).
+(P2.6) and silently invalidates anything trained against it. P2.6's manifest records a hash of
+every training file's name and contents, and from P2.9 on the env refuses to start when
+`corpus/` no longer matches (trap 16).
 
 ### 2.10 Network coordinate reference — corrected
 
@@ -564,13 +612,21 @@ sweep. It is not the evaluation baseline.
 
 ### D10. Training days rotate in global shuffled passes.
 
-Every training day is visited the same number of times, ±1, across all workers. Pass `p` uses
-one permutation of the sorted training-day list, drawn from
-`np.random.SeedSequence([base_seed, p])` — identical in every worker. Worker `env_id` of
-`n_workers` takes the days at positions `env_id, env_id + n_workers, …` of that permutation,
-then moves on to pass `p + 1`. Episode seeds stay independent per D7. Drawing a day uniformly
-at random per episode is not used: it balances only on average, and over a short run can skip
-days entirely.
+Within each pass, every training day is assigned exactly once. Pass `p` uses one permutation of
+the sorted training-day list, drawn from `np.random.SeedSequence([base_seed, 1010, p + 1])` —
+identical in every worker. The constant `1010` tags the stream, and `p + 1` keeps the last entry
+non-zero: `SeedSequence` pads with zeros, so `[base_seed, 1010, 0]` would equal
+`[base_seed, 1010]`. Together they keep it from ever coinciding with a worker's episode-seed
+stream `SeedSequence([base_seed, env_id])` (D7, P1.9). Worker `env_id` of
+`n_workers` takes the days at positions `env_id, env_id + n_workers, …` of that permutation, then
+moves on to pass `p + 1`.
+
+Across a whole run, visit counts stay close but are not exactly ±1. With 101 days and 4 workers,
+worker 0 owns 26 positions per pass and the others 25, and SB3 advances workers by steps rather
+than episodes, so workers move through passes at slightly different rates; over about 70 passes,
+counts differ by a few visits. The day-visit histogram (P2.13) reports it. Episode seeds stay
+independent per D7. Drawing a day uniformly at random per episode is not used: it balances only
+on average, and over a short run can skip days entirely.
 
 ---
 
@@ -746,7 +802,22 @@ Definitions:
   `insertion.py` does, read the times, discard the copy. One re-timed copy per candidate
   vehicle per decision, shared by both features. **Never re-time, reassign or otherwise touch
   `veh_plans[vid]` itself (trap 14).** VERIFY the call signature, and that re-timing a copy
-  leaves the stored plan's stops, `pax_info` and utility unchanged.
+  leaves the stored plan's stops, `pax_info` and utility unchanged. Two exceptions were found in
+  review:
+  - **(a) Shallow copy.** `PlanStop.copy()` copies `boarding_dict` shallowly, so the no-show
+    branch of `update_tt_and_check_plan` (`VehiclePlan.py`, `boarding_dict[-1].remove(rid)`)
+    can change the stored plan's list through the copy. Insertion already does exactly this for
+    every candidate vehicle at the same decision, so the observer's call finds the rider already
+    removed and changes nothing further. Report what you observe; the P1.10 gate decides.
+  - **(b) Routing cache.** Re-timing, and `added_distance`, call
+    `routing_engine.return_travel_costs_1to1`, which on `NetworkBasicWithStore` stores every new
+    origin–destination result in `travel_time_infos`. Until the §2.5 defect is fixed, Dijkstra
+    runs on the live random draw, so a cache entry the observer creates now changes what later
+    planning reads, and the gate can fail. The candidate observer therefore records the cache's
+    keys before computing its features and deletes every key it added afterwards, leaving the
+    cache exactly as it found it. VERIFY the attribute name; if the network type has no such
+    cache, there is nothing to restore. Once the defect is fixed this is unnecessary but
+    harmless.
 - **Pending riders** of a vehicle: riders with a boarding entry in the pre-insertion plan's
   stops who are not in `veh_obj.pax`. The new rider is never pending. VERIFY how a rider whose
   boarding is in progress appears, and record it.
@@ -825,13 +896,17 @@ Definitions:
   1 s of their quote, so a 30-minute window's median sits within 1 s of zero in 26% of windows,
   while the mean responds to the late tail (6% of pickups arrive more than 5 min after their
   quote). One entry per distinct rid, following `on_pickup`'s last-write-wins (§6.4).
-- **`active_*`**: from the fleet-sizing module's own parsed schedule (`TimeBasedFS`, reading
-  `example_active_fleetsize.csv`), not a re-parse of the file:
-  `min(max(round(share × nr_vehicles), 0), nr_vehicles)` exactly as `TimeBasedFS` computes it,
-  with the share from the schedule row in force at the query time, and the last row beyond the
-  end. VERIFY the lookup semantics. The fleet is `default_vehtype:12` and the schedule is the
-  same on every day, so these are a deterministic function of clock time, included as an
-  explicit signal.
+- **`active_*`**: computed from `op_act_fs_file` (`example_active_fleetsize.csv`), read once at
+  env construction from the same path `TimeBasedFS.add_init` uses
+  (`dir_names[G_DIR_FCTRL]/elastic_fleet_size/<file>`), with the identical formula
+  `min(max(int(np.round(share × nr_vehicles)), 0), nr_vehicles)` from
+  `TimeBasedFS._read_active_vehicle_file`. `TimeBasedFS` keeps no schedule that can be queried —
+  the parsed table is local to that method, and the activation lists it leaves behind are
+  consumed as they fire — so reading the file is the only route. The share in force at time `t`
+  is the last row with time ≤ `t`, and the last row beyond the end. Read-only: nothing on the
+  fleet-sizing module is touched. VERIFY the path and the formula. The fleet is
+  `default_vehtype:12` and the schedule is the same on every day, so these are a deterministic
+  function of clock time, included as an explicit signal.
 
 #### Windows
 
@@ -1500,8 +1575,11 @@ the env's own generator but leaves `G_RANDOM_SEED` at whatever the scenario row 
 the byte-for-byte gates keep testing the plumbing rather than the seeding. P1.10 runs in that
 mode.
 
-Episode seeds are drawn from `[0, 2**31)`. `np.random.seed` raises above `2**32 - 1`, and every
-stochastic component in the simulator — rider decline, the diffusion random term, no-show,
+Episode seeds are drawn from `[0, MAX_EPISODE_SEED]`, with
+`MAX_EPISODE_SEED = (2**32 - 1) // 1712 = 2,508,742` (defined in `gym_env.py`):
+`np.random.seed` raises above `2**32 - 1`, and `Demand.load_demand_file` seeds with 1712 × the
+episode seed. *(Corrected before Phase 2: an earlier draft of this item said `[0, 2**31)`; the
+code has always used the bound above.)* Every stochastic component in the simulator — rider decline, the diffusion random term, no-show,
 initial vehicle state and SoC, stochastic travel time — draws from the global `np.random`
 stream that `FleetSimulationBase.__init__` seeds from this key, so writing it before
 construction is both sufficient and complete.
@@ -1646,13 +1724,25 @@ every component end to end, with repositioning off. Performance is not judged in
 weight sweep, the scenario changes and full-length training come after it (end of this
 section).
 
-**Every item that touches the env or the observation (P2.3, P2.8–P2.12) re-runs the P1.10 gate
-as part of its verification.** Reading a feature must never change the simulation (trap 14), and
+**Every item that touches the env, the trackers or the observation (P2.0b, P2.3, P2.7–P2.12,
+P2.14) re-runs the P1.10 gate as part of its verification.** Reading a feature must never change the simulation (trap 14), and
 the gate is the only check that would notice.
 
 ---
 
-### P2.0 — Resolve the duplicate OpenMP runtime, before any training
+### P2.0 — Resolve the duplicate OpenMP runtime — **DEFERRED by Ritun; do not start**
+
+**Status:** deferred. Phase 2 starts at P2.0b. The import-order workaround (§8a) stays in place
+for all of Phase 2, and §8a is not deleted. Every new entry point that imports `torch`,
+`stable_baselines3` or `sb3_contrib` — scripts, test files and notebooks alike — imports `numpy`
+first, per §8a. Do not reorder those imports, and do not run an import sorter such as `isort`
+over them.
+
+Why it is deferred: the workaround works and has passed every gate, including P1.11's
+multi-worker run; a violation fails loudly and at once (`OMP: Error #15`), never silently; the
+conflict is specific to macOS, while full-length training runs on Linux (HPC3); and the fix
+itself risks moving `numpy` or `scipy`, which would invalidate `baseline_user_stats.csv`. The
+text below is kept for when Ritun revisits it.
 
 **Files:** `train_sdpdp.py`; §8a of this spec
 
@@ -1668,7 +1758,13 @@ moved `numpy` or `scipy` would change floating-point results and invalidate the 
 visible symptom — which is exactly why the re-verification is part of the task rather than an
 afterthought.
 
-**How Ritun verifies:** the P1.10 gate, byte for byte, after the install.
+**How Ritun verifies**, after the install and again after removing the workaround:
+1. The P1.10 gate, byte for byte.
+2. In fresh interpreters with no workaround, `python -c "import torch"`,
+   `python -c "import stable_baselines3"` and `python -c "import torch, numpy"` all exit 0. The
+   P1.10 gate never imports `torch`, so on its own it cannot show that the OpenMP conflict is
+   gone.
+3. P1.11's `SubprocVecEnv` smoke test completes.
 
 **Commit:** `RL-GYM: single OpenMP runtime; remove import-order workaround`
 
@@ -1676,27 +1772,48 @@ afterthought.
 
 ### P2.0b — Per-epoch reward breakdown
 
-**Files:** `src/rl_gym/reward.py`, `src/rl_gym/gym_env.py`, `tests/test_rl_gym_reward.py`
+**Files:** `src/rl_gym/reward.py`, `src/rl_gym/gym_env.py`, `tests/test_rl_gym_reward.py`,
+`src/rl_gym/tools/reward_trace.py` (new); report `docs/RL_GYM_REWARD_TRACE.md`
 
-`RewardTracker._add` takes an optional `kind` and `rid` and appends `(kind, rid, amount)` to a
-per-window event list. `flush()` returns the total as now; a companion `flush_events()` returns
-the list and clears it. `SDPDPAssignmentEnv` puts the list in `info["reward_events"]` on each
-step.
+Three related changes to the tracker and its readout. None changes what is charged under explicit
+weights.
 
-Behind a config key, `track_events`, defaulting to `False` — training does not need it and 7,000
-episodes should not pay for it. `flush()`'s return value must be unchanged in both modes.
+1. **Per-event breakdown.** `RewardTracker._add` takes optional `kind`, `rid` and `detail` and
+   appends `(kind, rid, amount, detail)` to a per-window event list; `detail` is the wait in
+   seconds for pickups and `None` otherwise. `flush()` returns the total as now; a companion
+   `flush_events()` returns the list and clears it. `SDPDPAssignmentEnv` puts the list in
+   `info["reward_events"]` on each step. With tracking on, **every classified exit appears as an
+   event**, with amount 0 where its weight is 0 — `on_exit` currently adds nothing when the
+   penalty is 0, and with §6.1's weights that would hide served, no-show, no-candidate and
+   unserved-at-horizon exits, which are exactly the labels the trace exists to check.
+   Zero-amount events change no total. Behind a config key, `track_events`, defaulting to
+   `False` — training does not need it and 7,000 episodes should not pay for it. `flush()`'s
+   return value must be unchanged in both modes.
+2. **Defaults follow §6.1.** `DEFAULT_REWARD_WEIGHTS` still holds the Phase 1 values
+   (`w_reject = 0.5`, `w_noshow = 0.8`), and the env passes `reward_weights = None` by default,
+   so anything run without explicit weights — this item's trace, P2.4's sweep — would silently
+   use them. Change the defaults to §6.1's Phase 2 weights, and update the tests that pin the old
+   values in `tests/test_rl_gym_reward.py`. P2.13 additionally requires explicit weights for
+   training.
+3. **Horizon margin in the summary.** `episode_summary()` gains `last_dropoff` — the largest
+   `do_time` among served riders, taken in `on_exit` — and
+   `horizon_margin = end_time − last_dropoff`: negative when the post-`end_time` tail did work,
+   `None` if nobody was served. P2.4 and P2.13 read these; nothing else records the last dropoff.
 
-**How Ritun verifies:** a scripted greedy run with `track_events = True` produces, for every step,
-the reward total and the events composing it — each with its kind, rid and amount, and for
-pickups the wait used. Write the first 40 steps and any step with three or more events to
-`docs/RL_GYM_REWARD_TRACE.md`. Report any step where the listed amounts do not sum to the step's
-reward, and confirm the sum over all steps equals `episode_reward`.
+**How Ritun verifies:**
+- The P1.10 gate, byte for byte: the tracker must not perturb the simulation.
+- A scripted greedy run with `track_events = True`, through `reward_trace.py`, writes to
+  `docs/RL_GYM_REWARD_TRACE.md` the first 40 steps and any step with three or more events: for
+  each, the step's reward and the events composing it, each with its kind, rid and amount, and
+  for pickups the wait. Report any step where the listed amounts do not sum to the step's
+  reward, and confirm the sum over all steps equals `episode_reward`.
+- On the reference day, `last_dropoff` is 69805.3 and `horizon_margin` about 194.7 s (P1.10).
 
-The point is to check the §6.4 ladder assigns the right label per event, which the episode-level
-counts cannot show — 118 declines could be the correct total with several individually
-misclassified.
+The point of the breakdown is to check the §6.4 ladder assigns the right label per event, which
+the episode-level counts cannot show — 118 declines could be the correct total with several
+individually misclassified.
 
-**Commit:** `RL-GYM: add per-epoch reward event breakdown`
+**Commit:** `RL-GYM: add per-epoch reward breakdown, Phase 2 default weights, horizon margin`
 
 ---
 
@@ -1704,15 +1821,17 @@ misclassified.
 
 **Files:** `data/networks/example_network/base/crs.info`
 
-Change `EPSG:32632` to `EPSG:32610` (§2.10). Every other byte of the file stays as it is,
-trailing newline included. **No `# RL-GYM:` comment** — the file is read raw into `self.crs` and
+Change `EPSG:32632` to `EPSG:32610` (§2.10). Every other byte of the file stays as it is. The
+file has no trailing newline and must not gain one. **No `# RL-GYM:` comment** — the file is read raw into `self.crs` and
 handed to pyproj, so a comment line would corrupt it (trap 15). Search the repository again for
 readers of `crs.info` and users of `self.crs`; the list in §2.10 comes from drafting, so report
 any addition. Leave `base - Copy/` alone.
 
 **How Ritun verifies:** the P1.10 gate, byte for byte; `return_network_bounding_box()` now
-returns longitudes inside −122.11 … −121.91 and latitudes inside 37.29 … 37.41, the range of
-the `lat`/`lon` columns in `nodes.csv`.
+returns the corners (−122.1102, 37.2921) and (−121.9153, 37.4076), each to within 1e-3°. These
+are the converted corners of the UTM bounding box, so they sit fractionally outside the range of
+the `lat`/`lon` columns in `nodes.csv` (37.291–37.409, −122.109 to −121.916). Under the old
+value the longitudes read 9.89–10.08.
 
 **Commit:** `RL-GYM: correct example_network CRS to EPSG:32610`
 
@@ -1724,9 +1843,10 @@ the `lat`/`lon` columns in `nodes.csv`.
 
 Create `corpus_eval/` and `corpus_excluded/` beside `corpus/`, and move the 26 evaluation files
 and the 5 excluded files per §2.9's lists. Filesystem moves only — no git commands (§0); Ritun
-commits, and git records the moves as renames. Before moving anything, re-derive the evaluation
-list from §2.9's rule and seed and confirm it reproduces the 26 listed days exactly; if it does
-not, report the difference and stop.
+commits, and git records the moves as renames. **The 26 days listed in §2.9 are authoritative:
+move exactly those.** As a cross-check, re-derive the list with §2.9's algorithm before moving
+anything. It reproduces the list exactly, so a mismatch means the corpus or the reading of the
+algorithm has changed — report the difference and stop.
 
 **How Ritun verifies:** 101 / 26 / 5 files, 132 in total, no filename in two directories;
 weekday counts Tue 35 / Wed 33 / Thu 33 for training and 8 / 9 / 9 for evaluation; every month
@@ -1749,11 +1869,20 @@ P1.9 deferred this here. The env writes the demand directory and file into
   reference path the gates need.
 - `day` — optional fixed day (filename stem). When set, every episode runs that day. Used by
   P2.4 and P2.14.
-- `n_workers` — required by D10 whenever `day_dir` is set and `day` is not.
+- `n_workers` — required by D10 whenever `day_dir` is set and neither `day` nor `eval_pairs` is.
+- `episode_seed` — optional. When set, every episode runs with exactly this `G_RANDOM_SEED`,
+  which must lie in `[0, MAX_EPISODE_SEED]` (P1.9). It cannot be combined with `base_seed`; the
+  env raises if both are set. With `day`, it pins one (day, seed) pair: used by P2.13's
+  checkpoint check, P2.14 and P2.15.
+- `eval_pairs` — optional ordered list of (day, seed). Episode `i` runs pair `i mod len`.
+  Requires `day_dir`; cannot be combined with `day`, `episode_seed` or `base_seed`. Used by
+  P2.13's evaluation callback.
 
-With `day_dir` set and `day` absent, days rotate per D10. `episode_summary()` records the day.
-The env parses weekday and month from the filename and exposes them for the request block
-(P2.9). `scenario_pool` stays accepted and unused.
+With `day_dir` set and neither `day` nor `eval_pairs`, days rotate per D10. `episode_summary()`
+records the day. When output is on and the pair is fixed (`episode_seed` or `eval_pairs`), the
+output directory is `f"{base}_{day}_s{seed}_env{env_id}_pid{pid}_ep{counter}"`, so it names the
+pair it holds. The env parses weekday and month from the filename and exposes them for the
+request block (P2.9). `scenario_pool` stays accepted and unused.
 
 VERIFY: the `scenario_parameters` keys that carry the demand directory and file, and that no
 component caches the demand path before construction.
@@ -1763,9 +1892,16 @@ component caches the demand path before construction.
 2. With `day_dir = "corpus_eval"`, `day = "2024-06-20"` and `base_seed` absent, the scripted
    greedy run's `1_user-stats.csv` is byte-identical to `baseline_user_stats.csv`. The input
    differs from `thursday/` only in line endings, which the demand loader does not see.
-3. A unit test with 3 workers and a 10-day list: over two full passes every day appears exactly
-   twice across the workers; each worker's day sequence is deterministic given `base_seed`;
-   episode seeds still differ from episode to episode.
+3. A unit test with 3 workers and a 10-day list, each worker run through its own share of every
+   pass (4 episodes for worker 0, 3 for workers 1 and 2): over two full passes every day appears
+   exactly twice across the workers; each worker's day sequence is deterministic given
+   `base_seed`; episode seeds still differ from episode to episode; and pass `p`'s permutation
+   comes from `SeedSequence([base_seed, 1010, p + 1])` (D10).
+4. With `day_dir = "corpus_eval"`, `day = "2024-06-20"` and `episode_seed = 42`, the output is
+   byte-identical to `baseline_user_stats.csv` (42 is the row's seed); with `episode_seed = 43`
+   it differs. Setting both `episode_seed` and `base_seed` raises.
+5. A unit test: `eval_pairs` runs its pairs in order and wraps around; each episode's
+   `G_RANDOM_SEED` and day match its pair.
 
 **Commit:** `RL-GYM: add multi-day episodes and shuffled-pass day rotation`
 
@@ -1785,8 +1921,8 @@ Per day, report:
   duplicate rid) — every loaded request in exactly one bucket;
 - `unclassified` (must be 0) and duplicate boardings;
 - candidate-list length: max, p95, and the count exceeding `K`;
-- last dropoff, the margin to `end_time`, and simulated seconds added by the
-  `record_remaining_assignments` tail, measured as in P1.10;
+- `last_dropoff` and `horizon_margin` from `episode_summary()` (P2.0b), and the simulated
+  seconds added by the `record_remaining_assignments` tail, measured as in P1.10;
 - pickups, declines, post-match cancellations, no-shows;
 - episode wall clock.
 
@@ -1795,8 +1931,8 @@ where lists most exceed `K`, the days with the thinnest horizon margin, and any 
 tail does real work. Decisions on `K` and `w_horizon` stay with Ritun.
 
 **How Ritun verifies:** the 2024-06-20 row reproduces P1.10's figures exactly — 445 loaded,
-436 steps, 9 empty lists, max list 11, 13 lists over `K`, margin about 195 s, 288 pickups, 118
-declines, 28 cancellations, 2 no-shows.
+436 steps, 9 empty lists, max list 11, 13 lists over `K`, `horizon_margin` about 194.7 s, 288
+pickups, 118 declines, 28 cancellations, 2 no-shows.
 
 **Commit:** `RL-GYM: add corpus sanity sweep and report`
 
@@ -1819,10 +1955,11 @@ so no event can land there. **Nothing imports `h3`** (§10).
 `zones.py` loads the node → cell map from `nodes.csv` and the table, and exposes
 `cell_of_node(node)` and `zone_set(cell)`.
 
-**How Ritun verifies:** against `h3` 4.5.0 `grid_disk(cell, 1)` restricted to the 37 cells,
-checked during drafting: 88 undirected neighbour pairs, every cell with 2–6 neighbours inside
-the set, 17 cells with all 6. Also: the relation is symmetric, and the geojson's 37 ids equal
-the `nodes.csv` set.
+**How Ritun verifies:** against these figures, computed during drafting with `h3` 4.5.0
+`grid_disk(cell, 1)` restricted to the 37 cells — `h3` is not installed and must not be (§0,
+§10), so compare with the numbers rather than calling it: 88 undirected neighbour pairs, every
+cell with 2–6 neighbours inside the set, 17 cells with all 6. Also: the relation is symmetric,
+and the geojson's 37 ids equal the `nodes.csv` set.
 
 **Commit:** `RL-GYM: add H3 neighbour table and zone lookup`
 
@@ -1858,10 +1995,14 @@ residual spread is 4.9 with the month baseline, 5.3 with weekday, 5.6 with none;
 scaled by month level gave 5.07. September's mean blends 7 training days before the level shift
 with 3 after it (§2.9); accepted.
 
-**Manifest:** the sorted training-day list and its SHA-256, the month vocabulary (Jan–Oct), the
-weekday vocabulary (Tue, Wed, Thu), `start_time`, `end_time`, the windows, and the SD floor. The
-env reads the manifest at construction, recomputes the hash over the files present in
-`corpus/`, and raises on mismatch (trap 16).
+**Manifest:** `files` — every training file, sorted by filename, with the SHA-256 of its bytes;
+`corpus_hash`; the month vocabulary (Jan–Oct); the weekday vocabulary (Tue, Wed, Thu);
+`start_time`, `end_time`, the windows, and the SD floor. `corpus_hash` is the SHA-256 of the
+UTF-8 text made of one line per entry of `files`, in order, each line
+`<filename>:<SHA-256 of the file's bytes>`, joined with `\n`. It covers contents as well as
+names, so an edited file is caught too, and the per-file list lets the env say which files
+differ. The env-side check that uses it is
+added in P2.9, the first item that reads the manifest (trap 16).
 
 **How Ritun verifies:** for 3 random training days and 3 random minutes, `c_d` recomputed by
 hand from the CSV matches; a plot of `mean(m, t, 30)` per month shows October above the rest;
@@ -1874,8 +2015,9 @@ the manifest hash matches the directory.
 ### P2.7 — `RollingStatsTracker`
 
 **Files:** `src/rl_gym/rolling_stats.py` (new), `src/rl_gym/reward.py` (shared classifier),
-`src/rl_gym/fleetctrl_rl.py` and/or `src/rl_gym/sim_env_rl.py` (arrival hook),
-`src/rl_gym/gym_env.py` (wiring), `tests/test_rl_gym_rolling_stats.py` (new)
+`src/rl_gym/sim_env_rl.py` (tracker clock; arrival hook, unless it belongs in
+`src/rl_gym/fleetctrl_rl.py`), `src/rl_gym/gym_env.py` (wiring),
+`tests/test_rl_gym_rolling_stats.py` (new)
 
 Events:
 - **arrival** — rid, `rq_time`, origin cell — at the single entry point every loaded request
@@ -1883,7 +2025,10 @@ Events:
   VERIFY that this is `build_assignment_context`.
 - **decline** and **post-match cancellation** — from the same exit callback as `RewardTracker`,
   labelled by one §6.4 classification function shared by both trackers (trap 13); keyed to the
-  rider's origin cell, timed when they fire.
+  rider's origin cell, timed when they fire. The exit callback receives only `(rid, rq)`, so the
+  tracker keeps a clock: `step_generator` sets it to `sim_time` at the start of every step. A
+  decline is therefore timed at its arrival step, and a post-match cancellation at the step its
+  diffusion check fires.
 - **pickup** — from the boarding callback; stores pickup time and realized minus quoted wait,
   last-write-wins per rid (§6.4). Quoted wait from the operator side (§5.2); nothing from the
   diffusion model.
@@ -1897,9 +2042,14 @@ tracker is rebuilt with the simulation at every reset (§10).
 - end-of-day totals match P1.10: 445 arrivals, 118 declines, 28 cancellations, 288 distinct
   pickups;
 - at 20 random decision times, every windowed count and the wait-gap mean equal an independent
-  recomputation from `1_user-stats.csv`. VERIFY which columns carry each event's time — expected
-  `rq_time`, `decision_time` for declines, `diffusion_decision_time` for cancellations,
-  `pickup_time` — and the quoted wait in `offers` (`t_wait`);
+  recomputation from `1_user-stats.csv`. VERIFY which columns carry each event's time. Found in
+  review: declines leave `decision_time` empty (all 118 on the reference day) and fire in their
+  arrival step, so their time is `rq_time`; post-match cancellations fire at `decision_time`
+  (`leave_system_time`, set to the step time), while `diffusion_decision_time` is model-internal
+  and differs in 4 of the 28; pickups are at `pickup_time`; the quoted wait is `t_wait` in
+  `offers`. Draw the 20 times from outside [33032.9, 33230): rid 50's first boarding falls there
+  and is later overwritten (§6.4), so `1_user-stats.csv` cannot reproduce a window containing
+  it;
 - online fleet-wide arrival counts at every decision equal P2.6's definition recomputed from the
   demand file;
 - the P1.10 gate, byte for byte.
@@ -1911,13 +2061,16 @@ tracker is rebuilt with the simulation at every reset (§10).
 ### P2.8 — Observation layout map; greedy by name
 
 **Files:** `src/rl_gym/observers.py`, `src/rl_gym/gym_env.py`, `src/rl_gym/policies.py`,
-`src/rl_gym/spaces.py` (docstring), `tests/test_rl_gym.py`, `tests/test_rl_gym_observers.py`
+`src/rl_gym/spaces.py` (docstring), `src/rl_gym/tools/corpus_sweep.py` (P2.4's driver calls
+`greedy_action`), `tests/test_rl_gym.py`, `tests/test_rl_gym_observers.py`
 
 No feature changes in this item — the vector stays identical to Phase 1.
 
-- The env publishes `observation_layout`: an ordered mapping from feature name to slice, built
-  at construction from the observers' dicts (the same insertion-order mechanism as
-  `observe_vector`).
+- Each observer declares its features statically: `feature_spec()` returns an ordered list of
+  `(name, length)`, fixed at construction. The env publishes `observation_layout` — an ordered
+  mapping from feature name to slice — built from those specs at construction. The observers'
+  dicts exist only after `observe()` runs, so they cannot be the source. A test asserts that
+  every `observe()` returns exactly the declared names, in the declared order and lengths.
 - `greedy_action(obs, mask, layout)` finds `delta_cfv` by name and keeps the `is_valid`
   restriction (P1.10). The hardcoded `(3K + 4,)` shape check goes.
 - Fix two stale docstrings: `spaces.py`'s "k-th cheapest candidate" becomes "k-th candidate in
@@ -1935,15 +2088,24 @@ No feature changes in this item — the vector stays identical to Phase 1.
 ### P2.9 — Request block
 
 **Files:** `src/rl_gym/observers.py` (`RequestObserver`), `src/rl_gym/gym_env.py`,
-`tests/test_rl_gym_observers.py`
+`tests/test_rl_gym_observers.py`, `tests/test_rl_gym_env.py` (it asserts the observation shape)
 
 Per §5.2's request block. Node lat/lon and the bbox are loaded once at env construction from
 `nodes.csv` (§2.10); vocabularies from P2.6's manifest; zone counts from P2.7 through P2.5's
 zone sets.
 
+This item also adds the corpus check (trap 16): at construction the env loads P2.6's manifest,
+recomputes `corpus_hash` over the files in the corpus directory exactly as P2.6 defines it, and
+on a mismatch raises, naming the files that are missing, extra or changed (from the manifest's
+per-file list). The corpus directory comes from a new config key, `corpus_dir`, defaulting to
+`data/demand/example_demand/matched/example_network/corpus`, so a test can point it at a
+temporary copy.
+
 **How Ritun verifies:** the P1.10 gate, byte for byte, with the block present; for 10 decisions,
 every feature matches a hand computation — coordinates from `nodes.csv`, one-hots from the
-filename, zone counts from P2.7's recomputation; observation length +24.
+filename, zone counts from P2.7's recomputation; observation length +24; and with `corpus_dir`
+pointed at a temporary copy of `corpus/`, removing one file makes construction raise and name
+it, and editing one file does the same.
 
 **Commit:** `RL-GYM: add Phase 2 request observation block`
 
@@ -1952,15 +2114,18 @@ filename, zone counts from P2.7's recomputation; observation length +24.
 ### P2.10 — Candidate block
 
 **Files:** `src/rl_gym/observers.py` (`CandidateObserver`), `src/rl_gym/gym_env.py` (config
-keys `wait_normalizer_s`, `position_encoding`), `tests/test_rl_gym_observers.py`
+keys `wait_normalizer_s`, `position_encoding`), `tests/test_rl_gym_observers.py`,
+`tests/test_rl_gym_env.py` (it asserts the observation shape)
 
 Per §5.2's candidate block: features 4–12 appended after the three Phase 1 features. One
-re-timed pre-insertion copy per candidate vehicle per decision, shared by features 9 and 12.
+re-timed pre-insertion copy per candidate vehicle per decision, shared by features 9 and 12. The
+routing cache is restored after every observation, per §5.2 (b).
 
 **How Ritun verifies:**
 - **the P1.10 gate, byte for byte — the critical check for this item**, since it re-times plan
-  copies (trap 14). A test also asserts that `veh_plans[vid]` — stops, `pax_info`, utility — is
-  unchanged across an observation;
+  copies and queries the router (trap 14). Tests also assert that `veh_plans[vid]` — stops,
+  `pax_info`, utility — is unchanged across an observation, apart from §5.2's exception (a), and
+  that `routing_engine.travel_time_infos` holds the same keys before and after one;
 - with `wait_normalizer_s` absent, `offered_wait` is bit-identical to Phase 1's;
 - for 10 decisions where some candidate has two or more pending riders, features 9–12 match a
   hand computation;
@@ -1977,10 +2142,10 @@ re-timed pre-insertion copy per candidate vehicle per decision, shared by featur
 ### P2.11 — Global block
 
 **Files:** `src/rl_gym/observers.py` (`GlobalStateObserver`), `src/rl_gym/gym_env.py`,
-`tests/test_rl_gym_observers.py`
+`tests/test_rl_gym_observers.py`, `tests/test_rl_gym_env.py` (it asserts the observation shape)
 
 Per §5.2's global block: rolling counts and the wait gap from P2.7, the anomaly from P2.6's
-baseline, `active_*` from `TimeBasedFS`.
+baseline, `active_*` from `op_act_fs_file` read as §5.2 describes.
 
 **How Ritun verifies:** the P1.10 gate, byte for byte; for 10 decisions, every feature matches a
 hand computation; across the reference day `active_now` × 12 steps 8 → 11 at 08:00, 11 → 12 at
@@ -2016,13 +2181,24 @@ gate runs the unwrapped env).
 
 - `MaskablePPO` (`sb3-contrib`), `MlpPolicy`, `SubprocVecEnv` (D8), `VecNormalize` (P2.12),
   training days by D10 rotation (`day_dir = "corpus"`), `base_seed` required (the D7 guard
-  stays), reward weights from config (§6.1), `skip_output = True`.
+  stays). **Do not pass `seed=` to `MaskablePPO`.** In SB3 2.9.0 that calls `VecEnv.seed`, which
+  hands worker `i` the seed `base_seed + i` at its next reset; the env would then seed its
+  generator from that number and never use D7's `SeedSequence([base_seed, env_id])`, silently
+  bypassing D7. Instead, before building the model, call
+  `stable_baselines3.common.utils.set_random_seed(s)` in the parent process with
+  `s = int(np.random.SeedSequence([base_seed, 2020]).generate_state(1)[0])`, so network
+  initialisation and action sampling are reproducible too; reward weights from config (§6.1) — **all eight must be given
+  explicitly, and the script raises if any is missing** rather than falling back to defaults;
+  `skip_output = True`.
 - Hyperparameters are config keys with these defaults: `gamma = 0.999` (§6.5),
   `gae_lambda = 0.95`, `learning_rate = 3e-4`, `n_steps = 1024` per env, `batch_size = 256`,
   `n_epochs = 10`, `clip_range = 0.2`, `ent_coef = 0.0`, `net_arch = [256, 256]`.
-- `MaskableEvalCallback` on a separate evaluation `VecEnv` over `corpus_eval` with fixed
-  (day, seed) pairs, sharing the training `VecNormalize` statistics (synced, `training = False`).
-  Its size and frequency are config keys and small by default.
+- `MaskableEvalCallback` on a separate evaluation `SubprocVecEnv` (D8) over `corpus_eval` in
+  `eval_pairs` mode (P2.3), sharing the training `VecNormalize` statistics (synced,
+  `training = False`). The pairs are a config list (P2.15 takes them from P2.14's seed file).
+  Each evaluation must run every pair exactly once: VERIFY how SB3 spreads `n_eval_episodes`
+  across the evaluation envs, split the pairs to match, and log the (day, seed) of every
+  evaluation episode. Its size and frequency are config keys and small by default.
 - TensorBoard, per episode: reward; the `episode_summary()` counts (pickups, declines,
   cancellations, no-shows, rejections, no-candidates, and `unclassified`, which must stay 0);
   day and seed; steps per second. Aggregated: the day-visit histogram (D10) and the
@@ -2031,18 +2207,28 @@ gate runs the unwrapped env).
     selection of slot `K − 1` means `K` is binding: the truncation is cutting off candidates
     the policy wants, and `K` would need raising. Read it together with the candidate-list
     lengths from P1.10 and P2.4 (D3).
-  - **The per-episode margin between the last dropoff and `end_time`.** Under greedy on the
-    reference day it is about 195 s, and the tail adds zero simulated seconds because nothing
+  - **The per-episode margin between the last dropoff and `end_time`**, read from
+    `episode_summary()["horizon_margin"]` (P2.0b). Under greedy on the reference day it is about
+    195 s, and the tail adds zero simulated seconds because nothing
     is in flight (§6.4, P1.10). It is the one Phase 1 measurement a trained policy can move
     against: accepting more marginal requests pushes dropoffs later and closes the margin. **If
     it closes, §6.4's branch 7 goes live and `w_horizon = 0.0` stops being a placeholder and
     becomes a real decision** — so this is watched from the first training run, not
     discovered afterwards.
-- Checkpoints every N episodes with their `VecNormalize` statistics; resume from a checkpoint.
+- Checkpoints every N episodes with their `VecNormalize` statistics and run metadata, including
+  every `base_seed` the run has used. Resuming from a checkpoint requires a `base_seed` that is
+  not in that list, and the script raises otherwise: resuming with the same `base_seed` would
+  restart D10's rotation and the episode-seed streams from the beginning, and replay sample paths
+  already trained on. The rotation restarts at pass 0 of the new seed; the day-visit histogram
+  shows the small imbalance that leaves.
 
 **How Ritun verifies:** a 2-worker, ~8-episode run completes and TensorBoard shows every listed
-scalar; a checkpoint reloads and, with `deterministic = True` on a fixed (day, seed), reproduces
-the same action sequence as before saving; no orphaned workers after `close()` (P1.11's check).
+scalar; a checkpoint reloads and, with `deterministic = True` on a fixed (day, seed) — `day` plus
+`episode_seed` (P2.3) — reproduces the same action sequence as before saving; each worker's first-episode `random_seed` in
+`episode_summary()` is the one D7 derives from `SeedSequence([base_seed, env_id])`, not
+`base_seed + env_id`; two runs with the same `base_seed` produce identical first-update losses;
+the script raises when any reward weight is missing, and when resuming with a `base_seed`
+already used; no orphaned workers after `close()` (P1.11's check).
 
 **Commit:** `RL-GYM: add MaskablePPO training script and callbacks`
 
@@ -2051,23 +2237,36 @@ the same action sequence as before saving; no orphaned workers after `close()` (
 ### P2.14 — Evaluation harness: stock greedy baseline and KPI table
 
 **Files:** `src/rl_gym/evaluate.py` (new), `src/rl_gym/kpis.py` (new),
-`docs/RL_GYM_EVAL_SEEDS.csv` (new), `tests/test_rl_gym_kpis.py` (new)
+`src/rl_gym/gym_env.py` (episode-summary file), `docs/RL_GYM_EVAL_SEEDS.csv` (new),
+`tests/test_rl_gym_kpis.py` (new)
 
 **The RL result is meaningless without the greedy baseline on the same held-out days.**
 
-- **Seeds.** `eval_seeds_per_day` (default 10) per evaluation day, drawn once from
-  `np.random.SeedSequence(eval_seed_root)` into `[0, MAX_EPISODE_SEED]`, written to
-  `docs/RL_GYM_EVAL_SEEDS.csv`, and reused for every policy ever evaluated. The comparison is
+- **Seeds.** `eval_seeds_per_day` (default 10) per evaluation day, drawn once with
+  `np.random.default_rng(np.random.SeedSequence(eval_seed_root))`, `eval_seed_root = 20261009`,
+  as integers in `[0, MAX_EPISODE_SEED]` (`MAX_EPISODE_SEED = 2,508,742`, defined in
+  `gym_env.py`; P1.9), days in sorted order. They are written to `docs/RL_GYM_EVAL_SEEDS.csv`
+  once, never regenerated, and reused for every policy ever evaluated. The comparison is
   **unpaired**: rider decline, the diffusion random term and stochastic travel time all draw from
   one global stream (§2.5, P1.9), so two policies on the same seed share a sample path only until
   their first different decision. The seed list buys reproducibility, not common random numbers.
-- **Greedy baseline (D9).** Stock FleetPy through the same entry point `run_examples.py` uses,
-  reference scenario, with the demand directory set to `corpus_eval`, the file to the day, and
-  `G_RANDOM_SEED` to the seed; output on; one process per run. VERIFY that the entry point
-  accepts these overrides without editing the scenario files.
-- **RL policy.** The env in fixed-day mode with the same (day, seed), `skip_output = False`, the
-  checkpoint and its `VecNormalize` statistics (`training = False`), deterministic actions.
-  Keep the log level at `warning` (the P1.11 logging caveat).
+- **Greedy baseline (D9).** Stock FleetPy through `run_examples.run_single_simulation(
+  scenario_parameters)` — the function `run_scenarios` calls once per row; `run_scenarios` itself
+  takes only file paths and cannot accept overrides. Build `scenario_parameters` exactly as
+  `run_scenarios` does for the reference scenario's active row (constant config plus row,
+  `study_name`, `n_cpu_per_sim = 1`, and `evaluate`, `log_level` and `keep_old` as
+  `run_scenarios` sets them), then override `day_dir_name = "corpus_eval"`,
+  `rq_file = "<day>.csv"`, `random_seed = <seed>` and
+  `scenario_name = f"greedy_{day}_s{seed}"`. The unique name is required: every run otherwise
+  inherits the row's `example_depot_time_pool_irsonly_rs_42`, and `create_or_empty_dir` would
+  wipe each run's output, and the reference run's (trap 1). Output on; one process per run.
+  VERIFY that these overrides reach the simulation unchanged and that no scenario file is
+  edited.
+- **RL policy.** The env with `day_dir = "corpus_eval"`, `day` and `episode_seed` (P2.3) set to
+  the pair, `skip_output = False`, the checkpoint and its `VecNormalize` statistics
+  (`training = False`), deterministic actions. Keep the log level at `warning` (the P1.11
+  logging caveat). When output is on, the env also writes `rl_episode_summary.json` — the
+  `episode_summary()` dict — into its output directory; this item adds that to `gym_env.py`.
 - **KPI script** reads only the output directory, identically for both policies:
   - served count;
   - mean wait (`pickup_time − rq_time`) over served;
@@ -2076,14 +2275,19 @@ the same action sequence as before saving; no orphaned workers after `close()` (
   - decline rate (declines / offers made);
   - post-match cancellation rate (cancellations / accepted offers);
   - no-show rate (no-shows / accepted offers);
-  - operator rejections and no-candidate requests;
+  - operator rejections and no-candidate requests. Both leave `offers = "0:"` in
+    `1_user-stats.csv`, so the output file alone cannot separate them: for env runs read the
+    split from `rl_episode_summary.json`; for stock greedy, operator rejections are 0 by
+    construction and every such row is a no-candidate request;
   - total fleet VKT = Σ `driven_distance` in `2-0_op-stats.csv` / 1000, as
     `evaluation/standard.py` computes `op_total_km`.
 
   Tabulated per day, per month and overall, as mean ± standard error over seeds.
 
-**How Ritun verifies:** the greedy baseline on (2024-06-20, seed 42) writes a `1_user-stats.csv`
-byte-identical to `baseline_user_stats.csv`; the KPI script's counts on that run reconcile with
+**How Ritun verifies:** the P1.10 gate, byte for byte (this item edits `gym_env.py`); the greedy
+baseline on (2024-06-20, seed 42) writes a `1_user-stats.csv` byte-identical to
+`baseline_user_stats.csv`, and two baseline runs on different pairs leave both output
+directories intact; the KPI script's counts on that run reconcile with
 P1.10's `episode_summary()`; the env-driven greedy on the same pair gives an identical KPI row,
 which is D9's premise.
 
@@ -2129,30 +2333,33 @@ used to size the weight sweep.
 
 In this order:
 
-1. **Reward weight sweep** over `w_pickup`, `w_wait`, `w_reject`, `w_cancel` and `w_decline`,
+1. **Stochastic travel-time routing fix** (§2.5): keep realized draws out of operator routing,
+   regenerate the byte-gate baseline and the stock-greedy KPI baselines, re-run the gates and
+   P2.4's sweep, and run a short training on the corrected simulator to size the weight sweep.
+2. **Reward weight sweep** over `w_pickup`, `w_wait`, `w_reject`, `w_cancel` and `w_decline`,
    with repositioning off, to set the weights for full-length training. Its design — the rule
    for choosing a winner, validation days carved out of the training split (never the
    evaluation days), the per-point budget from a short training run on the simulator as it will be trained, 
    since P2.15 is too short to size it — is settled then. Only ratios to `w_pickup` affect the optimal policy,
    and `VecNormalize` rescales rewards anyway.
-2. **Planner stop duration.** Ritun may change `op_const_boarding_time` from 300 s to 40–60 s.
+3. **Planner stop duration.** Ritun may change `op_const_boarding_time` from 300 s to 40–60 s.
    This is his decision; Claude Code does not touch it (§10).
-3. **Turn on stock repositioning.** It needs a FleetPy zone system and forecast inputs.
-4. **Regenerate both baselines**: the byte-gate file — keeping the current one under a new name,
+4. **Turn on stock repositioning.** It needs a FleetPy zone system and forecast inputs.
+5. **Regenerate both baselines**: the byte-gate file — keeping the current one under a new name,
    so the repositioning-off configuration stays testable — and the stock-greedy KPI runs. A
    single training run at the swept weights then checks that they carry over.
-5. **Full-length training** (~7,000 episodes).
+6. **Full-length training** (~7,000 episodes).
 
-Steps 2–4 change the simulation. They invalidate every earlier baseline comparison, and the
+Steps 1, 3 and 4 change the simulation. They invalidate every earlier baseline comparison, and the
 gates must be re-established against the new baselines.
 
 ---
 
 ## 8a. Environment note — import numpy first (temporary workaround)
 
-**Every Phase 2 training and evaluation script must `import numpy` before importing `torch`,
-`stable_baselines3`, `sb3_contrib`, `ax` or anything that pulls them in.** Otherwise the process
-dies immediately:
+**Every Phase 2 entry point — training and evaluation scripts, test files and notebooks — must
+`import numpy` before importing `torch`, `stable_baselines3`, `sb3_contrib`, `ax` or anything
+that pulls them in.** Otherwise the process dies immediately:
 
 ```
 OMP: Error #15: Initializing libomp.dylib, but found libomp.dylib already initialized.
@@ -2171,11 +2378,11 @@ crashes or silently produce incorrect results", and anything that perturbs the n
 invalidates `baseline_user_stats.csv` and every byte-for-byte gate behind it. Import order
 carries no such risk.
 
-**This is a temporary workaround, not the design.** The proper fix — installing `torch` from
-conda-forge so a single OpenMP runtime is linked — is its own task, to be done before Phase 2
-training and followed by **re-running the P1.10 gate**. If the gate still matches, the
-import-order workaround comes out. If it does not, that is itself the finding, and the current
-environment still works.
+**This is a workaround, not the design, and it stays for all of Phase 2.** The proper fix —
+installing `torch` from conda-forge so a single OpenMP runtime is linked — is P2.0, which Ritun
+has deferred. If he revisits it, it is followed by **re-running the P1.10 gate**: if the gate
+still matches, the import-order workaround comes out; if it does not, that is itself the
+finding, and the current environment still works.
 
 **How the ordering reaches the workers — via forkserver, not spawn.** `mp`'s default start
 method on macOS is `spawn`, but `SubprocVecEnv` overrides it: it picks **`forkserver`** whenever
@@ -2250,12 +2457,15 @@ carries a comment saying so; keep it.
 14. **Observation code never mutates simulation state.** Read `veh_plans[vid]`; never re-time,
     reassign or edit it — re-time copies only (§5.2). Never write a `PlanRequest` field, such as
     `t_pu_latest`, to compute a feature: that changes insertion feasibility for every later
-    request. The P1.10 gate re-run in each observation item is what catches a violation.
+    request. Leave no new entries in the routing cache either (§5.2, exception (b)): until the
+    §2.5 defect is fixed, a cached route changes what later planning reads. The P1.10 gate re-run
+    in each observation item is what catches a violation.
 15. **`crs.info` carries no comment.** It is read raw into `self.crs` and handed to pyproj, so
     §0's `# RL-GYM:` rule cannot apply to it. The change is recorded in §2.10 and its commit
     message instead.
-16. **Artifacts are tied to the frozen corpus.** P2.6's arrival baseline stores the hash of the
-    training-day list, and the env raises when `corpus/` no longer matches. A baseline computed
+16. **Artifacts are tied to the frozen corpus.** P2.6's manifest stores `corpus_hash`, computed
+    over the training files' names and contents, and from P2.9 on the env raises at construction
+    when `corpus/` no longer matches. A baseline computed
     over a different set of days produces plausible-looking anomalies that are simply wrong.
 
 ---
