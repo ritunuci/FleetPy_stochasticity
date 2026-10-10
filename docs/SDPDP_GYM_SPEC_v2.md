@@ -458,14 +458,30 @@ Europe). The network is in **`EPSG:32610`** (UTM zone 10N). The evidence:
   zones) east of the network. Latitudes survive the error (37.29°–37.41°), which is why it went
   unnoticed.
 
-Who reads the file: `NetworkBasic.__init__` reads it into `self.crs` at every construction.
-Only `return_network_bounding_box` and `return_positions_lon_lat` use `self.crs`, and only the
-realtime plot calls them (`FleetSimulationBase` ~1093, ~1126), which is off in the reference
-scenario (`realtime_plot` unset). Outside a simulation run: `ReplayFromResult.py` (post-hoc
-replay, which draws the network in Germany until the fix), `NetworkTTMatrix` (not this
-scenario's network type), and a zone preprocessing script. The correction is therefore expected
-to have no runtime effect; P2.1 makes the byte gate the arbiter. `base - Copy/crs.info` carries
-the same wrong value; nothing loads that directory and it is left alone.
+Who reads the file: `NetworkBasic.__init__` reads it into `self.crs` at every construction
+(`NetworkBasic.py` ~194). Only `return_network_bounding_box` and `return_positions_lon_lat` use
+`self.crs`, and only the realtime plot calls them (`FleetSimulationBase` ~1093, ~1126), which is
+off in the reference scenario (`realtime_plot` unset). Outside a simulation run:
+`ReplayFromResult.py` (post-hoc replay, which draws the network in Germany until the fix),
+`NetworkTTMatrix` (not this scenario's network type), and a zone preprocessing script
+(`create_rectangle_zones.py` ~161). The correction is therefore expected to have no runtime
+effect; P2.1 makes the byte gate the arbiter. `base - Copy/crs.info` carries the same wrong
+value; nothing loads that directory and it is left alone.
+
+Two additions from the re-search P2.1 requires, neither of which changes the above:
+
+- **That one read reaches every registered routing engine but `NetworkTTMatrix`**, which has its
+  own. `NetworkBasicWithStore` (the reference scenario's), `NetworkPartialPreprocessed` and
+  `NetworkBasicCpp` inherit from `NetworkBasic` directly; `NetworkImmediatePreproc`,
+  `NetworkBasicWithStoreCpp` and `NetworkPartialPreprocessedCpp` transitively. So the corrected
+  value reaches whichever engine a scenario selects.
+- **Three further readers, all unregistered dead copies**: `NetworkBasic_backup.py` ~193,
+  `Backup_files_by_Ritun/NetworkBasic.py` ~189, and
+  `Backup_files_by_Ritun/NetworkBasic_with_sto_netdyn_update.py` ~190. Each reads `crs.info` into
+  `self.crs` and carries the same two `Transformer.from_proj` users. None appears in
+  `get_src_routing_engines()` (`src/misc/init_modules.py` ~39–54), so none is reachable from a
+  config; they would inherit the corrected value if ever run, which is the right outcome. Do not
+  edit them.
 
 Phase 2's position features read `lat`/`lon` from `nodes.csv` (§5.2), not those helpers —
 `return_positions_lon_lat` builds a new pyproj transformer on every call. Directionality works
@@ -1841,9 +1857,14 @@ any addition. Leave `base - Copy/` alone.
 
 **How Ritun verifies:** the P1.10 gate, byte for byte; `return_network_bounding_box()` now
 returns the corners (−122.1102, 37.2921) and (−121.9153, 37.4076), each to within 1e-3°. These
-are the converted corners of the UTM bounding box, so they sit fractionally outside the range of
-the `lat`/`lon` columns in `nodes.csv` (37.291–37.409, −122.109 to −121.916). Under the old
-value the longitudes read 9.89–10.08.
+are the two corners of the UTM rectangle reprojected, so they do not coincide with the
+`lat`/`lon` hull in `nodes.csv` (37.2915–37.4089, −122.1095 to −121.9162): the **longitudes
+fall fractionally outside** it (−122.1102 against −122.1095; −121.9153 against −121.9162) while
+the **latitudes fall fractionally inside** (37.2921 against 37.2915; 37.4076 against 37.4089),
+because the UTM grid here is turned about 0.5–0.7° from true north (grid convergence), so a
+corner of the UTM rectangle is not at the extreme latitude or longitude of the node set. Compare
+against the stated corners, not against the hull. Under the old value the longitudes read
+9.89–10.08.
 
 **Commit:** `RL-GYM: correct example_network CRS to EPSG:32610`
 

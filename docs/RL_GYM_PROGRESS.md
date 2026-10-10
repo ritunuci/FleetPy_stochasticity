@@ -1370,3 +1370,110 @@ Phase 1 result directories from earlier items are still present and are reproduc
 P2.0b left no new ones.
 
 Nothing failed, so there is no fix to propose. **Stopping here** — not starting P2.1.
+
+---
+
+## P2.1 — STARTED 2026-10-10 12:39
+Files I will touch: data/networks/example_network/base/crs.info,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.0b committed as 12eddb2, the bytecode untracking as cf01072, working tree
+clean.
+
+Approved before starting:
+- The one-value change to `crs.info`, written with `printf` so the file stays exactly 10 bytes
+  with no trailing newline (trap 15: no `# RL-GYM:` comment — the file is read raw into
+  `self.crs` and handed to pyproj). `base - Copy/crs.info` left alone.
+- P2.1's bbox explanation corrected: the corner longitudes fall outside the `nodes.csv` hull,
+  the latitudes inside. Ritun supplied the mechanism clause — grid convergence of about
+  0.5–0.7° — replacing my "lines of constant northing bow away from the central meridian".
+  Verified before writing it: 0.5403°–0.6575° by closed form, 0.5382°–0.6549° measured as the
+  lean of a grid-north step off true north over all 4,084 nodes.
+- §2.10's reader list extended with the re-search result P2.1 asks for.
+
+## P2.1 — DONE 2026-10-10 12:44 — awaiting Ritun's verification
+
+Files changed:
+- `data/networks/example_network/base/crs.info` — `EPSG:32632` → `EPSG:32610`. Written with
+  `printf 'EPSG:32610' >` so the file could not gain a newline. Exactly **two bytes** differ
+  (`cmp -l`: position 9 `3`→`1`, position 10 `2`→`0`); still **10 bytes**, still no trailing
+  newline (`git diff` reports `\ No newline at end of file` on both sides). No `# RL-GYM:`
+  comment (trap 15).
+- `docs/SDPDP_GYM_SPEC_v2.md` — P2.1's bbox explanation corrected; §2.10's reader list extended
+  with the re-search result.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+`base - Copy/crs.info` left alone: still `EPSG:32632`, and `git status` reports it unmodified.
+No source file was touched — `git diff --stat -- src/` is empty.
+
+Verification — everything passed, nothing failed:
+
+1. **The P1.10 gate, byte for byte — the arbiter for this item.** Full suite: **179 tests
+   pass**, 117.8 s, no failures and no skips. Independently, a scripted greedy run with output
+   on: `cmp docs/baseline_user_stats.csv …_env0_pid6600_ep1/1_user-stats.csv` reports **no
+   differing byte**, md5 `53879ea79cf211d700f670dee1173dd5` both, 117,056 bytes both. §2.10's
+   prediction holds: the correction has no runtime effect in the reference scenario. The run's
+   directory was removed afterwards; no strays left.
+2. **`return_network_bounding_box()` through the real engine.** Constructed
+   `NetworkBasicWithStore` on `example_network`: `self.crs` reads back as exactly
+   `'EPSG:32610'` — no stray whitespace from the newline-free file — and the method returns
+   `[(-122.11017985264547, 37.29207658100817), (-121.91532037433075, 37.407608253664044)]`.
+   All four values are within **2.4e-5°** of P2.1's stated corners, well inside the 1e-3°
+   tolerance.
+3. **The reward trace is unchanged by the correction.** Re-running `reward_trace.py` after the
+   change reproduces 436 steps, **734 events**, Σ events = `episode_reward` = **118.110947**,
+   0 non-reconciling steps, `horizon_margin` 194.74 s, `unclassified` 0 — byte-identical to the
+   committed report except for the wall-clock line (see the note below).
+
+Checks of §2.10's evidence, all of which held (P2.1 carries no `VERIFY` markers; these are the
+claims the change rests on):
+
+- Converting all 4,084 `pos_x`/`pos_y` pairs from EPSG:32610 reproduces the `lat`/`lon`
+  columns: **matched** — max |dlat| **4.504e-09**, max |dlon| **6.237e-10**, against §2.10's
+  4.5e-9 and 6.2e-10.
+- Read as EPSG:32632 the coordinates land exactly 132° east, latitudes surviving: **matched** —
+  max |dlon| **1.320e+02**, while |dlat| is **identical (4.504e-09) under both CRSs**, since
+  UTM zones differ only in central meridian. That is precisely why the error went unnoticed.
+- Grid convergence here is about 0.5–0.7° (Ritun's wording for the bbox explanation):
+  **matched** — **0.5403°–0.6575°** by the closed form
+  `arctan(tan(λ − λ₀)·sin φ)` with λ₀ = −123°, and **0.5382°–0.6549°** measured as the lean of
+  a 1 km grid-north step off true north, over all 4,084 nodes.
+- `realtime_plot` unset in the reference scenario, so nothing calls the two `self.crs` users
+  during a run: **matched** — the key is absent from both config files.
+- Only two `crs.info` files exist in the repository: **matched**.
+
+Spec changes made this turn:
+- **P2.1's "How Ritun verifies"**: the corner figures and the 1e-3° tolerance are unchanged;
+  the explanation is replaced. It had said the corners "sit fractionally outside the range of
+  the `lat`/`lon` columns", which is **false for latitude** — measured, the corner longitudes
+  fall outside the hull (−122.1102 against −122.1095; −121.9153 against −121.9162) while the
+  corner latitudes fall **inside** it (37.2921 against 37.2915; 37.4076 against 37.4089). The
+  mechanism is now named: the UTM grid here is turned about 0.5–0.7° from true north (grid
+  convergence), so a corner of the UTM rectangle is not at the extreme latitude or longitude of
+  the node set. A verifier comparing hulls rather than the stated corners would have read a
+  pass as a failure.
+- **§2.10's "Who reads the file"**: line references added for the `NetworkBasic` read and the
+  zone script; plus the two re-search findings — that the single `NetworkBasic` read reaches
+  every registered routing engine but `NetworkTTMatrix` (`NetworkBasicWithStore`,
+  `NetworkPartialPreprocessed` and `NetworkBasicCpp` inherit directly, the other three
+  transitively), and that three further readers exist as unregistered dead copies
+  (`NetworkBasic_backup.py` ~193, `Backup_files_by_Ritun/NetworkBasic.py` ~189,
+  `Backup_files_by_Ritun/NetworkBasic_with_sto_netdyn_update.py` ~190), absent from
+  `get_src_routing_engines()` and so unreachable from a config, marked do-not-edit.
+
+One thing checked beyond the list, since the no-newline rule exists for it: all four read sites
+consume a newline-free file correctly. `NetworkBasic` ~195 and `NetworkTTMatrix` ~117 do a bare
+`f.read()`, which is exactly why the rule exists; `ReplayFromResult.py` ~431 does
+`.read().strip()` and then `int(crs[5:])`, giving 32610; `create_rectangle_zones.py` ~165 does
+`.read().strip()`.
+
+**Note on `docs/RL_GYM_REWARD_TRACE.md`.** It shows as modified, by one line: the wall-clock
+figure, 38.75 s → 39.08 s. I used `reward_trace.py --output` as P2.1's independent byte check,
+and the tool rewrites its report. Every reward figure, event count and label in it is
+byte-identical to the committed version, so the diff is pure timing noise — and the fact that
+it is identical is itself evidence the CRS change altered nothing. I have not reverted it: §0
+forbids git commands that change state, and `git checkout -- <file>` is one. Ritun's call
+whether to restore or keep it. For later items I will drive the byte check from the P1.10 gate
+or a scratchpad driver instead, so a committed report is not rewritten as a side effect.
+
+Nothing failed, so there is no fix to propose. **Stopping here** — not starting P2.2.
