@@ -1099,11 +1099,23 @@ A pickup reward can land 10–30 decisions after the assignment that caused it. 
 **`gamma = 0.999`**, not SB3's default of 0.99. With ~440 steps per episode, 0.99 gives an
 effective horizon of ~100 decisions, which is marginal for pickup credit.
 
-### 6.6 Phase 1 behaviour
+### 6.6 Phase 1 behaviour — superseded by P2.0b
 
-The tracker records and **counts** every event. Use the weights in §6.1 as given, including
-`w_horizon = 0.0` — Phase 1 delivers the wiring and the event counts, not a tuned reward.
-No weight design in Phase 1; the economics are Phase 2.
+The tracker records and **counts** every event. Phase 1 delivered the wiring and the event
+counts, not a tuned reward, and did no weight design; the economics are Phase 2.
+
+**Phase 1 ran its own weights, not §6.1's.** `DEFAULT_REWARD_WEIGHTS` through P1.11 held
+`w_pickup=1.0, w_wait=0.05, w_reject=0.5, w_decline=0.1, w_cancel=0.6, w_noshow=0.8,
+w_horizon=0.0, w_no_candidates=0.0` — differing from §6.1 in two keys, `w_reject` (0.5 against
+1.0) and `w_noshow` (0.8 against 0.0). Every Phase 1 reward figure is at those values:
+`episode_reward = 116.510947` in `docs/RL_GYM_PHASE1_RESULTS.md` reproduces only with
+`w_noshow = 0.8`; §6.1's weights give 118.110947 on the same day. **P2.0b replaced the defaults
+with §6.1's Phase 2 weights**, so that figure is not reproducible from the current code and the
+two must not be compared. An earlier draft of this section said Phase 1 used §6.1's weights as
+given; it never did. *(Corrected in P2.0b.)*
+
+No Phase 1 gate depended on the weights — they scale the reward signal and touch no decision,
+which is why the byte-for-byte gates were blind to the difference.
 
 ---
 

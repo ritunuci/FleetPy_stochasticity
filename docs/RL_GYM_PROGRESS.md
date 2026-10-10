@@ -1223,3 +1223,150 @@ confirmed.
 
 Phase 1 is closed: P1.1 through P1.11 implemented, verified and committed, with the exit gate
 passing byte for byte.
+
+---
+
+## P2.0b — STARTED 2026-10-10 11:54
+Files I will touch: src/rl_gym/reward.py, src/rl_gym/gym_env.py,
+tests/test_rl_gym_reward.py, src/rl_gym/tools/__init__.py,
+src/rl_gym/tools/reward_trace.py, docs/RL_GYM_REWARD_TRACE.md,
+docs/RL_GYM_PHASE1_RESULTS.md, docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Phase 2 starts here: P2.0 is deferred by Ritun (§8), so the import-order workaround of §8a
+stays in place for all of Phase 2.
+
+Approved before starting, from the §8 review this session:
+- Finding 1 — §6.6 said Phase 1 used §6.1's weights; the code shipped w_reject = 0.5 and
+  w_noshow = 0.8 (reward.py:36-45), which is what P1.10's episode_reward 116.510947 requires.
+  Ritun: accepted; name the Phase 1 weights in §6.6, state that P2.0b replaced them, and record
+  the weights behind 116.510947 in docs/RL_GYM_PHASE1_RESULTS.md. Also refresh the stale comment
+  above DEFAULT_REWARD_WEIGHTS ("Phase 1 ships these unchanged", "weight design is P2.5").
+- Finding 2 — after the default change, w_noshow, w_horizon and w_no_candidates are all 0.0, so
+  tests/test_rl_gym_reward.py's charging tests would assert 0.0 == 0.0 and pass even if those
+  branches stopped charging. Ritun: accepted; run the charging tests against an explicit
+  non-zero weight dict and check the defaults separately in test_defaults_match_spec_6_1.
+- src/rl_gym/tools/__init__.py is not in P2.0b's Files line; the import works without it
+  (namespace subpackage, tested), but P1.1 settled on explicit packages. Ritun: add it.
+- §2.9's present-tense corpus layout: leave it, P2.2 makes it true.
+- P2.1's bbox explanation (lat corners are inside the node hull, not outside): correct it in
+  P2.1, not here.
+
+## P2.0b — DONE 2026-10-10 12:14 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/reward.py` — **modified.** `DEFAULT_REWARD_WEIGHTS` moved to §6.1's Phase 2
+  values (`w_reject` 0.5 → 1.0, `w_noshow` 0.8 → 0.0; the other six already matched), with the
+  stale comment above it replaced — it had said Phase 1 ships these unchanged and pointed at
+  "P2.5" for weight design. `RewardTracker(weights, track_events=False, end_time=None)`;
+  `_add(amount, kind=None, rid=None, detail=None)` appends `(kind, rid, amount, detail)` when
+  tracking is on and leaves both accumulators untouched on a zero amount; `flush_events()`;
+  `on_exit` now emits an event for **every** classified outcome including the zero-weighted
+  ones; `episode_summary()` gains `last_dropoff` and `horizon_margin`.
+- `src/rl_gym/gym_env.py` — **modified.** `track_events` config key; the tracker receives it
+  and the scenario's `end_time`; `info["reward_events"]` on both `step()` paths.
+- `tests/test_rl_gym_reward.py` — **modified**, 34 → 52 tests.
+- `src/rl_gym/tools/__init__.py` — **new.** Package marker, with the one-way dependency rule:
+  nothing in `src/rl_gym/` may import from `tools/`.
+- `src/rl_gym/tools/reward_trace.py` — **new.** The trace driver.
+- `docs/RL_GYM_REWARD_TRACE.md` — **new**, generated.
+- `docs/SDPDP_GYM_SPEC_v2.md` — §6.6 rewritten (Finding 1).
+- `docs/RL_GYM_PHASE1_RESULTS.md` — one paragraph recording the weights behind 116.510947.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+No source file outside `src/rl_gym/` was touched: `git diff --stat -- src/` reports
+`src/rl_gym/` only.
+
+Verification — everything passed, nothing failed:
+
+1. **The P1.10 gate, byte for byte.** Full suite: **179 tests pass**, 116.4 s, no failures and
+   no skips (161 before; +18 reward tests). Independently, a trace run with
+   `track_events = True` and output on: `cmp docs/baseline_user_stats.csv
+   …_env0_pid5461_ep1/1_user-stats.csv` reports **no differing byte**, md5
+   `53879ea79cf211d700f670dee1173dd5` both, 117,056 bytes both. The event list perturbs
+   nothing. The committed `example_depot_time_pool_irsonly_rs_42/1_user-stats.csv` still
+   carries the same md5 — untouched. The trace run's directory was removed afterwards.
+2. **`flush()` is identical in both modes, at full scale.** Two greedy episodes, tracking off
+   and on: the **per-step reward sequences are bit-identical** across all 436 steps,
+   `episode_reward` is bit-identical (`118.11094709822194` both), and **no `episode_summary()`
+   field differs**. This is what the zero-amount events had to be shown not to disturb.
+3. **The trace.** 436 steps, **734 events**, written to `docs/RL_GYM_REWARD_TRACE.md`.
+   Σ event amounts **118.110947** against `episode_reward` **118.110947**, difference
+   **0.00e+00**; Σ step rewards the same; `unflushed_reward` 0.0. **Steps whose events do not
+   sum to the step reward: 0.** Labels reconcile exactly with P1.10: 289 `pickup` events over
+   288 distinct rids, 288 `served`, 118 `rider_declined`, 28 `diffusion_cancelled`, 9
+   `no_candidates`, 2 `no_show`, 445 exits, `unclassified` **0**.
+4. **`horizon_margin`.** `last_dropoff` **69805.25709890177**, `horizon_margin` **194.74 s** —
+   matching P2.0b's expected 69805.3 and ~194.7 s.
+5. Arithmetic cross-check of the new defaults against `baseline_user_stats.csv`: 288 pickups,
+   2825.7811 wait-minutes, 118 declines, 28 cancellations, 2 no-shows, 9 no-candidates give
+   116.510947 at the Phase 1 weights and **118.110947** at §6.1's — reproducing the measured
+   episode total to the last digit, from the output file alone.
+
+Two things the trace surfaced that the episode-level counts cannot show, which is its whole
+point:
+
+- **The rid-50 pair is now visible as two events.** Step 52 charges `+0.922585` at the stale
+  92.9 s wait; step 55 charges `-0.164252`; the two sum to `+0.758333`, which is exactly one
+  pickup priced at the final 290 s wait — the value `1_user-stats.csv` records (§6.4,
+  last-write-wins). Step 55 also carries the `no_show` event for rid 45 at the same stop, so
+  the mechanism and its consequence appear side by side.
+- **Zero-amount events are load-bearing for readability, not just completeness.** On this day
+  `served` (288), `no_candidates` (9) and `no_show` (2) all carry amount 0.000000 under §6.1's
+  weights. Without them the trace would show 436 steps of pickups, declines and cancellations
+  and nothing else — and the §6.4 ladder for 299 of the 445 exits would be unobservable.
+
+One judgement call I made inside P2.0b, worth a look:
+
+- `reward_events` is drained on **both** `step()` paths and on **neither** `reset()` path.
+  `reset()` does not flush, so anything charged while advancing to the first decision belongs
+  to step 1's reward window; draining it in `reset()` would drop those events from the trace
+  while their reward stayed in the sum, and the per-step reconciliation would fail for step 1.
+  Nothing is charged before the first decision on this day, so the choice is invisible here —
+  it is there so the invariant holds on a day where something is.
+- I added a **"Riders whose `record_boarding` fired more than once"** section to the report,
+  beyond the step listing P2.0b specifies. Reason: the step selection rule ("first 40 steps,
+  and any step with three or more events") happened to list rid 50's *second* event and not its
+  first, so the trace showed a lone negative pickup, which reads as a defect rather than as the
+  re-price. The section lists both halves of every such pair. The specified selection rule is
+  unchanged.
+
+VERIFY findings: **P2.0b carries no `VERIFY` markers** (grep over the work item's spec text:
+zero matches). Per §0's "verify, don't trust", the claims P2.0b and its verification rest on
+were each checked before use, and all held:
+
+- `last_dropoff` 69805.3 and `horizon_margin` ≈194.7 s (P2.0b line 1810): **matched** —
+  69805.25709890177 and 194.7429, recomputed from `baseline_user_stats.csv` before writing any
+  code and reproduced by the tracker afterwards.
+- `DEFAULT_REWARD_WEIGHTS` holds the Phase 1 values (P2.0b line 1793): **matched** —
+  `reward.py:36-45` before the change, and `116.510947` is arithmetically reachable only with
+  `w_noshow = 0.8`.
+- The env passes `reward_weights = None` by default, so anything run without explicit weights
+  uses the defaults (P2.0b line 1794): **matched** — `gym_env.py` `cfg.get("reward_weights")`,
+  and `train_sdpdp.py`'s `DEFAULT_CFG` carries no `reward_weights` key.
+- `on_exit` adds nothing when the penalty is 0 (P2.0b line 1786): **matched** — the
+  `if penalty:` guard at `reward.py:143` before the change.
+- `src/rl_gym/tools/` needs no `__init__.py` to import: **matched** — probed with a temporary
+  module inside `src/rl_gym/`, which imported cleanly as a namespace subpackage. Added the
+  marker anyway, per Ritun and P1.1's convention.
+- Eight weights in §6.1, all eight consumed: **matched** — pinned by a new test.
+
+Spec changes made this turn:
+- §6.6 retitled "Phase 1 behaviour — superseded by P2.0b" and rewritten: it now names Phase 1's
+  eight weights, states the two that differ from §6.1, records that `116.510947` reproduces
+  only at `w_noshow = 0.8` while §6.1's weights give `118.110947` on the same day, says plainly
+  that an earlier draft claiming Phase 1 used §6.1's weights was wrong, and notes that no
+  Phase 1 gate depended on the weights — they scale the signal and touch no decision, which is
+  why the byte gates were blind to the difference.
+
+Note on the working tree: three tracked `__pycache__/*.pyc` files show as modified
+(`src/rl_gym/gym_env`, `src/rl_gym/reward`, `tests/test_rl_gym_reward`) plus
+`src/routing/NetworkBasic`, which was already modified at the start of the session. These are
+bytecode byproducts of running the tests; `.gitignore` covers `__pycache__` since b1fd0a6 but
+these files were tracked before that, so they still appear. Ritun's call whether to commit or
+untrack them.
+
+Phase 1 result directories from earlier items are still present and are reproducible:
+`p13_rl_greedy_check`, `p13_tracker_greedy_check`, `p14_generator_check`, `p17_reward_check`.
+P2.0b left no new ones.
+
+Nothing failed, so there is no fix to propose. **Stopping here** — not starting P2.1.

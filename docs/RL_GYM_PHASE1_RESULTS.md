@@ -139,6 +139,13 @@ matched a §6.4 branch. `duplicate_boardings = 1` is rid 50, the no-show-adjacen
 described in §6.4; the pickup count stays 288 distinct rids against 289 boarding calls because
 `on_pickup` is last-write-wins.
 
+**`episode_reward = 116.510947` is at Phase 1's weights** — `w_pickup=1.0, w_wait=0.05,
+w_reject=0.5, w_decline=0.1, w_cancel=0.6, w_noshow=0.8, w_horizon=0.0, w_no_candidates=0.0`,
+the `DEFAULT_REWARD_WEIGHTS` of the time. P2.0b replaced the defaults with §6.1's Phase 2
+weights, under which the same day gives **118.110947**; the two differ only in `w_reject` and
+`w_noshow`, and here only in `w_noshow` (2 no-shows × 0.8 = 1.6), since greedy never rejects.
+Every other figure on this page is weight-independent and still reproduces. See §6.6.
+
 Reward weights are the §6.1 starting values, untuned — Phase 1 delivers the wiring and the
 counts, not an economic design (§6.6).
 

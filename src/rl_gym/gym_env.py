@@ -39,6 +39,7 @@ from src.misc.globals import (
     G_RANDOM_SEED,
     G_RL_MODE,
     G_SCENARIO_NAME,
+    G_SIM_END_TIME,
     G_SIM_ENV,
     G_SKIP_OUTPUT,
     G_STUDY_NAME,
@@ -82,7 +83,8 @@ class SDPDPAssignmentEnv(gym.Env):
         :param cfg: config dict. Recognised keys:
             `constant_cfg_path`, `scenario_cfg_path` (required); `scenario_row` (default 0);
             `K` (default 8); `skip_output` (default True); `reward_weights` (default None);
-            `env_id` (default 0); `base_seed`, `scenario_pool` (accepted, unused until P1.9).
+            `track_events` (default False); `env_id` (default 0); `base_seed`,
+            `scenario_pool` (accepted, unused until P1.9).
         """
         super().__init__()
         self.cfg = dict(cfg)
@@ -92,6 +94,9 @@ class SDPDPAssignmentEnv(gym.Env):
         self.k_max = int(cfg.get("K", 8))
         self.skip_output = bool(cfg.get("skip_output", True))
         self.reward_weights = cfg.get("reward_weights")
+        # per-event reward breakdown in info["reward_events"]; off by default, since training
+        # does not need it and 7,000 episodes should not pay for it (P2.0b)
+        self.track_events = bool(cfg.get("track_events", False))
         self.env_id = int(cfg.get("env_id", 0))
         # base_seed absent => do not reseed; the scenario row's own random_seed is used
         # unchanged, which is what the byte-for-byte gates require (D7)
@@ -181,7 +186,11 @@ class SDPDPAssignmentEnv(gym.Env):
         self._apply_episode_scenario_name(scenario_parameters)
 
         self.sim = load_simulation_environment(scenario_parameters)
-        self._tracker = RewardTracker(self.reward_weights)
+        self._tracker = RewardTracker(
+            self.reward_weights,
+            track_events=self.track_events,
+            end_time=scenario_parameters[G_SIM_END_TIME],
+        )
         self.sim.operators[0].set_reward_tracker(self._tracker)
         self.sim.demand._boarding_callback = self._tracker.on_pickup
         self.sim.demand._exit_callback = self._tracker.on_exit
@@ -223,8 +232,10 @@ class SDPDPAssignmentEnv(gym.Env):
             self._pending = None
             self._terminated = True
             reward = self._tracker.flush()      # captures the post-end_time tail (D6)
+            info = self._episode_info()
+            info["reward_events"] = self._tracker.flush_events()
             self._set_terminal_observation()
-            return self._obs, reward, True, False, self._episode_info()
+            return self._obs, reward, True, False, info
 
         reward = self._tracker.flush()
         self._observe(self._pending)
@@ -233,6 +244,11 @@ class SDPDPAssignmentEnv(gym.Env):
             "sim_time": self._pending.sim_time,
             "n_candidates": len(self._pending.candidates),
             "n_truncated": max(0, len(self._pending.candidates) - self.k_max),
+            # the events composing `reward`; empty unless `track_events` is set. Drained on
+            # both step paths and on neither reset path: `reset()` does not flush, so anything
+            # charged while advancing to the first decision belongs to step 1's window, and
+            # draining it here would drop it from the trace while its reward stayed in the sum
+            "reward_events": self._tracker.flush_events(),
         }
 
     def action_masks(self) -> np.ndarray:
