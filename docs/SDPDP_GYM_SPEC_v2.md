@@ -158,6 +158,16 @@ vehicle serves each incoming request.
   branch, or an empty candidate list — do not generate a step. There are three such cases,
   not four: `PoolingInsertionHeuristicOnly.user_request` has no duplicate-rid branch, it
   simply overwrites `rq_dict[rid_struct]`. See P1.3.
+- **A fourth kind of request never reaches the operator at all, so it is not one of those
+  cases.** `load_demand_file` removes any demand row whose `start` node equals its `end` node
+  before the simulation begins (`demand.py` ~105, the second of its two filters). Such a row
+  never enters `future_requests`, never reaches `build_assignment_context` and never calls
+  `record_user`, so it generates no step **and appears in no reconciliation bucket**. Measured
+  under P2.4: 7 of the 127 kept days carry exactly one such row, and the operator-resolved
+  origin-equals-destination bucket is **0 on all 127 days, those 7 included**. The
+  `o_pos == d_pos` branch in `user_request` can therefore only fire if a `PlanRequest` built
+  from *distinct* origin and destination nodes resolves to a single position — untested, so
+  keep the branch and keep the bucket, but do not expect either to fire.
 - One episode = one full simulation day (defined by simulation start and end time).
 
 **Phase 1 — plumbing.** A correct, valid, single-threaded Gym environment with a minimal
@@ -391,10 +401,21 @@ That is 132 demand days, 2 Jan – 31 Oct 2024, exactly 44 each of Tuesday, Wedn
 Thursday. `rq_file` is the date, e.g. `2024-06-20.csv`. Weekday and month for §5.2's request
 block are derived from the filename — the demand rows carry `rq_time` as seconds from midnight
 and no date column, so **the filename is the only record of which day a file is**. Every file
-has the reference column set, unique request ids and minute-aligned `rq_time`. Four requests
-(one each on 02-29 and 03-05, two on 03-06) fall before `start_time` and are dropped by
-`load_demand_file`'s `[start_time, end_time)` filter; request counts anywhere in Phase 2 use the
-post-filter number.
+has the reference column set, unique request ids and minute-aligned `rq_time` — the ids checked
+under P2.4, which found zero duplicate `request_id` in any of the 127 kept files.
+
+**`load_demand_file` applies two filters, and request counts anywhere in Phase 2 use the count
+after both** (`demand.py` ~103-105):
+
+1. `rq_time` in `[start_time, end_time)`. Four requests fall before `start_time` — one each on
+   02-29 and 03-05, two on 03-06 — and are dropped.
+2. `start` node ≠ `end` node. **One row is dropped on each of 7 days**: 2024-02-15, 2024-02-20,
+   2024-03-05, 2024-05-23, 2024-05-30, 2024-06-12 and 2024-06-13, measured under P2.4. These
+   rows never reach the operator at all (§1), so they appear in no reconciliation bucket.
+
+2024-03-05 loses one row to each filter: 426 rows in the file, 425 after the window, **424
+loaded**. Modelling only the first filter is what made P2.4's first pass report a one-request
+shortfall on exactly those 7 days.
 
 **Excluded — calendar-explained days only:** 2024-01-02, 2024-01-03, 2024-01-04 (the week
 after New Year; 237–264 requests), 2024-06-19 (Juneteenth; 295), 2024-07-04 (Independence
@@ -1087,12 +1108,36 @@ at `rq_time = 68400`, the latest pickup is 69064.2 and the latest dropoff 69805.
 seconds — it is not that the tail rescues in-flight riders, it is that there are none. The
 margin is only about **195 simulated seconds**.
 
-The branch becomes live as soon as that margin closes: a later demand tail, heavier fleet load,
-longer trips, or a policy that defers pickups would push trips past `end_time` into the tail,
-and a day where the tail's cap binds (`end_time + 14400`, at which point it breaks the loop with
-vehicles still en route) would strand riders outright. Do not delete the branch for want of a
-firing on this one day, and do not treat `w_horizon = 0.0` as settled — it is a placeholder that
-rests on that 195 s margin.
+**The margin closing is not what makes the branch live, and the reference day's margin is
+atypical.** Measured under greedy across all 127 kept days (P2.4): **79 of 127 days already
+have a negative margin**, the median is **−234 s**, the range is −1918 s to +1104 s, and the
+reference day's +195 s is late in the distribution — **96 of 127 days finish later than it**.
+A negative margin only means `record_remaining_assignments` is completing trips after
+`end_time`, which is **expected on busier days**: more requests arriving late leaves more trips
+running at `end_time`, and the tail finishes them.
+
+The branch becomes live only when **that tail's own cap binds**:
+`if c_time > self.end_time + 2 * 7200: break` (`FleetSimulationBase.py` ~625 — written
+`2 * 7200`, which is why grepping for `14400` does not find it), which breaks the loop with
+vehicles still en route and strands whoever is left. **The indicator is therefore the longest
+tail against the 14,400 s cap, not the margin.** Measured across the corpus: the longest tail
+anywhere is **1,950 s on 2024-05-01, 13.5% of the cap**, leaving 12,450 s of headroom — the cap
+is 7.4× the worst tail observed — the cap bound on **0 of 127 days**, and branch 7 fired on
+**0 of 127 days**. At most 5 riders were ever in flight when a tail began.
+
+The tail is a near-exact function of the margin where it matters: on every one of the 79
+negative-margin days, `tail = ceil(−margin / 10) × 10 + 30` seconds, the 10 s being
+`time_step` and the 30 s the loop's three closing iterations. It does **not** hold on the 48
+non-negative-margin days, where the tail is 0 s (46 days) or 10 s (2 days) — a vehicle can
+still hold an assigned route at `end_time` without a late dropoff. So the margin bounds the
+tail in the long-tail regime and says nothing in the short one, which is why P2.13 logs the
+tail itself.
+
+Do not delete the branch for want of a firing, and do not treat `w_horizon = 0.0` as settled —
+but what would unsettle it is a tail approaching 14,400 s, not a margin going negative.
+*(Corrected in P2.4: an earlier draft said the branch "becomes live as soon as that margin
+closes" and rested `w_horizon = 0.0` on the reference day's 195 s margin. Both were wrong —
+the margin had already closed on most of the corpus with no effect on branch 7.)*
 
 `rq.no_show` is set at load time from the demand file column (`TravelerModels.py:555`), so it
 is a rider attribute, not an outcome. It must be checked *after* `diffusion_cancelled` and
@@ -1731,6 +1776,14 @@ count + duplicate-rid count = 445. Every request must be accounted for in exactl
 The duplicate-rid bucket is expected to be **0** — the parent has no such branch (§1). Keep
 the bucket and report it: a non-zero value means the source changed.
 
+**445 is the count after *both* of `load_demand_file`'s filters, not the row count of the
+file** (§2.9). The reference day happens to lose nothing to either, so the two coincide here
+and the distinction is invisible — it is not invisible on the corpus. The
+**same-origin-destination bucket is also expected to be 0, and for a different reason than the
+duplicate-rid one**: same-node rows are deleted at load and never reach the operator (§1), so
+the bucket stays 0 even on the 7 corpus days that contain one. P2.4 measured it as 0 on all 127
+days. Keep it and report it, but do not read a 0 as evidence that no such request existed.
+
 **Commit:** `RL-GYM: add scripted greedy rollout test (Phase 1 exit gate)`
 
 ---
@@ -1769,9 +1822,11 @@ every component end to end, with repositioning off. Performance is not judged in
 weight sweep, the scenario changes and full-length training come after it (end of this
 section).
 
-**Every item that touches the env, the trackers or the observation (P2.0b, P2.3, P2.7–P2.12,
-P2.14) re-runs the P1.10 gate as part of its verification.** Reading a feature must never change the simulation (trap 14), and
-the gate is the only check that would notice.
+**Every item that touches the env, the trackers or the observation (P2.0b, P2.3, P2.7–P2.14)
+re-runs the P1.10 gate as part of its verification.** Reading a feature must never change the simulation (trap 14), and
+the gate is the only check that would notice. *(P2.13 was added to this list in P2.4: it now
+edits `sim_env_rl.py` and `gym_env.py` for the `tail_seconds` field, so it touches the env like
+the rest.)*
 
 ---
 
@@ -2256,7 +2311,8 @@ gate runs the unwrapped env).
 
 ### P2.13 — Training script
 
-**Files:** `train_sdpdp.py`, `src/rl_gym/callbacks.py` (new), `tests/test_rl_gym_train.py` (new)
+**Files:** `train_sdpdp.py`, `src/rl_gym/callbacks.py` (new), `tests/test_rl_gym_train.py` (new),
+`src/rl_gym/sim_env_rl.py` and `src/rl_gym/gym_env.py` (the `tail_seconds` field below)
 
 - `MaskablePPO` (`sb3-contrib`), `MlpPolicy`, `SubprocVecEnv` (D8), `VecNormalize` (P2.12),
   training days by D10 rotation (`day_dir = "corpus"`), `base_seed` required (the D7 guard
@@ -2286,14 +2342,23 @@ gate runs the unwrapped env).
     selection of slot `K − 1` means `K` is binding: the truncation is cutting off candidates
     the policy wants, and `K` would need raising. Read it together with the candidate-list
     lengths from P1.10 and P2.4 (D3).
-  - **The per-episode margin between the last dropoff and `end_time`**, read from
-    `episode_summary()["horizon_margin"]` (P2.0b). Under greedy on the reference day it is about
-    195 s, and the tail adds zero simulated seconds because nothing
-    is in flight (§6.4, P1.10). It is the one Phase 1 measurement a trained policy can move
-    against: accepting more marginal requests pushes dropoffs later and closes the margin. **If
-    it closes, §6.4's branch 7 goes live and `w_horizon = 0.0` stops being a placeholder and
-    becomes a real decision** — so this is watched from the first training run, not
-    discovered afterwards.
+  - **The per-episode horizon margin and the tail duration**, from
+    `episode_summary()["horizon_margin"]` (P2.0b) and `episode_summary()["tail_seconds"]`,
+    which this item adds. **A negative margin is the normal case, not a warning**: under greedy
+    it is negative on 79 of the 127 kept days, median −234 s (P2.4). What §6.4's branch 7 turns
+    on is the **tail against its 14,400 s cap**, so that is the number to watch; greedy's
+    longest tail anywhere in the corpus is 1,950 s, 13.5% of the cap.
+    **`tail_seconds` is logged rather than derived from the margin**, because the derivation is
+    only valid in one regime: `tail = ceil(−margin / 10) × 10 + 30` is exact on all 79
+    negative-margin days and wrong on all 48 non-negative ones, where the tail is 0 s or 10 s
+    against a predicted 30 s (P2.4). A quantity that is exact in one regime and wrong in
+    another is precisely what gets misread later. The tail is measured in
+    `RLImmediateDecisionsSimulation`, which owns the finalisation that runs
+    `record_remaining_assignments`, and surfaced through `episode_summary()`.
+    A trained policy can move this: accepting more marginal requests pushes dropoffs later and
+    lengthens tails. **If a tail approaches the cap, branch 7 goes live and `w_horizon = 0.0`
+    stops being a placeholder and becomes a real decision** — so this is watched from the first
+    training run, not discovered afterwards.
 - Checkpoints every N episodes with their `VecNormalize` statistics and run metadata, including
   every `base_seed` the run has used. Resuming from a checkpoint requires a `base_seed` that is
   not in that list, and the script raises otherwise: resuming with the same `base_seed` would
@@ -2399,7 +2464,9 @@ checkpoint and for stock greedy on the same pairs. All 26 days and the full `eva
 8. Every TensorBoard scalar from P2.13 is present.
 
 **Reported, not judged:** slot-selection frequency (is `K` binding?); the
-horizon margin (does branch 7 approach?); throughput — steps per second and episode wall clock
+the horizon margin and the tail-to-cap distance (does branch 7 approach? — the cap is the
+indicator, not the margin, and greedy's worst tail anywhere in the corpus is 13.5% of it);
+throughput — steps per second and episode wall clock
 under the full observation; peak RSS per worker; and the projected wall clock of a full-length
 run. The learning curve is logged but not read: 48 episodes say nothing about learning, and it is not
 used to size the weight sweep.

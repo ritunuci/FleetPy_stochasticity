@@ -1726,3 +1726,202 @@ composed it before `date` returned. Corrected to 14:29 in the same turn. Noting 
 leaving a silently edited timestamp in an append-only log.
 
 Nothing failed, so there is no fix to propose. **Stopping here** — not starting P2.4.
+
+---
+
+## P2.4 — STARTED 2026-10-10 15:05
+Files I will touch: src/rl_gym/tools/corpus_sweep.py (new),
+docs/RL_GYM_CORPUS_SWEEP.md (new), docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.3 committed as 88bebaa, tree clean.
+
+Approved before starting:
+- `corpus_sweep.py` carries its own copy of P1.10's instrumentation — the bucket classifier
+  monkeypatching `build_assignment_context`, and the tail measurement monkeypatching
+  `record_remaining_assignments` / `update_sim_state_fleets` — rather than importing it from
+  `tests/test_rl_gym.py`, which would point a shipped tool at a test module. The duplication is
+  made self-checking: when 2024-06-20 is in the sweep set the tool asserts its row against
+  P1.10's figures and fails loudly otherwise, so P2.4's manual verification becomes automatic.
+- At most 4 processes (16 GB Mac), and the full sweep runs under `caffeinate -i`.
+- **Ritun's change 1: the three trial days run one after another in a single process, with
+  2024-06-20 last.** Training builds many simulations in one worker process and the Pool reuses
+  processes the same way, so the reference day reproducing P1.10 exactly *after* two other days
+  have been simulated in the same process is evidence that nothing carries over between
+  simulations. If it does not match, stop and report.
+- **Ritun's change 2:** the docstring and report header write the command as
+  `caffeinate -i python -m src.rl_gym.tools.corpus_sweep …`, with a note that `caffeinate` is
+  macOS-only, rather than an absolute `/opt/anaconda3` interpreter path — the tool will be
+  re-run after the routing fix, possibly on HPC3.
+
+Trial days, in execution order: 2024-03-06 (the only day with two requests before
+`start_time`), 2024-10-09 (October, the high-demand regime), 2024-06-20 (the reference day,
+last).
+
+## P2.4 — DONE 2026-10-10 16:25 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/tools/corpus_sweep.py` — **new.** The sweep driver, with its own copy of P1.10's
+  instrumentation and an automatic reference-day check.
+- `docs/RL_GYM_CORPUS_SWEEP.md` — **new**, generated: 127 per-day rows and the summaries.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+No change to the env or the simulation (P2.4 line 1991); `git diff --stat -- src/rl_gym/` shows
+only the new tool. P2.4 is not in §8's list of items that re-run the P1.10 gate (line 1727);
+the reference-day row is the equivalent check here, and it is asserted automatically.
+
+Verification — the sweep completed, and everything reconciles. One defect of **mine** was found
+and fixed first; details below.
+
+- **127 days swept, 24.2 min, 4 processes, 4 distinct worker pids.**
+- **Reconciliation failures: 0.** Three checks per day: `steps + empty + reservation + o=d +
+  duplicate-rid = loaded`, `exits = loaded`, and the eight §6.4 terminal outcomes summing to
+  `loaded`.
+- **`unclassified = 0` on all 127 days.** No new §6.4 path exists anywhere in the corpus.
+- **The reference day reproduces P1.10 exactly** — 445 loaded, 436 steps, 9 empty lists, max
+  list 11, 13 over `K`, `horizon_margin` 194.7 s, 288 pickups, 118 declines, 28 cancellations,
+  2 no-shows, 1 duplicate boarding — asserted by the tool, which reports `MATCHES`.
+- Corpus totals: 59,190 requests loaded (mean 466/day, 356–634), 57,447 gym steps (mean 452,
+  352–603). Reservation bucket 0, duplicate-rid bucket 0, operator-resolved o=d bucket 0 across
+  the whole corpus. Duplicate boardings on 9 of 127 days, at most 2 per day.
+
+**Trial first, per Ritun: three days in one process with 2024-06-20 last.** 2024-03-06,
+2024-10-09, then the reference day, all in pid 9749. The reference day matched P1.10 exactly
+*after* two other full simulations had run in the same process — evidence that nothing carries
+over between simulations: global RNG, routing caches, stochastic travel-time state, logging.
+That is the arrangement training uses, so it is worth more than the same check run cold.
+
+**A defect in my own counting, which the sweep caught.** The first full pass reported 21
+reconciliation failures — 7 days × 3 checks, every one exactly one request short. Diagnosis,
+not symptom: `load_demand_file` applies **two** filters, not one (`demand.py` ~103-105):
+
+    future_requests = tmp_df[(tmp_df[G_RQ_TIME] >= start_time) & (… < end_time)]
+    future_requests = future_requests[future_requests[G_RQ_ORIGIN] != …[G_RQ_DESTINATION]]
+
+I had modelled only the time filter. A row whose `start` node equals its `end` node is removed
+**before the simulation begins**: it never enters `future_requests`, never reaches
+`build_assignment_context`, never calls `record_user`. So it is correctly absent from every
+bucket, and counting it as "loaded" was the error. The 7 failing days are **exactly** the 7
+corpus days carrying one such row — 2024-02-15 (rid 120), 2024-02-20 (307), 2024-03-05 (72),
+2024-05-23 (33), 2024-05-30 (73), 2024-06-12 (310), 2024-06-13 (166) — an exact set match
+against an independent scan of all 127 files, with no false positives either way. Two other
+hypotheses were tested and rejected first: requests past the loop's last retrieval step
+(`rq_time > 69990`; none exist, and `rq_time` is minute-aligned), and duplicate `request_id`
+(zero duplicates anywhere in the corpus, so §2.9's "unique request ids" holds).
+
+Fixed by applying both filters and reporting the dropped count as its own column, `o=d drop`,
+kept distinct from the `o=d` bucket — the first is dropped at load, the second is resolved by
+the operator. Re-ran the 7 days: all reconcile. Then re-ran the full 127 so the committed
+report is clean rather than carrying 21 explained-away failures.
+
+### `K = 8`, the corpus-wide picture Ritun asked for
+
+- **share of all decisions whose candidate list exceeds `K = 8`: 2,947 of 57,447 = 5.13%**
+- **days whose p95 list length is above 8: 63 of 127**
+- days with at least one list above 8: **127 of 127**
+- per-day p95: min 7, median 8, max 10
+- per-day max: min 9, median 11, **largest list anywhere 12**
+- lists over `K` per day: min 4, median 21, max 55 (2024-03-05)
+
+The reference day's 13 lists over `K` is well below the corpus median of 21, so P1.10's figure
+understates how often truncation bites. Truncation still removes only the weakest insertions
+(D3); whether the policy wants what it cannot see is answered by P2.13's slot-selection
+frequency. **Decision on `K` stays with Ritun, before P2.8.**
+
+### The tail against its cap — the branch-7 indicator
+
+Reported as Ritun directed, in place of my earlier framing:
+
+- **longest tail across the sweep: 1,950 s on 2024-05-01 — 13.5% of the 14,400 s cap**, leaving
+  12,450 s of headroom; the cap is **7.4×** the longest tail observed.
+- **days where the cap bound: 0.** **Days where §6.4's branch 7 fired: 0.**
+- days where the tail advanced the simulation at all: **81 of 127**; days with a negative margin:
+  **79 of 127**; margin min −1917.5 s, p25 −690.3, median −234.4, p75 +186.5, max +1103.8;
+  48 of 127 days finish before `end_time`.
+- most riders in flight when the tail starts, anywhere in the corpus: **5**.
+
+The cap is `if c_time > self.end_time + 2 * 7200: break` (`FleetSimulationBase.py` ~625 — written
+`2 * 7200`, which is why grepping for `14400` does not find it), and it breaks the loop with
+vehicles still en route. That break is the only way a rider who accepted an offer can end the
+day unpicked-up, so the tail-to-cap distance is the indicator and the margin is not.
+
+Ritun's correction to my trial finding was right and is recorded in the report: a negative
+margin does not bring branch 7 closer, it only means the tail is completing trips after
+`end_time`, which is **expected on busier days**. My trial wording had conflated the two.
+
+VERIFY findings: **P2.4 carries no `VERIFY` markers.** The claims it rests on were checked:
+- the 127 kept days are 101 `corpus/` + 26 `corpus_eval/`, `*.csv` only, never
+  `corpus_excluded/`: **matched**;
+- §2.9's "unique request ids": **matched** — zero duplicate `request_id` in any of the 127 files;
+- §2.9's four pre-`start_time` requests: **matched** earlier in P2.2's checks;
+- the tail cap is `end_time + 14400`: **matched**, written `2 * 7200` at
+  `FleetSimulationBase.py` ~625, with the `break` that makes branch 7 reachable;
+- **the `o_pos == d_pos` internal-resolution case is not reached by same-node demand rows** —
+  see the spec proposals below. This is the one finding that contradicts the spec as written.
+
+No spec edits were made this turn. Three passages rest on the premise Ritun corrected, and a
+fourth on the one above; proposed wording for all four is in the report to Ritun, **not applied**
+— he asked to see it first.
+
+Nothing failed at the end of the item. **Stopping here** — not starting P2.5.
+
+## P2.4 — FOLLOW-UP 2026-10-10 16:49 — spec corrections after Ritun's review
+
+Ritun accepted all four proposals and asked for two adjustments. Applied to
+`docs/SDPDP_GYM_SPEC_v2.md` only; no code changed, and the full suite still passes
+(**211 tests**, 118.7 s, no failures, no skips).
+
+**Adjustment to proposal 2, answered with data first.** Ritun's point: P2.13 must log a value
+that exists, so check whether the tail is derivable from `horizon_margin` before writing a
+bullet that depends on it. Tested across all 127 days:
+
+- On **all 79** negative-margin days, `tail = ceil(−margin / 10) × 10 + 30` seconds **exactly**
+  — the 10 s is `time_step`, the 30 s is the tail loop's three closing iterations.
+- On **all 48** non-negative-margin days it fails: the tail is 0 s on 46 and 10 s on 2
+  (2024-02-07 margin +25.4, 2024-09-11 margin +24.6, both with nothing in flight — a vehicle
+  can hold an assigned route at `end_time` without a late dropoff), against a predicted 30 s.
+
+So the relation does **not** hold on every day, and per Ritun's rule `episode_summary()` gains a
+`tail_seconds` field in P2.13. Recorded in the bullet with the reason: a quantity that is exact
+in one regime and wrong in another is what gets misread later. The tail is measured in
+`RLImmediateDecisionsSimulation`, which owns the finalisation that runs
+`record_remaining_assignments`.
+
+**A consequence worth flagging:** P2.13 now edits `sim_env_rl.py` and `gym_env.py`, so it
+touches the env. §8's gate list (line ~1797) named P2.0b, P2.3, P2.7–P2.12 and P2.14; P2.13 is
+now in it, so the range reads P2.7–P2.14. Without that, the one item that adds a field to the
+simulation env would have been the only env-touching item not re-running the P1.10 gate.
+
+Spec changes made this turn:
+- **§6.4's branch-7 paragraph rewritten.** The old text said the branch "becomes live as soon as
+  that margin closes" and rested `w_horizon = 0.0` on the reference day's 195 s margin. Both
+  were wrong: 79 of 127 days already have a negative margin (median −234 s, range −1918 to
+  +1104), and the reference day's +195 s is late in the distribution — 96 of 127 days finish
+  later. The branch turns on the **tail against its 14,400 s cap** instead, with the cap's
+  source cited (`if c_time > self.end_time + 2 * 7200: break`, `FleetSimulationBase.py` ~625,
+  written `2 * 7200`, which is why grepping for 14400 misses it) and the measurements: longest
+  tail 1,950 s = 13.5% of the cap, 12,450 s of headroom, cap bound on 0 days, branch 7 fired on
+  0 days, at most 5 riders ever in flight when a tail began. The margin↔tail relation and its
+  two regimes are recorded there too. Marked as corrected in P2.4.
+- **P2.13's horizon-margin bullet rewritten** per the adjustment above: a negative margin is the
+  normal case and not a warning; `tail_seconds` is logged rather than derived; `sim_env_rl.py`
+  and `gym_env.py` added to P2.13's Files line.
+- **§8's gate list** now reads P2.7–P2.14, with a note saying why P2.13 joined it.
+- **P2.15's "Reported, not judged"**: "horizon margin (does branch 7 approach?)" became the
+  margin *and* the tail-to-cap distance, naming the cap as the indicator.
+- **§1 gained a fourth bullet**: a demand row whose `start` node equals its `end` node never
+  reaches the operator — removed by `load_demand_file`'s second filter (`demand.py` ~105) — so
+  it generates no step **and appears in no bucket**. 7 of 127 days carry one, and the
+  operator-resolved o=d bucket is 0 on all 127 including those 7. The `o_pos == d_pos` branch
+  can only fire if distinct nodes resolve to one position, which I have **not** tested, so the
+  wording keeps it an open question rather than declaring the branch dead.
+- **§2.9's post-filter sentence replaced** with both filters, per Ritun's second adjustment: the
+  four early requests, **and** one same-node row on each of the 7 named days. 2024-03-05 loses
+  one row to each filter — 426 in the file, 425 after the window, 424 loaded — and the note
+  records that modelling only the first filter is what produced P2.4's first-pass shortfall.
+- **P1.10's reconciliation note**: 445 is the count after *both* filters, which coincides with
+  the file's row count only because the reference day loses nothing to either; and the
+  same-origin-destination bucket is expected to be 0 for a different reason than the
+  duplicate-rid bucket — such requests are deleted before the operator sees them, so a 0 is not
+  evidence that none existed.
+
+**Stopping here** — not starting P2.5.
