@@ -42,25 +42,37 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 SCS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                    "studies", "example_study", "scenarios")
 
+#: `n_workers` is deliberately **absent** here. It is passed into `make_env` from the same value
+#: that sizes the SubprocVecEnv, so the two cannot disagree: D10 gives worker `env_id` the days
+#: at positions `env_id, env_id + n_workers, ...` of each pass, so a config value of 4 run with
+#: `--workers 3` would silently drop a quarter of every pass -- every episode still succeeding,
+#: every log healthy, a quarter of the training days never visited.
 DEFAULT_CFG = {
     "constant_cfg_path": os.path.join(SCS, "constant_config_depot_cali_sc_1.csv"),
     "scenario_cfg_path": os.path.join(SCS, "example_depot_cali_sc_1.csv"),
     "K": 8,
     "skip_output": True,
     "base_seed": 20260913,
+    "day_dir": "corpus",          # training days; D10 rotation (P2.3)
 }
 
 
-def make_env(cfg, env_id):
+def make_env(cfg, env_id, n_workers):
     """Return a zero-argument callable that builds one env **inside the worker process**.
 
     The import and the construction both happen in `_init`, never in the parent: FleetPy
     objects hold a routing engine and open file handles, so an env built here and pickled
     across the process boundary would fail or, worse, share state.
+
+    `n_workers` is a parameter rather than a config key on purpose -- see `DEFAULT_CFG`. Pass
+    the same number used to size the `SubprocVecEnv`, which is what the only caller does.
     """
+    if not 0 <= env_id < n_workers:
+        raise ValueError(f"env_id {env_id} out of range for n_workers {n_workers}")
+
     def _init():
         from src.rl_gym.gym_env import SDPDPAssignmentEnv
-        return SDPDPAssignmentEnv({**cfg, "env_id": env_id})
+        return SDPDPAssignmentEnv({**cfg, "env_id": env_id, "n_workers": n_workers})
     return _init
 
 
@@ -98,7 +110,8 @@ def smoke_test(n_workers=4, cfg=None, verbose=True):
     children_before = {c.pid for c in parent.children(recursive=True)}
 
     t0 = time.perf_counter()
-    venv = SubprocVecEnv([make_env(cfg, i) for i in range(n_workers)])
+    # n_workers reaches the envs from this one value, the same one sizing the venv (D10)
+    venv = SubprocVecEnv([make_env(cfg, i, n_workers) for i in range(n_workers)])
     t_construct = time.perf_counter() - t0
 
     # Take the worker PIDs from SB3 itself, not from "every new child". multiprocessing also
@@ -212,8 +225,13 @@ def main():
           f"(resource_tracker / forkserver; live with the parent, not orphans)")
     for i, s in enumerate(r["summaries"]):
         if s:
-            print(f"  worker {i}: seed {s.get('random_seed')} pickups {s.get('pickups')} "
-                  f"rejected {s.get('operator_rejected')} unclassified {s.get('unclassified')}")
+            print(f"  worker {i}: day {s.get('day')} (pass {s.get('pass')} pos "
+                  f"{s.get('pass_position')}) seed {s.get('random_seed')} "
+                  f"pickups {s.get('pickups')} rejected {s.get('operator_rejected')} "
+                  f"unclassified {s.get('unclassified')}")
+    days = [s.get("day") for s in r["summaries"] if s]
+    if len(days) != len(set(days)):
+        print(f"  WARNING: a day was visited twice within one pass: {days}")
     return 0 if not r["orphaned_pids"] else 1
 
 

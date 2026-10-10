@@ -1909,17 +1909,28 @@ untouched; the P1.10 gate still byte for byte, since the reference path never re
 
 ### P2.3 — Multi-day episodes and day rotation
 
-**Files:** `src/rl_gym/gym_env.py`, `train_sdpdp.py`, `tests/test_rl_gym_env.py`
+**Files:** `src/rl_gym/day_rotation.py`, `src/rl_gym/gym_env.py`, `train_sdpdp.py`,
+`tests/test_rl_gym_env.py`
 
 P1.9 deferred this here. The env writes the demand directory and file into
-`scenario_parameters` before construction (research proposal §3.1.2). New config keys:
+`scenario_parameters` before construction (research proposal §3.1.2). D10's selection lives in
+`day_rotation.py` as pure functions of `(sorted days, base_seed, n_workers, env_id, episode
+index)` — no FleetPy import, no env state — so a pass over several workers is a millisecond
+unit test instead of one real episode per position. New config keys:
 
 - `day_dir` — demand directory name: `corpus` for training, `corpus_eval` for evaluation.
   **Absent → the scenario's own `day_dir_name` / `rq_file` are used unchanged**, which is the
   reference path the gates need.
 - `day` — optional fixed day (filename stem). When set, every episode runs that day. Used by
   P2.4 and P2.14.
-- `n_workers` — required by D10 whenever `day_dir` is set and neither `day` nor `eval_pairs` is.
+- `n_workers` and `base_seed` — **both** required by D10 whenever `day_dir` is set and neither
+  `day` nor `eval_pairs` is. `n_workers` splits each pass; `base_seed` is what
+  `SeedSequence([base_seed, 1010, p + 1])` draws the permutation from, so without it there is no
+  pass order at all. The env raises for either, and raises on `env_id >= n_workers` — a worker
+  numbered outside the split owns no position in any pass and would silently run nothing of the
+  rotation. **`n_workers` is not a `train_sdpdp.py` config key**: it is passed into `make_env`
+  from the same value that sizes the `SubprocVecEnv`, because a config value of 4 run with
+  `--workers 3` would drop a quarter of every pass with every episode still succeeding.
 - `episode_seed` — optional. When set, every episode runs with exactly this `G_RANDOM_SEED`,
   which must lie in `[0, MAX_EPISODE_SEED]` (P1.9). It cannot be combined with `base_seed`; the
   env raises if both are set. With `day`, it pins one (day, seed) pair: used by P2.13's
@@ -1929,13 +1940,28 @@ P1.9 deferred this here. The env writes the demand directory and file into
   P2.13's evaluation callback.
 
 With `day_dir` set and neither `day` nor `eval_pairs`, days rotate per D10. `episode_summary()`
-records the day. When output is on and the pair is fixed (`episode_seed` or `eval_pairs`), the
-output directory is `f"{base}_{day}_s{seed}_env{env_id}_pid{pid}_ep{counter}"`, so it names the
-pair it holds. The env parses weekday and month from the filename and exposes them for the
-request block (P2.9). `scenario_pool` stays accepted and unused.
+records the day, and also `day_dir`, `weekday`, `month`, `pass` and `pass_position` — in
+rotation mode the output directory does *not* name the day, so this is the only record of which
+day an episode ran, and P2.13's day-visit histogram is built from it. When output is on and the
+pair is fixed (`episode_seed` or `eval_pairs`), the output directory is
+`f"{base}_{day}_s{seed}_env{env_id}_pid{pid}_ep{counter}"`, so it names the pair it holds.
+`scenario_pool` stays accepted and unused.
+
+Every day named in the config — `day`, and each day of `eval_pairs` — must exist as a `*.csv`
+in `day_dir`, checked at construction; otherwise a typo surfaces as a path error deep inside
+`load_demand_file`. Day listings are `*.csv` only, per §2.9.
+
+The env parses weekday and month from the filename and exposes them for the request block
+(P2.9). A stem that is not an ISO date yields `None` for both rather than raising, so the
+reference path's `rq_file` need not be ISO-named; P2.9 is where an unknown weekday or month
+raises, against P2.6's vocabularies (§5.2).
 
 VERIFY: the `scenario_parameters` keys that carry the demand directory and file, and that no
-component caches the demand path before construction.
+component caches the demand path before construction. *(Checked in P2.3: `G_DAY_DIR` and
+`G_RQ_FILE`; the directory is assembled at construction by `get_directory_dict`
+(`globals.py` ~741) from one call in `FleetSimulationBase.__init__` (~150), the filename read at
+~344 and passed straight to `load_demand_file`. Nothing else caches it — the only other
+`get_directory_dict` callers are the evaluation and replay tools, outside a run.)*
 
 **How Ritun verifies:**
 1. With `day_dir` absent, the P1.10 gate, byte for byte.

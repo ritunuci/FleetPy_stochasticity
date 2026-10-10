@@ -8,6 +8,7 @@ full rollout is P1.10.
 import gc
 import os
 import sys
+import tempfile
 import unittest
 import warnings
 
@@ -18,19 +19,31 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import gymnasium as gym  # noqa: E402
 
 from src.misc.globals import (  # noqa: E402
+    G_DAY_DIR,
     G_OP_MODULE,
     G_RL_MODE,
+    G_RQ_FILE,
     G_SIM_ENV,
     G_SKIP_OUTPUT,
     G_STUDY_NAME,
+)
+from src.rl_gym.day_rotation import (  # noqa: E402
+    PASS_STREAM_TAG,
+    day_for_episode,
+    pass_permutation,
+    positions_per_pass,
+    training_days,
 )
 from src.rl_gym.gym_env import (  # noqa: E402
     MAX_EPISODE_SEED,
     SDPDPAssignmentEnv,
     derive_study_name,
+    parse_day_stem,
 )
 
 SCS = os.path.join(os.path.dirname(__file__), "..", "studies", "example_study", "scenarios")
+CORPUS_ROOT = os.path.join(os.path.dirname(__file__), "..", "data", "demand",
+                           "example_demand", "matched", "example_network")
 K = 8
 
 
@@ -524,6 +537,234 @@ class TestScenarioNameUniqueness(unittest.TestCase):
                 d = os.path.join(results, name)
                 if os.path.isdir(d):
                     shutil.rmtree(d)
+
+
+class TestDayRotation(unittest.TestCase):
+    """D10's rotation, as pure functions -- no simulation built (P2.3).
+
+    These are the 3-worker / 10-day checks P2.3's verification item 3 names. Driving them
+    through real episodes would be 20 full simulations, about 13 minutes; here they are
+    milliseconds, and the rotation is exercised independently of FleetPy.
+    """
+
+    DAYS = [f"2024-01-{d:02d}" for d in (2, 3, 4, 9, 10, 11, 16, 17, 18, 23)]
+    SEED = 20260913
+    NW = 3
+
+    def test_ten_days_three_workers_shares_are_four_three_three(self):
+        shares = [positions_per_pass(len(self.DAYS), self.NW, e) for e in range(self.NW)]
+        self.assertEqual(shares, [4, 3, 3])
+        self.assertEqual(sum(shares), len(self.DAYS))
+
+    def _sequence(self, env_id, n_episodes):
+        return [day_for_episode(self.DAYS, self.SEED, self.NW, env_id, i)
+                for i in range(n_episodes)]
+
+    def test_two_full_passes_visit_every_day_exactly_twice(self):
+        seen = []
+        for env_id in range(self.NW):
+            per_pass = positions_per_pass(len(self.DAYS), self.NW, env_id)
+            seen += [day for day, _p, _pos in self._sequence(env_id, 2 * per_pass)]
+        self.assertEqual(len(seen), 2 * len(self.DAYS))
+        self.assertEqual(sorted(set(seen)), sorted(self.DAYS))
+        for day in self.DAYS:
+            self.assertEqual(seen.count(day), 2, f"{day} visited {seen.count(day)} times")
+
+    def test_one_pass_partitions_the_days_across_workers(self):
+        # within a pass no day may go to two workers, which is what "assigned exactly once"
+        # means and what P2.15's pass criterion 5 checks on the real run
+        pass0 = []
+        for env_id in range(self.NW):
+            per_pass = positions_per_pass(len(self.DAYS), self.NW, env_id)
+            for day, p, _pos in self._sequence(env_id, per_pass):
+                self.assertEqual(p, 0)
+                pass0.append(day)
+        self.assertEqual(sorted(pass0), sorted(self.DAYS))
+
+    def test_sequence_is_deterministic_given_base_seed(self):
+        self.assertEqual(self._sequence(0, 8), self._sequence(0, 8))
+
+    def test_different_base_seed_gives_a_different_order(self):
+        other = [day_for_episode(self.DAYS, self.SEED + 1, self.NW, 0, i)[0] for i in range(4)]
+        mine = [day for day, _p, _pos in self._sequence(0, 4)]
+        self.assertNotEqual(mine, other)
+
+    def test_pass_permutation_matches_d10s_seed_sequence(self):
+        for p in (0, 1, 5):
+            ss = np.random.SeedSequence([self.SEED, 1010, p + 1])
+            want = list(np.random.default_rng(ss).permutation(list(self.DAYS)))
+            self.assertEqual(pass_permutation(self.DAYS, self.SEED, p), want)
+
+    def test_pass_stream_tag_and_offset(self):
+        # SeedSequence pads with zeros, so [seed, 1010, 0] would be the same stream as
+        # [seed, 1010]; p + 1 is what keeps them apart (D10)
+        self.assertEqual(PASS_STREAM_TAG, 1010)
+        zero = np.random.SeedSequence([self.SEED, 1010, 0]).generate_state(4).tolist()
+        bare = np.random.SeedSequence([self.SEED, 1010]).generate_state(4).tolist()
+        self.assertEqual(zero, bare)
+        first = np.random.SeedSequence([self.SEED, 1010, 1]).generate_state(4).tolist()
+        self.assertNotEqual(first, bare)
+
+    def test_pass_stream_never_collides_with_a_worker_episode_stream(self):
+        passes = {tuple(np.random.SeedSequence([self.SEED, 1010, p + 1]).generate_state(4))
+                  for p in range(80)}
+        workers = {tuple(np.random.SeedSequence([self.SEED, e]).generate_state(4))
+                   for e in range(16)}
+        self.assertEqual(len(passes), 80)
+        self.assertEqual(passes & workers, set())
+
+    def test_env_id_at_or_beyond_n_workers_raises(self):
+        # a worker numbered outside the split owns no position in any pass, so it would
+        # silently run nothing of the rotation
+        for env_id in (self.NW, self.NW + 1, 99):
+            with self.assertRaises(ValueError) as cm:
+                day_for_episode(self.DAYS, self.SEED, self.NW, env_id, 0)
+            self.assertIn("env_id", str(cm.exception))
+
+    def test_negative_env_id_and_bad_arguments_raise(self):
+        with self.assertRaises(ValueError):
+            day_for_episode(self.DAYS, self.SEED, self.NW, -1, 0)
+        with self.assertRaises(ValueError):
+            day_for_episode(self.DAYS, self.SEED, 0, 0, 0)
+        with self.assertRaises(ValueError):
+            day_for_episode(self.DAYS, self.SEED, self.NW, 0, -1)
+        with self.assertRaises(ValueError):
+            pass_permutation(self.DAYS, self.SEED, -1)
+
+    def test_more_workers_than_days_raises(self):
+        with self.assertRaises(ValueError):
+            day_for_episode(self.DAYS[:2], self.SEED, 5, 4, 0)
+
+    def test_training_days_lists_csv_only(self):
+        # §2.9: macOS rewrites .DS_Store in these directories on its own, and an entry-based
+        # listing would turn it into a phantom demand day
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("2024-01-02.csv", "2024-01-03.csv", ".DS_Store", "notes.txt"):
+                open(os.path.join(tmp, name), "w").close()
+            self.assertEqual(training_days(tmp), ["2024-01-02", "2024-01-03"])
+
+    def test_training_days_rejects_an_empty_or_missing_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                training_days(tmp)
+            with self.assertRaises(ValueError):
+                training_days(os.path.join(tmp, "nope"))
+
+    def test_real_corpus_is_101_training_days(self):
+        days = training_days(os.path.join(CORPUS_ROOT, "corpus"))
+        self.assertEqual(len(days), 101)
+        self.assertEqual(days, sorted(days))
+        self.assertNotIn("2024-06-20", days, "an evaluation day must not be in corpus/")
+
+
+class TestDaySourceConfig(unittest.TestCase):
+    """Config validation for the day and seed sources (P2.3). No simulation is built."""
+
+    def test_day_dir_absent_leaves_the_scenario_row_alone(self):
+        env = SDPDPAssignmentEnv(make_cfg())
+        self.assertIsNone(env.day_dir)
+        self.assertEqual(env.scenario_parameters[G_DAY_DIR], "thursday")
+        self.assertEqual(env.scenario_parameters[G_RQ_FILE], "2024-06-20.csv")
+
+    def test_episode_seed_with_base_seed_raises(self):
+        with self.assertRaises(ValueError) as cm:
+            SDPDPAssignmentEnv(make_cfg(episode_seed=42, base_seed=7))
+        self.assertIn("episode_seed", str(cm.exception))
+
+    def test_episode_seed_out_of_range_raises(self):
+        for bad in (-1, MAX_EPISODE_SEED + 1):
+            with self.assertRaises(ValueError):
+                SDPDPAssignmentEnv(make_cfg(episode_seed=bad))
+
+    def test_rotation_requires_base_seed(self):
+        with self.assertRaises(ValueError) as cm:
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus", n_workers=2))
+        self.assertIn("base_seed", str(cm.exception))
+
+    def test_rotation_requires_n_workers(self):
+        with self.assertRaises(ValueError) as cm:
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus", base_seed=7))
+        self.assertIn("n_workers", str(cm.exception))
+
+    def test_env_id_at_or_beyond_n_workers_raises_at_construction(self):
+        with self.assertRaises(ValueError) as cm:
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus", base_seed=7, n_workers=3, env_id=3))
+        self.assertIn("env_id", str(cm.exception))
+
+    def test_eval_pairs_rejects_the_keys_it_subsumes(self):
+        for extra in ({"day": "2024-06-20"}, {"episode_seed": 42}, {"base_seed": 7}):
+            with self.assertRaises(ValueError):
+                SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval",
+                                            eval_pairs=[("2024-06-20", 42)], **extra))
+
+    def test_eval_pairs_requires_day_dir(self):
+        with self.assertRaises(ValueError) as cm:
+            SDPDPAssignmentEnv(make_cfg(eval_pairs=[("2024-06-20", 42)]))
+        self.assertIn("day_dir", str(cm.exception))
+
+    def test_eval_pairs_empty_raises(self):
+        with self.assertRaises(ValueError):
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval", eval_pairs=[]))
+
+    def test_eval_pairs_seed_out_of_range_raises(self):
+        with self.assertRaises(ValueError):
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval",
+                                        eval_pairs=[("2024-06-20", MAX_EPISODE_SEED + 1)]))
+
+    def test_unknown_day_raises_at_construction(self):
+        # otherwise a typo surfaces as a path error deep inside load_demand_file
+        with self.assertRaises(ValueError) as cm:
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval", day="2024-06-21"))
+        self.assertIn("2024-06-21", str(cm.exception))
+
+    def test_unknown_day_in_eval_pairs_raises(self):
+        with self.assertRaises(ValueError):
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval",
+                                        eval_pairs=[("2024-06-20", 42), ("1999-01-01", 7)]))
+
+    def test_unknown_day_dir_raises(self):
+        with self.assertRaises(ValueError):
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_nope", day="2024-06-20"))
+
+    def test_training_day_is_rejected_from_corpus_eval(self):
+        # a day that exists but in the other split: the directory is what decides
+        with self.assertRaises(ValueError):
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval", day="2024-01-18"))
+
+
+class TestDayStemParsing(unittest.TestCase):
+
+    def test_weekday_and_month_from_an_iso_stem(self):
+        self.assertEqual(parse_day_stem("2024-06-20"), ("Thu", 6))
+        self.assertEqual(parse_day_stem("2024-01-30"), ("Tue", 1))
+        self.assertEqual(parse_day_stem("2024-10-09"), ("Wed", 10))
+
+    def test_non_iso_stem_yields_none_rather_than_raising(self):
+        # the reference path's rq_file need not be ISO-named; P2.9 raises when it needs these
+        for stem in ("thursday", "", "2024-13-01", None):
+            self.assertEqual(parse_day_stem(stem), (None, None))
+
+    def test_weekday_outside_the_corpus_vocabulary_is_named_not_mapped(self):
+        self.assertEqual(parse_day_stem("2024-06-22"), ("Sat", 6))
+
+
+class TestEvalPairsRotation(unittest.TestCase):
+    """`eval_pairs` cycling, exercised through reset() without stepping (P2.3 item 5)."""
+
+    PAIRS = [("2024-06-20", 42), ("2024-01-11", 7), ("2024-10-01", 1234)]
+
+    def test_pairs_run_in_order_and_wrap_around(self):
+        env = SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval", eval_pairs=self.PAIRS))
+        try:
+            for i in range(len(self.PAIRS) * 2 + 1):
+                env.reset()
+                want_day, want_seed = self.PAIRS[i % len(self.PAIRS)]
+                s = env.episode_summary()
+                self.assertEqual(s["day"], want_day, f"episode {i + 1}")
+                self.assertEqual(s["random_seed"], want_seed, f"episode {i + 1}")
+                self.assertEqual(s["day_dir"], "corpus_eval")
+        finally:
+            env.close()
 
 
 if __name__ == "__main__":

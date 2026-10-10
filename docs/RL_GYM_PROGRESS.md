@@ -1593,3 +1593,136 @@ Spec changes made this turn (§2.9, plus one line in P2.9):
   passes every test and then fails the first time Finder opens the directory.
 
 Nothing failed, so there is no fix to propose. **Stopping here** — not starting P2.3.
+
+---
+
+## P2.3 — STARTED 2026-10-10 14:29
+Files I will touch: src/rl_gym/day_rotation.py (new), src/rl_gym/gym_env.py, train_sdpdp.py,
+tests/test_rl_gym_env.py, docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.2 committed as 7a0cacd, tree clean.
+
+Approved before starting:
+- `src/rl_gym/day_rotation.py` as a new file, not in P2.3's Files line. D10's selection is a
+  pure function of (sorted days, base_seed, n_workers, env_id, episode index), so verification
+  item 3's two passes over 3 workers and 10 days are millisecond unit tests instead of 20 real
+  episodes (~13 minutes), and the rotation is testable without FleetPy.
+- **Rotation mode requires `base_seed` as well as `n_workers`**, and the env raises without it.
+  P2.3 line 1921 named only `n_workers`, but D10's permutation comes from
+  `SeedSequence([base_seed, 1010, p + 1])`; defaulting it is the failure mode D7 forbids.
+  P2.3's sentence and Files line updated.
+- Construction validates that every named day (`day`, and each day in `eval_pairs`) exists as a
+  `*.csv` in `day_dir`; otherwise a typo fails deep inside `load_demand_file`.
+- Rotation-mode output directories keep P1.9's name; only fixed pairs get the day-and-seed name
+  P2.3 specifies. The counter keeps them unique and `episode_summary()` records the day.
+- An unparseable filename stem leaves weekday/month `None` rather than raising at `reset()`, so
+  a non-ISO `rq_file` on the reference path still runs; P2.9 raises when it needs them (§5.2).
+- The smoke test may use rotation.
+- **Ritun's change: `n_workers` must NOT go in `DEFAULT_CFG`.** It is passed into `make_env`
+  from the same value that sizes the `SubprocVecEnv`, so the two cannot disagree — a config
+  value of 4 run with `--workers 3` would silently drop a quarter of every pass. The env
+  additionally raises when `env_id >= n_workers`, with a test for that raise.
+
+## P2.3 — DONE 2026-10-10 14:44 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/day_rotation.py` — **new.** `training_days`, `pass_permutation`,
+  `positions_per_pass`, `day_for_episode`, `PASS_STREAM_TAG`. Pure functions, no FleetPy import.
+- `src/rl_gym/gym_env.py` — **modified.** `parse_day_stem`; `_configure_days`,
+  `_check_seed_range`, `_resolve_demand_dir`, `_apply_episode_day`, `_episode_pair_seed`;
+  `_apply_episode_seed` honours a pinned seed; `_apply_episode_scenario_name` names the pair
+  when one is fixed; `episode_summary()` gains `day`, `day_dir`, `weekday`, `month`, `pass`,
+  `pass_position`.
+- `train_sdpdp.py` — **modified.** `day_dir = "corpus"` in `DEFAULT_CFG`; `n_workers`
+  deliberately **not** a config key — `make_env(cfg, env_id, n_workers)` takes it from the same
+  value that sizes the `SubprocVecEnv`, and itself rejects `env_id >= n_workers`; the per-worker
+  report prints day, pass and position, and warns if a day repeats within a pass.
+- `tests/test_rl_gym_env.py` — **modified**, 25 → 57 tests.
+- `docs/SDPDP_GYM_SPEC_v2.md` — P2.3's Files line, the `base_seed`/`n_workers`/`env_id` rules,
+  the day-validation and stem-parsing paragraphs, the summary fields, and the VERIFY finding.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+Verification — all five of P2.3's criteria passed, nothing failed:
+
+1. **`day_dir` absent → the P1.10 gate, byte for byte.** Full suite **211 tests pass**,
+   119.6 s, no failures and no skips (179 before; +32). The gate's own
+   `test_user_stats_matches_baseline_byte_for_byte` is among them, and a construction test
+   asserts that with `day_dir` absent the scenario row's `day_dir_name = thursday` and
+   `rq_file = 2024-06-20.csv` are untouched.
+2. **`day_dir = "corpus_eval"`, `day = "2024-06-20"`, `base_seed` absent → byte-identical.**
+   md5 `53879ea79cf211d700f670dee1173dd5`, 436 steps, seed 42, pickups 288 / declined 118 /
+   cancelled 28 / no-show 2 / unclassified 0. The line-ending difference between
+   `corpus_eval/2024-06-20.csv` and `thursday/2024-06-20.csv` is indeed invisible to the loader.
+3. **The 3-worker / 10-day rotation**, as pure unit tests: per-pass shares **4 / 3 / 3**; over
+   two full passes **every day appears exactly twice**; within one pass the three workers
+   **partition** the days; each worker's sequence is deterministic given `base_seed` and changes
+   when `base_seed` does; and pass `p`'s permutation equals
+   `default_rng(SeedSequence([base_seed, 1010, p + 1])).permutation(days)` for p = 0, 1, 5.
+4. **`episode_seed = 42` → byte-identical** (md5 as above), **`episode_seed = 43` → differs**
+   (md5 `471db32e…`, 427 steps, 297 pickups, 101 declines). **Both `episode_seed` and
+   `base_seed` → raises.** The fixed-pair output directory named the pair:
+   `…_rs_42_2024-06-20_s42_env0_pid8909_ep1`.
+5. **`eval_pairs` runs its pairs in order and wraps**, checked over 7 resets of a 3-pair list:
+   each episode's `day`, `day_dir` and `G_RANDOM_SEED` matched its pair.
+
+Beyond the five:
+
+- **The rotation works end to end under `SubprocVecEnv`, and matches the pure function.**
+  `train_sdpdp.py --workers 3` ran three workers on three different training days — worker 0
+  `2024-09-26`, worker 1 `2024-03-27`, worker 2 `2024-07-02`, all pass 0 at positions 0, 1, 2 —
+  with three distinct episode seeds, exit codes `[0, 0, 0]`, no orphans, `unclassified = 0` in
+  every worker. Recomputing those three days from `day_for_episode` over the real 101-day corpus
+  **predicted all three exactly**. A full pass across 3 workers covers all 101 days exactly once
+  (shares 34 / 34 / 33).
+- **Every rotation misconfiguration raises** rather than defaulting: no `base_seed`, no
+  `n_workers`, `env_id >= n_workers`, `episode_seed` with `base_seed`, `episode_seed` out of
+  range, `eval_pairs` with `day` / `episode_seed` / `base_seed`, `eval_pairs` without `day_dir`,
+  empty `eval_pairs`, an `eval_pairs` seed out of range, an unknown `day`, an unknown day inside
+  `eval_pairs`, an unknown `day_dir`, and — worth its own test — a **training** day named
+  against `corpus_eval`, which exists but in the other split.
+- `training_days` lists `*.csv` only: a `.DS_Store` and a `notes.txt` dropped into a temporary
+  directory are both ignored (§2.9), and the real `corpus/` comes back as exactly 101 sorted
+  days with no evaluation day among them.
+
+VERIFY findings:
+- **The `scenario_parameters` keys carrying the demand directory and file, and whether anything
+  caches the demand path before construction: matched the spec.** `G_DAY_DIR = "day_dir_name"`
+  (`globals.py:23`), `G_RQ_FILE = "rq_file"` (`globals.py:104`). The directory is assembled at
+  construction by `get_directory_dict` —
+  `dirs[G_DIR_DEMAND] = data/demand/<demand_name>/matched/<network_name>/<day_dir>`
+  (`globals.py:741`) — from a single call in `FleetSimulationBase.__init__` (`:150`); the
+  filename is read at `:344` and passed straight into `load_demand_file` with `G_RANDOM_SEED`.
+  **Nothing caches it**: the only other `get_directory_dict` callers are
+  `ReplayFromResult.py:406`, `evaluation/temporal.py:465,999` and the two `standard*.py`
+  evaluators, all outside a run. `G_RQ_FILE` is in `input_parameters_mandatory` and read with
+  `[]`, so a missing key fails loudly. Recorded in P2.3's VERIFY line.
+- D10's two seed details, both checked rather than assumed: `SeedSequence` pads with zeros, so
+  `[base_seed, 1010, 0]` **is** the same stream as `[base_seed, 1010]` — which is exactly why
+  `p + 1` is required; and across 80 passes and 16 worker ids the pass streams are all distinct
+  and **never** intersect the episode-seed streams.
+
+A design note, since it is the one place I went beyond the spec's structure: `_resolve_demand_dir`
+validates day names by calling FleetPy's own `get_directory_dict` on a copy of the scenario
+parameters rather than reassembling the path. That way the validation cannot drift from what
+construction will compute. It caches nothing for the simulation's benefit — each `reset()` writes
+`G_DAY_DIR` / `G_RQ_FILE` and lets construction derive its own `dir_names`.
+
+Spec changes made this turn:
+- P2.3's Files line now lists `src/rl_gym/day_rotation.py`, with the reason it exists (a pass
+  over several workers becomes a unit test rather than one episode per position).
+- The `n_workers` bullet became `n_workers` **and** `base_seed`, with the mechanism — D10 draws
+  each pass from `SeedSequence([base_seed, 1010, p + 1])`, so without `base_seed` there is no
+  pass order at all — plus the `env_id >= n_workers` raise and the rule that `n_workers` is not
+  a `train_sdpdp.py` config key but comes from the value sizing the `SubprocVecEnv`.
+- Added: every named day must exist in `day_dir`, checked at construction; day listings are
+  `*.csv` only (§2.9); `episode_summary()` records `day_dir`, `weekday`, `month`, `pass` and
+  `pass_position`, and in rotation mode is the only record of which day an episode ran; a
+  non-ISO stem yields `None` for weekday and month rather than raising, with P2.9 as the place
+  that raises.
+- P2.3's VERIFY line now carries the finding instead of only the instruction.
+
+Also in this turn: the STARTED entry above was written with the time 15:02, which was wrong — I
+composed it before `date` returned. Corrected to 14:29 in the same turn. Noting it rather than
+leaving a silently edited timestamp in an append-only log.
+
+Nothing failed, so there is no fix to propose. **Stopping here** — not starting P2.4.
