@@ -31,7 +31,8 @@ Design rules this module is bound by:
 """
 
 import math
-from typing import Any, Dict, List, Sequence, Tuple
+import os
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -201,6 +202,193 @@ class CandidateObserver(AbstractObserver):
             "delta_cfv": signed_log1p(delta_cfv).astype(np.float32),
             "offered_wait": offered_wait.astype(np.float32),
         }
+
+
+class NodeCoordinates:
+    """Node lat/lon and the hull they are scaled against (§5.2, §2.10).
+
+    Read from the `lat`/`lon` columns of `base/nodes.csv`, **not** from
+    `routing_engine.return_network_bounding_box()**. P2.1 measured why: that helper reprojects
+    the corners of the UTM *rectangle*, and because the grid is turned about 0.5-0.7° from true
+    north those corners fall **inside** the node latitude hull. Scaling by them puts **13 of the
+    4,084 nodes outside [-1, 1]**, reaching -1.0106 and +1.0222. The node hull puts the extremes
+    exactly at +/-1 and nothing outside. (It is also cheaper: `return_positions_lon_lat` builds a
+    new pyproj transformer on every call.)
+
+    Static data, loaded once at env construction and shared across episodes.
+    """
+
+    def __init__(self, nodes_path: Optional[str] = None,
+                 network_name: str = "example_network"):
+        import pandas as pd
+        path = nodes_path or os.path.join(
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")),
+            "data", "networks", network_name, "base", "nodes.csv")
+        if not os.path.isfile(path):
+            raise ValueError(f"no node file at {path}")
+        df = pd.read_csv(path, usecols=["node_index", "lat", "lon"])
+        if df[["lat", "lon"]].isna().any().any():
+            raise ValueError(f"{path} has null lat/lon values")
+        self.path = path
+        self._lat = {int(n): float(v) for n, v in zip(df["node_index"], df["lat"])}
+        self._lon = {int(n): float(v) for n, v in zip(df["node_index"], df["lon"])}
+        self.lat_min, self.lat_max = float(df["lat"].min()), float(df["lat"].max())
+        self.lon_min, self.lon_max = float(df["lon"].min()), float(df["lon"].max())
+        for name, lo, hi in (("lat", self.lat_min, self.lat_max),
+                             ("lon", self.lon_min, self.lon_max)):
+            if not hi > lo:
+                raise ValueError(f"{path}: degenerate {name} hull, {lo} to {hi}")
+
+    def __len__(self) -> int:
+        return len(self._lat)
+
+    def scaled(self, node) -> Tuple[float, float]:
+        """`(lat, lon)` of `node`, each mapped linearly onto [-1, 1] over the node hull.
+
+        Raises on an unknown node rather than returning a sentinel: a request origin the network
+        does not contain means the demand and the network disagree, and 0.0 would read as the
+        middle of the map.
+        """
+        key = int(node)
+        try:
+            lat, lon = self._lat[key], self._lon[key]
+        except KeyError:
+            raise KeyError(
+                f"node {node!r} is not in {os.path.basename(self.path)} ({len(self)} nodes)"
+            ) from None
+        return (2.0 * (lat - self.lat_min) / (self.lat_max - self.lat_min) - 1.0,
+                2.0 * (lon - self.lon_min) / (self.lon_max - self.lon_min) - 1.0)
+
+
+class RequestObserver(AbstractObserver):
+    """The request block: 24 features about the rider being decided on (§5.2).
+
+    | feature | source | scaling |
+    |---|---|---|
+    | `o_lat`, `o_lon`, `d_lat`, `d_lon` | `prq.o_pos[0]`, `prq.d_pos[0]` | [-1, 1], node hull |
+    | `n_pax` | `prq.nr_pax` | raw |
+    | `dow` (3) | the demand filename | one-hot over Tue/Wed/Thu |
+    | `month` (10) | the demand filename | one-hot over Jan-Oct |
+    | `zone_arrivals_30/60`, `zone_declines_30/60`, `zone_cancels_30/60` | P2.7 | raw counts |
+
+    **The vocabularies come from P2.6's manifest, never literals** (§5.2), and an unknown
+    weekday or month raises -- at `set_episode_day`, i.e. at `reset()`, rather than at the first
+    decision, so a misconfigured episode fails before it runs rather than 40 seconds in.
+
+    **Zone set** = the request's origin H3 cell plus its neighbours, from P2.5's table; events
+    are keyed to the event rider's origin cell (§5.2, P2.7).
+
+    Two per-episode dependencies are injected rather than discovered: the rolling-stats tracker
+    (rebuilt every reset, §10) and the episode's weekday and month. Both have explicit setters
+    the env calls in `reset()`, and `observe` raises if either is missing -- reaching into
+    `fleetpy_module._stats_tracker` would work but couples this to a private attribute of the
+    operator and makes a stub tracker awkward to inject.
+    """
+
+    #: the two trailing windows §5.2 asks for, in seconds
+    WINDOWS_S = (1800, 3600)
+    #: (feature stem, the tracker's event kind)
+    _ZONE_KINDS = (("zone_arrivals", "arrival"),
+                   ("zone_declines", "decline"),
+                   ("zone_cancels", "cancel"))
+
+    def __init__(self, node_coords: NodeCoordinates, zone_table,
+                 weekday_vocab: Sequence[str], month_vocab: Sequence[int]):
+        """
+        :param weekday_vocab: from P2.6's manifest, e.g. `["Tue", "Wed", "Thu"]`
+        :param month_vocab: from P2.6's manifest, e.g. `[1, ..., 10]`
+        """
+        self.coords = node_coords
+        self.zones = zone_table
+        self.weekday_vocab = list(weekday_vocab)
+        self.month_vocab = [int(m) for m in month_vocab]
+        if not self.weekday_vocab or not self.month_vocab:
+            raise ValueError("the weekday and month vocabularies must both be non-empty; "
+                             "they come from P2.6's manifest (§5.2)")
+        if len(set(self.weekday_vocab)) != len(self.weekday_vocab) or \
+                len(set(self.month_vocab)) != len(self.month_vocab):
+            raise ValueError("the vocabularies must not repeat a value")
+        self._stats = None
+        self._dow_index: Optional[int] = None
+        self._month_index: Optional[int] = None
+
+    # ---------------------------------------------------------------- #
+    # per-episode injection
+    # ---------------------------------------------------------------- #
+
+    def set_stats_tracker(self, tracker) -> None:
+        """Attach P2.7's tracker for this episode. Called from `reset()`."""
+        self._stats = tracker
+
+    def set_episode_day(self, weekday: Optional[str], month: Optional[int]) -> None:
+        """Fix this episode's one-hots, validating against the manifest vocabularies.
+
+        Raises here rather than at the first decision: `None` is what P2.3's `parse_day_stem`
+        returns for a demand filename that is not an ISO date, and §5.2 requires an unknown
+        weekday or month to raise -- P2.9 is the item that owes that.
+        """
+        if weekday not in self.weekday_vocab:
+            raise ValueError(
+                f"weekday {weekday!r} is not in the manifest vocabulary {self.weekday_vocab}. "
+                f"It is parsed from the demand filename, which is the only record of which day "
+                f"a file is (§2.9); `None` means the filename is not an ISO date."
+            )
+        if month not in self.month_vocab:
+            raise ValueError(
+                f"month {month!r} is not in the manifest vocabulary {self.month_vocab}. "
+                f"Parsed from the demand filename (§2.9); `None` means it is not an ISO date."
+            )
+        self._dow_index = self.weekday_vocab.index(weekday)
+        self._month_index = self.month_vocab.index(int(month))
+
+    def feature_spec(self) -> List[Tuple[str, int]]:
+        spec: List[Tuple[str, int]] = [
+            ("o_lat", 1), ("o_lon", 1), ("d_lat", 1), ("d_lon", 1), ("n_pax", 1),
+            ("dow", len(self.weekday_vocab)), ("month", len(self.month_vocab)),
+        ]
+        # the one-hots are single named blocks rather than one name per level: the layout map
+        # addresses blocks, and `dow` of width 3 is what §5.2's "dow_* (3)" means
+        for stem, _kind in self._ZONE_KINDS:
+            for window_s in self.WINDOWS_S:
+                spec.append((f"{stem}_{window_s // 60}", 1))
+        return spec
+
+    def observe(self, fleetpy_module, ctx) -> Dict[str, np.ndarray]:
+        if self._stats is None:
+            raise RuntimeError(
+                "RequestObserver has no rolling-stats tracker; the env attaches one in reset() "
+                "(P2.7). Without it the six zone counts would silently be zero."
+            )
+        if self._dow_index is None or self._month_index is None:
+            raise RuntimeError(
+                "RequestObserver has no episode day; the env calls set_episode_day() in "
+                "reset() (P2.9)."
+            )
+
+        prq = ctx.prq
+        o_node, d_node = prq.o_pos[0], prq.d_pos[0]
+        o_lat, o_lon = self.coords.scaled(o_node)
+        d_lat, d_lon = self.coords.scaled(d_node)
+
+        dow = np.zeros(len(self.weekday_vocab), dtype=np.float32)
+        dow[self._dow_index] = 1.0
+        month = np.zeros(len(self.month_vocab), dtype=np.float32)
+        month[self._month_index] = 1.0
+
+        out: Dict[str, np.ndarray] = {
+            "o_lat": np.float32(o_lat),
+            "o_lon": np.float32(o_lon),
+            "d_lat": np.float32(d_lat),
+            "d_lon": np.float32(d_lon),
+            "n_pax": np.float32(prq.nr_pax),
+            "dow": dow,
+            "month": month,
+        }
+        for stem, kind in self._ZONE_KINDS:
+            for window_s in self.WINDOWS_S:
+                out[f"{stem}_{window_s // 60}"] = np.float32(
+                    self._stats.zone_count(kind, window_s, o_node))
+        return out
 
 
 class GlobalStateObserver(AbstractObserver):

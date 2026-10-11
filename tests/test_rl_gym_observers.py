@@ -23,9 +23,12 @@ from src.misc.globals import (  # noqa: E402
 from src.rl_gym.observers import (  # noqa: E402
     CandidateObserver,
     GlobalStateObserver,
+    NodeCoordinates,
+    RequestObserver,
     build_observation_layout,
     signed_log1p,
 )
+from src.rl_gym.zones import ZoneTable  # noqa: E402
 from src.rl_gym.policies import greedy_action, greedy_choice  # noqa: E402
 from src.rl_gym.spaces import build_action_mask, candidate_slot_validity  # noqa: E402
 
@@ -508,6 +511,200 @@ class TestCombinedLength(unittest.TestCase):
         self.assertEqual(vec.shape, (3 * K + 4,))
         self.assertEqual(vec.dtype, np.float32)
         self.assertTrue(np.all(np.isfinite(vec)))
+
+
+class TestNodeCoordinateScaling(unittest.TestCase):
+    """§5.2's bbox is the min/max over `nodes.csv`, not `return_network_bounding_box()`.
+
+    P2.1 measured why: the reprojected UTM corners fall *inside* the node latitude hull,
+    because the grid is turned about 0.5-0.7° from true north. Scaling by them puts 13 of the
+    4,084 nodes outside [-1, 1]. These tests are what fails if anyone switches to the helper.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.coords = NodeCoordinates()
+        import pandas as pd
+        cls.nodes = pd.read_csv(os.path.join(
+            os.path.dirname(__file__), "..", "data", "networks", "example_network",
+            "base", "nodes.csv"))
+
+    def test_all_4084_nodes_map_within_the_unit_box(self):
+        self.assertEqual(len(self.coords), 4084)
+        out = []
+        for node in self.nodes["node_index"]:
+            lat, lon = self.coords.scaled(node)
+            if not (-1.0 <= lat <= 1.0) or not (-1.0 <= lon <= 1.0):
+                out.append((int(node), lat, lon))
+        self.assertEqual(out, [], f"{len(out)} node(s) outside [-1, 1]")
+
+    def test_the_extremes_land_exactly_on_the_box(self):
+        lats = [self.coords.scaled(n)[0] for n in self.nodes["node_index"]]
+        lons = [self.coords.scaled(n)[1] for n in self.nodes["node_index"]]
+        self.assertAlmostEqual(min(lats), -1.0, places=12)
+        self.assertAlmostEqual(max(lats), 1.0, places=12)
+        self.assertAlmostEqual(min(lons), -1.0, places=12)
+        self.assertAlmostEqual(max(lons), 1.0, places=12)
+
+    def test_the_hull_is_the_node_columns_not_the_utm_corners(self):
+        self.assertAlmostEqual(self.coords.lat_min, float(self.nodes.lat.min()), places=12)
+        self.assertAlmostEqual(self.coords.lat_max, float(self.nodes.lat.max()), places=12)
+        self.assertAlmostEqual(self.coords.lon_min, float(self.nodes.lon.min()), places=12)
+        self.assertAlmostEqual(self.coords.lon_max, float(self.nodes.lon.max()), places=12)
+
+    def test_scaling_by_the_utm_corners_would_escape_the_box(self):
+        # the counter-example, pinned: 13 nodes outside, reaching -1.0106 and +1.0222 (P2.1)
+        from pyproj import Transformer
+        t = Transformer.from_proj("EPSG:32610", "epsg:4326")
+        lats, _lons = t.transform([self.nodes.pos_x.min(), self.nodes.pos_x.max()],
+                                  [self.nodes.pos_y.min(), self.nodes.pos_y.max()])
+        scaled = 2 * (self.nodes.lat - lats[0]) / (lats[1] - lats[0]) - 1
+        self.assertEqual(int(((scaled < -1) | (scaled > 1)).sum()), 13)
+        self.assertLess(scaled.min(), -1.0)
+        self.assertGreater(scaled.max(), 1.0)
+
+    def test_scaling_is_linear_and_monotone(self):
+        pairs = sorted((float(r.lat), self.coords.scaled(int(r.node_index))[0])
+                       for r in self.nodes.head(200).itertuples())
+        self.assertEqual([s for _l, s in pairs], sorted(s for _l, s in pairs))
+
+    def test_an_unknown_node_raises_rather_than_returning_a_sentinel(self):
+        for node in (-1, 4084, 10 ** 9):
+            with self.assertRaises(KeyError):
+                self.coords.scaled(node)
+
+
+class TestRequestObserver(unittest.TestCase):
+    """The request block's 24 features (§5.2, P2.9)."""
+
+    WEEKDAYS = ["Tue", "Wed", "Thu"]
+    MONTHS = list(range(1, 11))
+
+    def _observer(self, tracker=None, weekday="Thu", month=6):
+        obs = RequestObserver(NodeCoordinates(), ZoneTable(),
+                              weekday_vocab=self.WEEKDAYS, month_vocab=self.MONTHS)
+        if tracker is not None:
+            obs.set_stats_tracker(tracker)
+        if weekday is not None:
+            obs.set_episode_day(weekday, month)
+        return obs
+
+    def _ctx(self, o_node=0, d_node=100, nr_pax=1):
+        class Prq:
+            pass
+        prq = Prq()
+        prq.o_pos, prq.d_pos = (o_node, None, None), (d_node, None, None)
+        prq.nr_pax = nr_pax
+        prq.rq_time = 30000.0
+        ctx = StubCtx(make_candidates([100.0], [1.0]))
+        ctx.prq = prq
+        return ctx
+
+    def test_declares_twenty_four_features(self):
+        obs = self._observer(tracker=_ZeroTracker())
+        self.assertEqual(obs.output_length, 24)
+        self.assertEqual(sum(n for _, n in obs.feature_spec()), 24)
+
+    def test_feature_names_and_widths(self):
+        spec = dict(self._observer(tracker=_ZeroTracker()).feature_spec())
+        self.assertEqual(spec["o_lat"], 1)
+        self.assertEqual(spec["dow"], 3)
+        self.assertEqual(spec["month"], 10)
+        for stem in ("zone_arrivals", "zone_declines", "zone_cancels"):
+            for w in (30, 60):
+                self.assertEqual(spec[f"{stem}_{w}"], 1)
+
+    def test_coordinates_come_from_the_requests_own_nodes(self):
+        coords = NodeCoordinates()
+        obs = self._observer(tracker=_ZeroTracker())
+        parts = obs.observe(None, self._ctx(o_node=7, d_node=2000))
+        self.assertAlmostEqual(float(parts["o_lat"]), coords.scaled(7)[0], places=6)
+        self.assertAlmostEqual(float(parts["o_lon"]), coords.scaled(7)[1], places=6)
+        self.assertAlmostEqual(float(parts["d_lat"]), coords.scaled(2000)[0], places=6)
+        self.assertAlmostEqual(float(parts["d_lon"]), coords.scaled(2000)[1], places=6)
+
+    def test_n_pax_is_raw(self):
+        obs = self._observer(tracker=_ZeroTracker())
+        for n in (1, 2, 4):
+            parts = obs.observe(None, self._ctx(nr_pax=n))
+            self.assertEqual(float(parts["n_pax"]), float(n))
+
+    def test_one_hots_are_exactly_one_hot(self):
+        for weekday, month in (("Tue", 1), ("Wed", 10), ("Thu", 6)):
+            obs = self._observer(tracker=_ZeroTracker(), weekday=weekday, month=month)
+            parts = obs.observe(None, self._ctx())
+            np.testing.assert_array_equal(
+                parts["dow"], [1.0 if w == weekday else 0.0 for w in self.WEEKDAYS])
+            np.testing.assert_array_equal(
+                parts["month"], [1.0 if m == month else 0.0 for m in self.MONTHS])
+            self.assertEqual(parts["dow"].sum(), 1.0)
+            self.assertEqual(parts["month"].sum(), 1.0)
+
+    def test_zone_counts_come_from_the_tracker_for_the_requests_origin(self):
+        tracker = _RecordingTracker()
+        obs = self._observer(tracker=tracker)
+        parts = obs.observe(None, self._ctx(o_node=42))
+        self.assertEqual(sorted(tracker.calls), sorted([
+            ("arrival", 1800, 42), ("arrival", 3600, 42),
+            ("decline", 1800, 42), ("decline", 3600, 42),
+            ("cancel", 1800, 42), ("cancel", 3600, 42)]))
+        self.assertEqual(float(parts["zone_arrivals_30"]), 11.0)   # the stub's answer
+
+    def test_an_unknown_weekday_or_month_raises_at_set_episode_day(self):
+        # at reset, not at the first decision: a misconfigured episode must fail before it runs.
+        # set_episode_day is called directly rather than through the helper, which skips it for
+        # a None weekday -- `None` is exactly what P2.3's parse_day_stem returns for a non-ISO
+        # filename, so it is the case that most needs covering.
+        for weekday, month in (("Mon", 6), ("Thu", 11), (None, 6), ("Thu", None),
+                               (None, None), ("thu", 6), ("Thu", 0)):
+            with self.subTest(weekday=weekday, month=month):
+                obs = RequestObserver(NodeCoordinates(), ZoneTable(),
+                                      weekday_vocab=self.WEEKDAYS, month_vocab=self.MONTHS)
+                with self.assertRaises(ValueError):
+                    obs.set_episode_day(weekday, month)
+
+    def test_observe_without_a_tracker_raises(self):
+        obs = RequestObserver(NodeCoordinates(), ZoneTable(),
+                              weekday_vocab=self.WEEKDAYS, month_vocab=self.MONTHS)
+        obs.set_episode_day("Thu", 6)
+        with self.assertRaises(RuntimeError) as cm:
+            obs.observe(None, self._ctx())
+        self.assertIn("rolling-stats tracker", str(cm.exception))
+
+    def test_observe_without_an_episode_day_raises(self):
+        obs = RequestObserver(NodeCoordinates(), ZoneTable(),
+                              weekday_vocab=self.WEEKDAYS, month_vocab=self.MONTHS)
+        obs.set_stats_tracker(_ZeroTracker())
+        with self.assertRaises(RuntimeError) as cm:
+            obs.observe(None, self._ctx())
+        self.assertIn("episode day", str(cm.exception))
+
+    def test_empty_or_repeating_vocabularies_raise(self):
+        for wd, mo in (([], self.MONTHS), (self.WEEKDAYS, []),
+                       (["Tue", "Tue"], self.MONTHS), (self.WEEKDAYS, [1, 1])):
+            with self.assertRaises(ValueError):
+                RequestObserver(NodeCoordinates(), ZoneTable(),
+                                weekday_vocab=wd, month_vocab=mo)
+
+    def test_observe_matches_its_declaration(self):
+        obs = self._observer(tracker=_ZeroTracker())
+        vec = obs.observe_vector(None, self._ctx())          # raises on any disagreement
+        self.assertEqual(vec.shape, (24,))
+        self.assertEqual(vec.dtype, np.float32)
+
+
+class _ZeroTracker:
+    def zone_count(self, kind, window_s, node):
+        return 0
+
+
+class _RecordingTracker:
+    def __init__(self):
+        self.calls = []
+
+    def zone_count(self, kind, window_s, node):
+        self.calls.append((kind, window_s, int(node)))
+        return 11
 
 
 class TestObservationLayout(unittest.TestCase):

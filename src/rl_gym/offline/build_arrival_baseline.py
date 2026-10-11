@@ -43,6 +43,15 @@ from typing import Dict, List, Sequence, Tuple
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
+# the single definitions of "a training day" and of corpus_hash, shared with the env's
+# construction-time check (P2.9). `offline/` may import from `src/rl_gym/`, never the reverse.
+from src.rl_gym.corpus import (  # noqa: E402
+    corpus_file_hashes,
+    corpus_hash,
+    file_sha256,
+    training_day_files,
+)
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 NETWORK = "example_network"
 CORPUS = os.path.join(ROOT, "data", "demand", "example_demand", "matched", NETWORK, "corpus")
@@ -72,16 +81,6 @@ EXPECTED_TRAINING_DAYS = 101
 def minute_grid() -> List[int]:
     """Every minute `t` in `[start_time, end_time)` -- 747 of them for the reference scenario."""
     return list(range(START_TIME, END_TIME, MINUTE))
-
-
-def training_day_files(corpus_dir: str = CORPUS) -> List[str]:
-    """Training day stems, sorted, `*.csv` only (§2.9)."""
-    if not os.path.isdir(corpus_dir):
-        raise ValueError(f"no corpus directory at {corpus_dir}")
-    days = sorted(f[:-4] for f in os.listdir(corpus_dir) if f.endswith(".csv"))
-    if not days:
-        raise ValueError(f"no *.csv training days in {corpus_dir}")
-    return days
 
 
 def kept_arrival_times(path: str) -> "object":
@@ -171,28 +170,6 @@ def canonical_baseline_text(rows: Sequence[Tuple]) -> str:
 
 def baseline_hash(rows: Sequence[Tuple]) -> str:
     return hashlib.sha256(canonical_baseline_text(rows).encode("utf-8")).hexdigest()
-
-
-def file_sha256(path: str) -> str:
-    with open(path, "rb") as fh:
-        return hashlib.sha256(fh.read()).hexdigest()
-
-
-def corpus_file_hashes(corpus_dir: str = CORPUS) -> List[Dict[str, str]]:
-    """Every training file, sorted by filename, with the SHA-256 of its bytes."""
-    return [{"filename": f"{d}.csv",
-             "sha256": file_sha256(os.path.join(corpus_dir, f"{d}.csv"))}
-            for d in training_day_files(corpus_dir)]
-
-
-def corpus_hash(files: Sequence[Dict[str, str]]) -> str:
-    """SHA-256 of `<filename>:<sha256>` lines, in order, joined with newlines (§8 P2.6).
-
-    Covers contents as well as names, so an edited file is caught too, and the per-file list
-    lets the env say which files differ.
-    """
-    text = "\n".join(f"{e['filename']}:{e['sha256']}" for e in files)
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 # ------------------------------------------------------------------------------------ #

@@ -2313,12 +2313,40 @@ No feature changes in this item — the vector stays identical to Phase 1.
 
 ### P2.9 — Request block
 
-**Files:** `src/rl_gym/observers.py` (`RequestObserver`), `src/rl_gym/gym_env.py`,
+**Files:** `src/rl_gym/observers.py` (`RequestObserver`, `NodeCoordinates`),
+`src/rl_gym/corpus.py` (new), `src/rl_gym/day_rotation.py`,
+`src/rl_gym/offline/build_arrival_baseline.py`, `src/rl_gym/gym_env.py`,
 `tests/test_rl_gym_observers.py`, `tests/test_rl_gym_env.py` (it asserts the observation shape)
+
+**`src/rl_gym/corpus.py` holds the single definition of "a training day" and of
+`corpus_hash`.** `offline/` may import from `src/rl_gym/`, never the reverse, so the runtime
+check could not have reached P2.6's builder — and reimplementing the hash in the runtime path is
+exactly the drift the manifest exists to prevent. `day_rotation.training_days` and the builder
+both delegate to it, so **D10's rotation, P2.6's manifest and P2.9's check cannot disagree about
+what the corpus is**; three separate `*.csv` listings is how they would. *(Added in P2.9, with
+the two extra files; verified that the refactor leaves `corpus_hash` and `baseline_hash`
+byte-identical and `--check` passing.)*
 
 Per §5.2's request block. Node lat/lon and the bbox are loaded once at env construction from
 `nodes.csv` (§2.10); vocabularies from P2.6's manifest; zone counts from P2.7 through P2.5's
 zone sets.
+
+**The bbox is the min/max of `nodes.csv`'s own `lat`/`lon` columns, never
+`return_network_bounding_box()`.** Measured in P2.9: that helper reprojects the corners of the
+UTM *rectangle*, and because the grid is turned about 0.5–0.7° from true north (P2.1) those
+corners fall **inside** the node latitude hull — scaling by them puts **13 of the 4,084 nodes
+outside [−1, 1]**, reaching −1.0106 and +1.0222. The node hull puts the extremes exactly at ±1.
+A test asserts all 4,084 nodes land inside the box and that the extremes hit ±1, so a switch to
+the helper fails rather than drifting.
+
+**Two per-episode dependencies are injected, not discovered.** The rolling-stats tracker is
+rebuilt every reset (§10) while observers are built once, and the episode's weekday and month
+come from the demand filename (P2.3), so the env calls `set_stats_tracker` and
+`set_episode_day` in `reset()`. `set_episode_day` validates against the manifest vocabularies
+and **raises there** — at reset, not at the first decision — so a misconfigured episode fails
+before it runs rather than 40 seconds in. `None`, which P2.3's `parse_day_stem` returns for a
+non-ISO demand filename, is what that check mostly catches. `observe` raises if either
+dependency is missing.
 
 This item also adds the corpus check (trap 16): at construction the env loads P2.6's manifest,
 recomputes `corpus_hash` over the files in the corpus directory exactly as P2.6 defines it, and
@@ -2326,6 +2354,13 @@ on a mismatch raises, naming the files that are missing, extra or changed (from 
 per-file list). The corpus directory comes from a new config key, `corpus_dir`, defaulting to
 `data/demand/example_demand/matched/example_network/corpus`, so a test can point it at a
 temporary copy. Like every other corpus reader it enumerates days by `*.csv` only (§2.9).
+
+**The check runs unconditionally, so from this item on the P1.10 gate depends on corpus
+integrity.** The gate runs the reference path out of `thursday/` and never reads a corpus day,
+but the request block's vocabularies come from the manifest, so a corpus edit now breaks the
+byte gate. That is the intended coupling (trap 16); the raise names the files that are missing,
+extra or changed, states that anything trained against the baseline is invalid, and gives the
+rebuild command, so the message explains itself rather than looking like an unrelated failure.
 
 **How Ritun verifies:** the P1.10 gate, byte for byte, with the block present; for 10 decisions,
 every feature matches a hand computation — coordinates from `nodes.csv`, one-hots from the

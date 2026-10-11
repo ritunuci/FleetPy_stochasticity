@@ -2536,3 +2536,150 @@ longer the contract.
 and the `obs[K:2K]` slice. Left for the post-Phase-2 revision commit 74ee9c0 promises, as agreed.
 
 Nothing failed. **Stopping here** — not starting P2.9.
+
+---
+
+## P2.9 — STARTED 2026-10-10 19:34
+Files I will touch: src/rl_gym/corpus.py (new), src/rl_gym/observers.py,
+src/rl_gym/day_rotation.py, src/rl_gym/offline/build_arrival_baseline.py,
+src/rl_gym/gym_env.py, tests/test_rl_gym_observers.py, tests/test_rl_gym_env.py,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.8 committed as d0dc3a7, tree clean.
+
+VERIFY confirmed before starting: the `PlanRequest` origin and destination attributes are
+`prq.o_pos` / `prq.d_pos` (`PlanRequest.py:55,59`), node at element `[0]`, and `prq.nr_pax`
+(line 47). Both default to `rq.o_pos` / `rq.d_pos` because `build_assignment_context` passes no
+`pickup_pos`/`dropoff_pos`, so they are the raw request nodes. No boarding-point or walking keys
+are configured, despite the control function being named `distance_and_user_times_with_walk`.
+
+**Ritun's coordinate-scaling instruction, measured:** scaling by `return_network_bounding_box()`
+would put **13 of 4,084 nodes outside [−1, 1]** in latitude, reaching −1.0106 and +1.0222,
+because P2.1 showed the reprojected UTM corners fall *inside* the node latitude hull. Scaling by
+`nodes.csv`'s own min/max puts the extremes exactly at ±1. §5.2 already specifies the node hull,
+so this reinforces the spec; the test Ritun asked for pins it.
+
+Approved before starting:
+- **`src/rl_gym/corpus.py`**, a shared runtime module, because `offline/__init__.py` forbids
+  `src/rl_gym/` importing from `offline/` and the alternative is two definitions of
+  `corpus_hash` that agree today and drift later — the exact failure the manifest exists to
+  prevent. The offline builder imports it, so the dependency still runs one way.
+- The observer gets P2.7's tracker through an explicit `set_stats_tracker`, called from
+  `reset()`, rather than reaching into `fleetpy_module._stats_tracker`.
+- **The P1.10 gate now depends on corpus integrity** (trap 16): the manifest check runs at
+  construction unconditionally, so a corpus edit breaks the byte gate even though the gate reads
+  `thursday/`. The raise names the offending files so the message explains itself.
+
+Ritun's two conditions on `corpus.py`:
+1. After the builder imports from it, `build_arrival_baseline --check` must pass and the
+   committed hashes must be unchanged. Recorded here for the comparison:
+   `corpus_hash   6b232cf105d05ad3ccc6c9121e845dace88e406471e3bbd04286edc5dabb85a3`
+   `baseline_hash 5638cb266b54615492c85cb52de1be49faefde16cfe55e532f623fe5913622e1`
+2. **The same single-definition argument applies to listing training days.** There are three
+   copies of the `*.csv` listing today — `day_rotation.py:45`, `build_arrival_baseline.py:81`
+   and `corpus_sweep.py:94` — so D10's rotation, the manifest and the corpus check can disagree
+   about what a training day is. `day_rotation.training_days()` will delegate to `corpus.py`,
+   and `day_rotation.py` joins the Files line.
+
+## P2.9 — DONE 2026-10-10 19:49 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/corpus.py` — **new.** The single definitions: `training_day_files`,
+  `file_sha256`, `corpus_file_hashes`, `corpus_hash`, `load_manifest`, `verify_corpus`.
+- `src/rl_gym/day_rotation.py` — `training_days` now delegates to `corpus.py`.
+- `src/rl_gym/offline/build_arrival_baseline.py` — imports the four shared functions instead of
+  defining its own.
+- `src/rl_gym/observers.py` — **new** `NodeCoordinates` and `RequestObserver` (24 features).
+- `src/rl_gym/gym_env.py` — `corpus_dir` config key; the manifest load and corpus check at
+  construction; the request observer built and wired; the observation concatenated from the
+  observers tuple so the new block is picked up; `_zones` initialised before the observers need
+  it.
+- `tests/test_rl_gym_observers.py` — `TestNodeCoordinateScaling` (6) and `TestRequestObserver`
+  (11).
+- `tests/test_rl_gym_env.py` — `TestCorpusCheckAtConstruction` (7) and
+  `TestRequestBlockInTheEnv` (9); the two existing shape assertions updated to 52.
+- `docs/SDPDP_GYM_SPEC_v2.md` — the Files line and `corpus.py`'s rationale, the bbox rule with
+  the measurement, the injected-dependency paragraph, and the gate-coupling note.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+Verification — everything passed, nothing failed:
+
+1. **The P1.10 gate, byte for byte, with the block present** — md5
+   `53879ea79cf211d700f670dee1173dd5`. Full suite **373 tests pass**, 145.9 s, no failures and
+   no skips (340 before; +33).
+2. **Observation length 28 → 52**, the request block contributing exactly 24, the layout still
+   tiling `[0, 52)` with no gap or overlap, and the block order candidate → request → global
+   (§5.2).
+3. **Every request feature at 10 random decisions, against an independent hand computation:
+   0 mismatches** across 10 decisions × 17 checks — the four coordinates recomputed from
+   `nodes.csv` with the hull applied by hand, `n_pax` from the `PlanRequest`, both one-hots, and
+   all six zone counts recomputed from `1_user-stats.csv` through P2.5's zone sets.
+4. **Ritun's scaling test: all 4,084 nodes land within [−1, 1]**, and the extremes sit exactly
+   at ±1. The counter-example is pinned too: scaling by `return_network_bounding_box()` puts
+   **13** nodes outside, at −1.0106 and +1.0222, so a switch to the helper fails a test rather
+   than drifting.
+5. **The corpus check**, each against a temporary copy so the committed corpus is never touched:
+   an untouched copy constructs; **removing** a file raises and names it; **editing** one byte of
+   a file raises and names it; **adding** a day raises and names it; a missing directory raises;
+   the message contains both the consequence ("invalid") and the fix
+   ("build_arrival_baseline"); and **a stray `.DS_Store` plus a `notes.txt` leave construction
+   working** — §2.9's `*.csv`-only rule, the test P2.2 promised.
+6. An unknown weekday or month raises at `set_episode_day`, i.e. at reset, over seven cases
+   including `None` (what a non-ISO filename yields), a lowercase `"thu"`, and month 0.
+   `observe` raises if either per-episode dependency is missing, and the request observer is
+   re-pointed at the current episode's tracker on every reset.
+7. `check_env` through `MaskRespectingShim` passes with `base_seed` absent and set (both in the
+   suite).
+
+**Ritun's condition 1 — the refactor moves neither hash.** After the builder started importing
+from `corpus.py`:
+- `build_arrival_baseline --check` passes: "the committed baseline and manifest match a fresh
+  build, and agree with each other".
+- `corpus_hash` **6b232cf105d05ad3ccc6c9121e845dace88e406471e3bbd04286edc5dabb85a3** — identical
+  to the value recorded in the STARTED entry, to the committed manifest, and to a fresh
+  recomputation through `corpus.py`.
+- `baseline_hash` **5638cb266b54615492c85cb52de1be49faefde16cfe55e532f623fe5913622e1** — the
+  same three ways.
+- `git status -- data/rl_gym/` is empty: `--check` wrote nothing.
+
+**Ritun's condition 2 — one definition of a training day.** There were three `*.csv` listings
+(`day_rotation.py:45`, `build_arrival_baseline.py:81`, `corpus_sweep.py:94`), so D10's rotation,
+the manifest and the corpus check could have disagreed about what a training day is.
+`day_rotation.training_days` and the builder now both call `corpus.training_day_files`, and a
+test asserts the two return the same 101 days. `corpus_sweep.py:94` is deliberately left alone:
+it enumerates **two** directories as `(day_dir, day)` pairs including `corpus_eval/`, which is a
+different question from "what are the training days", and folding it in would have meant giving
+the shared function a second shape for one caller.
+
+VERIFY findings:
+- **The `PlanRequest` origin and destination attributes: matched the spec** — `prq.o_pos` and
+  `prq.d_pos` (`PlanRequest.py:55,59`), node at element `[0]`, and `prq.nr_pax` at line 47. Both
+  default to `rq.o_pos`/`rq.d_pos` because `build_assignment_context` passes no
+  `pickup_pos`/`dropoff_pos`, so they are the raw request nodes. **No boarding-point or walking
+  keys are configured**, despite the control function being named
+  `distance_and_user_times_with_walk` — checked, because the name invites the opposite
+  conclusion.
+- **The bbox source: DIFFERED from what a reader might assume**, and Ritun's instruction is the
+  correct one. §5.2 already said "the min/max over all nodes", but P2.1's verification figures
+  come from `return_network_bounding_box()`, and using that helper here would put 13 nodes
+  outside [−1, 1]. Both the rule and the measurement are now in §8 P2.9 so the two cannot be
+  conflated again.
+
+Two mistakes of mine, both caught by their own tests:
+- **An initialisation-order bug.** `_zones` was set in the "live episode state" block, *after*
+  the observers that ask for it at construction, so the first `SDPDPAssignmentEnv(...)` raised
+  `AttributeError: no attribute '_zones'`. Moved above the observers, with a comment saying why
+  the position matters.
+- **A test helper that skipped the case it was testing.** My
+  `test_an_unknown_weekday_or_month_raises_at_set_episode_day` went through a helper that only
+  calls `set_episode_day` when the weekday is not `None` — so the `(None, 6)` case never called
+  it and the assertion failed. Rewritten to call `set_episode_day` directly over seven cases.
+  `None` is precisely the case that most needs covering, since it is what P2.3's
+  `parse_day_stem` returns for a non-ISO filename.
+
+Also hit and fixed: my new env test called `greedy_action` and got
+`tests/test_rl_gym_env.py`'s **local** `greedy_action(env, obs)` helper rather than the policy
+function — the name collision flagged in P2.8. Now imported as `policy_greedy_action`, with a
+comment at the call site.
+
+Nothing failed. **Stopping here** — not starting P2.10.

@@ -7,6 +7,7 @@ full rollout is P1.10.
 
 import gc
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -34,6 +35,7 @@ from src.rl_gym.day_rotation import (  # noqa: E402
     positions_per_pass,
     training_days,
 )
+from src.rl_gym.policies import greedy_action as policy_greedy_action  # noqa: E402,F401
 from src.rl_gym.gym_env import (  # noqa: E402
     MAX_EPISODE_SEED,
     SDPDPAssignmentEnv,
@@ -44,7 +46,9 @@ from src.rl_gym.gym_env import (  # noqa: E402
 SCS = os.path.join(os.path.dirname(__file__), "..", "studies", "example_study", "scenarios")
 CORPUS_ROOT = os.path.join(os.path.dirname(__file__), "..", "data", "demand",
                            "example_demand", "matched", "example_network")
+CORPUS_DIR = os.path.join(CORPUS_ROOT, "corpus")
 K = 8
+REQUEST_BLOCK = 24          # §5.2: 4 coords + n_pax + 3 dow + 10 month + 6 zone
 
 
 def make_cfg(**overrides):
@@ -109,16 +113,18 @@ class TestConstruction(unittest.TestCase):
     def test_spaces(self):
         env = SDPDPAssignmentEnv(make_cfg())
         self.assertEqual(env.action_space.n, K + 1)
-        self.assertEqual(env.observation_space.shape, (3 * K + 4,))
+        # 3K candidate + 24 request (P2.9) + 4 global; 52 at K = 8
+        self.assertEqual(env.observation_space.shape, (3 * K + REQUEST_BLOCK + 4,))
         self.assertEqual(env.observation_space.dtype, np.float32)
         self.assertTrue(np.all(env.observation_space.low == -np.inf))
         self.assertTrue(np.all(env.observation_space.high == np.inf))
 
     def test_observation_space_follows_k_without_hardcoding(self):
+        # the request block is K-independent, so only the candidate block scales
         for k in (2, 4, 8):
             with self.subTest(K=k):
                 env = SDPDPAssignmentEnv(make_cfg(K=k))
-                self.assertEqual(env.observation_space.shape, (3 * k + 4,))
+                self.assertEqual(env.observation_space.shape, (3 * k + REQUEST_BLOCK + 4,))
                 self.assertEqual(env.action_space.n, k + 1)
 
     def test_rl_settings_forced(self):
@@ -765,6 +771,174 @@ class TestEvalPairsRotation(unittest.TestCase):
                 self.assertEqual(s["day_dir"], "corpus_eval")
         finally:
             env.close()
+
+
+class TestCorpusCheckAtConstruction(unittest.TestCase):
+    """Trap 16: the env refuses to start when `corpus/` no longer matches the manifest (P2.9).
+
+    P2.6's baseline, its month means and its SD were all computed over one particular set of
+    days, and the request block's vocabularies come from the same manifest. A baseline read
+    against a different corpus produces plausible-looking anomalies that are simply wrong, and
+    nothing else would notice.
+
+    Each test copies the real corpus into a temporary directory and points `corpus_dir` there,
+    so the committed corpus is never touched.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.pristine = os.path.join(cls._tmp.name, "corpus")
+        shutil.copytree(CORPUS_DIR, cls.pristine)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def _copy(self):
+        """A fresh copy of the corpus for one test to mutate."""
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        target = os.path.join(d, "corpus")
+        shutil.copytree(self.pristine, target)
+        return target
+
+    def test_an_untouched_copy_constructs(self):
+        env = SDPDPAssignmentEnv(make_cfg(corpus_dir=self._copy()))
+        self.addCleanup(env.close)
+        self.assertEqual(len(env.manifest["files"]), 101)
+
+    def test_removing_one_file_raises_and_names_it(self):
+        corpus = self._copy()
+        os.remove(os.path.join(corpus, "2024-03-05.csv"))
+        with self.assertRaises(ValueError) as cm:
+            SDPDPAssignmentEnv(make_cfg(corpus_dir=corpus))
+        msg = str(cm.exception)
+        self.assertIn("2024-03-05.csv", msg)
+        self.assertIn("missing", msg)
+
+    def test_editing_one_file_raises_and_names_it(self):
+        corpus = self._copy()
+        path = os.path.join(corpus, "2024-07-23.csv")
+        with open(path, "a") as fh:
+            fh.write("\n")                       # one byte, nothing semantic
+        with self.assertRaises(ValueError) as cm:
+            SDPDPAssignmentEnv(make_cfg(corpus_dir=corpus))
+        msg = str(cm.exception)
+        self.assertIn("2024-07-23.csv", msg)
+        self.assertIn("changed", msg)
+
+    def test_adding_a_day_raises_and_names_it(self):
+        corpus = self._copy()
+        shutil.copy(os.path.join(corpus, "2024-07-23.csv"),
+                    os.path.join(corpus, "2024-12-25.csv"))
+        with self.assertRaises(ValueError) as cm:
+            SDPDPAssignmentEnv(make_cfg(corpus_dir=corpus))
+        msg = str(cm.exception)
+        self.assertIn("2024-12-25.csv", msg)
+        self.assertIn("extra", msg)
+
+    def test_a_stray_ds_store_leaves_construction_working(self):
+        # §2.9's *.csv-only rule, and the test P2.2 promised: macOS writes .DS_Store into these
+        # directories on its own, and it must not look like a corpus change
+        corpus = self._copy()
+        with open(os.path.join(corpus, ".DS_Store"), "wb") as fh:
+            fh.write(b"\x00\x01\x02")
+        with open(os.path.join(corpus, "notes.txt"), "w") as fh:
+            fh.write("ignore me")
+        env = SDPDPAssignmentEnv(make_cfg(corpus_dir=corpus))
+        self.addCleanup(env.close)
+        self.assertEqual(len(env.manifest["files"]), 101)
+
+    def test_a_missing_corpus_directory_raises(self):
+        with self.assertRaises(ValueError):
+            SDPDPAssignmentEnv(make_cfg(corpus_dir=os.path.join(self._tmp.name, "nope")))
+
+    def test_the_error_explains_the_consequence_and_the_fix(self):
+        corpus = self._copy()
+        os.remove(os.path.join(corpus, "2024-01-09.csv"))
+        with self.assertRaises(ValueError) as cm:
+            SDPDPAssignmentEnv(make_cfg(corpus_dir=corpus))
+        msg = str(cm.exception)
+        self.assertIn("invalid", msg)                       # what it means
+        self.assertIn("build_arrival_baseline", msg)        # what to do
+
+
+class TestRequestBlockInTheEnv(unittest.TestCase):
+    """The block's wiring: shape, layout, and the per-episode injection (P2.9)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.env = SDPDPAssignmentEnv(make_cfg())
+        cls.obs, cls.info = cls.env.reset()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.env.close()
+
+    def test_observation_length_is_fifty_two(self):
+        self.assertEqual(self.env.observation_space.shape, (52,))
+        self.assertEqual(self.obs.shape, (52,))
+
+    def test_the_request_block_adds_twenty_four(self):
+        self.assertEqual(self.env._request_observer.output_length, 24)
+
+    def test_block_order_is_candidate_request_global(self):
+        names = list(self.env.observation_layout)
+        self.assertEqual(names[:3], ["is_valid", "delta_cfv", "offered_wait"])
+        self.assertEqual(names[3:8], ["o_lat", "o_lon", "d_lat", "d_lon", "n_pax"])
+        self.assertEqual(names[-4:],
+                         ["time_sin", "time_cos", "day_progress", "idle_fraction"])
+
+    def test_the_layout_still_tiles(self):
+        slices = list(self.env.observation_layout.values())
+        self.assertEqual(slices[0].start, 0)
+        self.assertEqual(slices[-1].stop, 52)
+        for a, b in zip(slices, slices[1:]):
+            self.assertEqual(a.stop, b.start)
+
+    def test_the_one_hots_match_the_demand_filename(self):
+        L = self.env.observation_layout
+        # the reference scenario runs thursday/2024-06-20.csv
+        np.testing.assert_array_equal(self.obs[L["dow"]], [0.0, 0.0, 1.0])       # Thu
+        np.testing.assert_array_equal(
+            self.obs[L["month"]], [0.0] * 5 + [1.0] + [0.0] * 4)                # June
+        self.assertEqual(self.env.episode_summary()["weekday"], "Thu")
+        self.assertEqual(self.env.episode_summary()["month"], 6)
+
+    def test_coordinates_are_inside_the_unit_box(self):
+        L = self.env.observation_layout
+        for name in ("o_lat", "o_lon", "d_lat", "d_lon"):
+            v = float(self.obs[L[name]][0])
+            self.assertGreaterEqual(v, -1.0, name)
+            self.assertLessEqual(v, 1.0, name)
+
+    def test_the_observation_is_finite_and_in_space(self):
+        self.assertTrue(np.all(np.isfinite(self.obs)))
+        self.assertTrue(self.env.observation_space.contains(self.obs))
+
+    def test_zone_counts_accumulate_over_the_episode(self):
+        L = self.env.observation_layout
+        obs = self.obs
+        first = float(obs[L["zone_arrivals_60"]][0])
+        for _ in range(80):
+            # policy_greedy_action, not this module's local greedy_action(env, obs) helper --
+            # the two share a name and take different arguments
+            obs, _r, term, _t, _i = self.env.step(policy_greedy_action(
+                obs, self.env.action_masks(), self.env.observation_layout))
+            if term:
+                break
+        later = float(obs[L["zone_arrivals_60"]][0])
+        self.assertEqual(first, 0.0, "the first decision's window is empty")
+        self.assertGreater(later, 0.0, "zone arrivals must accumulate")
+
+    def test_the_observer_is_reattached_on_every_reset(self):
+        env = SDPDPAssignmentEnv(make_cfg())
+        self.addCleanup(env.close)
+        for _ in range(2):
+            env.reset()
+            # a stale tracker from the previous episode would still answer, so compare identity
+            self.assertIs(env._request_observer._stats, env._stats)
 
 
 if __name__ == "__main__":

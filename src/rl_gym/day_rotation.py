@@ -24,28 +24,24 @@ Pure functions only -- no FleetPy import, no env state -- so the rotation is tes
 milliseconds rather than through real episodes.
 """
 
-import os
 from typing import List, Sequence, Tuple
 
 import numpy as np
+
+from src.rl_gym.corpus import training_day_files as corpus_training_day_files
 
 #: tags the pass-permutation stream so it cannot collide with the episode-seed stream (D10)
 PASS_STREAM_TAG = 1010
 
 
 def training_days(day_dir: str) -> List[str]:
-    """Sorted filename stems of the demand days in `day_dir`.
+    """Sorted filename stems of the demand days in `day_dir`, `*.csv` only (§2.9).
 
-    **`*.csv` only** (§2.9): macOS creates and rewrites `.DS_Store` in these directories on its
-    own and it is untracked, so it can appear, change or vanish between runs with no demand file
-    changing. Enumerating directory entries instead would introduce a phantom day.
+    **Delegates to `corpus.training_day_files`, which is the single definition** (P2.9). D10's
+    rotation, P2.6's manifest and P2.9's construction-time corpus check must agree on what a
+    training day is; three separate listings is how they stop agreeing.
     """
-    if not os.path.isdir(day_dir):
-        raise ValueError(f"day_dir is not a directory: {day_dir}")
-    days = sorted(f[:-4] for f in os.listdir(day_dir) if f.endswith(".csv"))
-    if not days:
-        raise ValueError(f"no *.csv demand days in {day_dir}")
-    return days
+    return corpus_training_day_files(day_dir)
 
 
 def pass_permutation(days: Sequence[str], base_seed: int, p: int) -> List[str]:

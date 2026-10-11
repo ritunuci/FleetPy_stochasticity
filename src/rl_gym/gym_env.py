@@ -52,9 +52,12 @@ from src.misc.globals import (
 )
 from src.misc.init_modules import load_simulation_environment
 from src.rl_gym.day_rotation import day_for_episode, training_days
+from src.rl_gym.corpus import DEFAULT_CORPUS_DIR, load_manifest, verify_corpus
 from src.rl_gym.observers import (
     CandidateObserver,
     GlobalStateObserver,
+    NodeCoordinates,
+    RequestObserver,
     build_observation_layout,
 )
 from src.rl_gym.reward import RewardTracker
@@ -140,13 +143,37 @@ class SDPDPAssignmentEnv(gym.Env):
         self._generator_seeded = False
         self._episode_seed = None
 
+        #: the frozen training split the manifest was built over (P2.9). A config key so a
+        #: test can point the check at a temporary copy.
+        self.corpus_dir = cfg.get("corpus_dir", DEFAULT_CORPUS_DIR)
+        #: P2.5's zone lookup: static data, built once and shared across episodes. Set before
+        #: the observers, which ask for it at construction.
+        self._zones: Optional[ZoneTable] = None
+
         self.scenario_parameters = self._build_scenario_parameters()
         self._configure_days(cfg)
 
+        # trap 16, at construction and unconditionally: P2.6's baseline, its month means and
+        # its SD were computed over one particular set of days, and the request block's
+        # vocabularies come from the same manifest. A baseline read against a different corpus
+        # produces plausible-looking anomalies that are simply wrong. This runs even on the
+        # reference path, which reads `thursday/` and never touches a corpus day -- so a corpus
+        # edit now breaks the P1.10 gate, deliberately, with a message naming the files.
+        self.manifest = load_manifest()
+        verify_corpus(self.manifest, self.corpus_dir)
+
         self._candidate_observer = CandidateObserver(self.k_max, self.scenario_parameters)
+        self._request_observer = RequestObserver(
+            NodeCoordinates(network_name=self.scenario_parameters[G_NETWORK_NAME]),
+            self._zone_table(),
+            weekday_vocab=self.manifest["weekday_vocab"],
+            month_vocab=self.manifest["month_vocab"],
+        )
         self._global_observer = GlobalStateObserver(self.scenario_parameters)
-        #: the order the observers are concatenated in, and so the order of the layout map
-        self._observers = (self._candidate_observer, self._global_observer)
+        #: the order the observers are concatenated in, and so the order of the layout map.
+        #: Block order is candidate, request, global (§5.2).
+        self._observers = (self._candidate_observer, self._request_observer,
+                           self._global_observer)
         #: name -> slice over the observation vector, built from the observers' static
         #: `feature_spec()` declarations at construction (P2.8). Published so consumers address
         #: features by name instead of assuming a block ordering: `policies.greedy_action`
@@ -168,7 +195,6 @@ class SDPDPAssignmentEnv(gym.Env):
         self._pending = None
         self._tracker: Optional[RewardTracker] = None
         self._stats: Optional[RollingStatsTracker] = None
-        self._zones: Optional[ZoneTable] = None     # static data, built once, reused
         self._obs = np.zeros(obs_len, dtype=np.float32)
         self._mask = build_action_mask(0, self.k_max)
         self._terminated = True
@@ -449,6 +475,11 @@ class SDPDPAssignmentEnv(gym.Env):
             self._zone_table(), quoted_wait_fn=self._make_quoted_wait_fn(op))
         op.set_stats_tracker(self._stats)
         self.sim.set_stats_tracker(self._stats)
+        # the request block's two per-episode dependencies, injected rather than discovered
+        # (P2.9). set_episode_day validates against the manifest vocabularies and raises here,
+        # before the episode runs, rather than at the first decision.
+        self._request_observer.set_stats_tracker(self._stats)
+        self._request_observer.set_episode_day(self._episode_weekday, self._episode_month)
 
         self.sim.demand._boarding_callback = self._on_pickup
         self.sim.demand._exit_callback = self._on_exit
@@ -602,8 +633,7 @@ class SDPDPAssignmentEnv(gym.Env):
     def _observe(self, pending) -> None:
         """Store the observation and the mask that belongs with it."""
         self._obs = np.concatenate([
-            self._candidate_observer.observe_vector(self.sim.operators[0], pending),
-            self._global_observer.observe_vector(self.sim.operators[0], pending),
+            o.observe_vector(self.sim.operators[0], pending) for o in self._observers
         ]).astype(np.float32)
         self._mask = build_action_mask(len(pending.candidates), self.k_max)
 
