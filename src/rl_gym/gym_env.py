@@ -59,6 +59,7 @@ from src.rl_gym.observers import (
     NodeCoordinates,
     RequestObserver,
     build_observation_layout,
+    quoted_waiting_time,
 )
 from src.rl_gym.reward import RewardTracker
 from src.rl_gym.rolling_stats import RollingStatsTracker
@@ -121,7 +122,13 @@ class SDPDPAssignmentEnv(gym.Env):
             `K` (default 8); `skip_output` (default True); `reward_weights` (default None);
             `track_events` (default False); `env_id` (default 0); `base_seed`;
             `day_dir`, `day`, `n_workers`, `episode_seed`, `eval_pairs` (P2.3);
+            `corpus_dir` (P2.9); `wait_normalizer_s`, `position_encoding` (P2.10);
             `scenario_pool` (accepted and unused).
+
+            `wait_normalizer_s` divides every wait-type feature and **defaults to
+            `op_max_wait_time`**, which reproduces Phase 1's `offered_wait` bit for bit (§5.3).
+            `position_encoding` is `"latlon"` (default) or `"relative"`; the observation length
+            and the feature names are the same either way.
         """
         super().__init__()
         self.cfg = dict(cfg)
@@ -162,9 +169,16 @@ class SDPDPAssignmentEnv(gym.Env):
         self.manifest = load_manifest()
         verify_corpus(self.manifest, self.corpus_dir)
 
-        self._candidate_observer = CandidateObserver(self.k_max, self.scenario_parameters)
+        # static data, built once and shared by the candidate and request blocks: node lat/lon
+        # and the hull they scale against (§2.10, §5.2)
+        node_coords = NodeCoordinates(network_name=self.scenario_parameters[G_NETWORK_NAME])
+        self._candidate_observer = CandidateObserver(
+            self.k_max, self.scenario_parameters, node_coords,
+            wait_normalizer_s=cfg.get("wait_normalizer_s"),
+            position_encoding=cfg.get("position_encoding", "latlon"),
+        )
         self._request_observer = RequestObserver(
-            NodeCoordinates(network_name=self.scenario_parameters[G_NETWORK_NAME]),
+            node_coords,
             self._zone_table(),
             weekday_vocab=self.manifest["weekday_vocab"],
             month_vocab=self.manifest["month_vocab"],
@@ -405,12 +419,13 @@ class SDPDPAssignmentEnv(gym.Env):
         `diffusion_state_*` — the operator has no knowledge of the behavioural model.
         A rejected request carries a `Rejection`, whose `offered_waiting_time` is None; such a
         rider is never picked up, but the None is handled rather than assumed away.
+
+        Delegates to `observers.quoted_waiting_time`, which P2.10's lateness features read
+        through as well: two copies of this lookup would be the drift trap 13 rules out for the
+        exit classifier, in a quantity that feeds both the reward-adjacent statistics and the
+        observation.
         """
-        def quoted_wait(rid):
-            prq = op.rq_dict_store.get(rid) or op.rq_dict.get(rid)
-            offer = getattr(prq, "offer", None) if prq is not None else None
-            return getattr(offer, "offered_waiting_time", None)
-        return quoted_wait
+        return lambda rid: quoted_waiting_time(op, rid)
 
     def _on_pickup(self, rid, rq) -> None:
         """`Demand.record_boarding` fan-out: reward first, then statistics."""

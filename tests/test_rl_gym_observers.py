@@ -39,40 +39,243 @@ START, END = 25200.0, 70000.0
 SCENARIO = {G_OP_MAX_WT: MAX_WT, G_SIM_START_TIME: START, G_SIM_END_TIME: END}
 
 
+class StubStop:
+    """A plan stop: a position plus the boarding/alighting lists keyed +1 / -1.
+
+    `copy()` reproduces `PlanStop.copy()`'s **shallow** `boarding_dict.copy()` deliberately
+    (§5.2 exception a): the inner lists stay shared, which is the one way a re-timed copy can
+    reach the stored plan.
+    """
+
+    def __init__(self, pos, boarding=(), alighting=()):
+        self.pos = pos
+        self.boarding_dict = {1: list(boarding), -1: list(alighting)}
+
+    def get_pos(self):
+        return self.pos
+
+    def get_list_boarding_rids(self):
+        return list(self.boarding_dict.get(1, []))
+
+    def get_list_alighting_rids(self):
+        return list(self.boarding_dict.get(-1, []))
+
+    def copy(self):
+        cp = StubStop(self.pos)
+        cp.boarding_dict = self.boarding_dict.copy()   # shallow, like the real one
+        return cp
+
+
 class StubPlan:
-    def __init__(self, pax_info):
-        self.pax_info = pax_info
+    """A vehicle plan.
+
+    `update_tt_and_check_plan` installs `retimed_pax_info` rather than re-deriving times from
+    the network: these tests pin the observer's arithmetic and its copy discipline, not FleetPy's
+    re-timer. The re-timer itself is exercised by the hand computations on a real episode and by
+    the P1.10 gate — reimplementing it here would only test the reimplementation.
+    """
+
+    def __init__(self, pax_info, stops=(), utility=None, retimed_pax_info=None):
+        self.pax_info = dict(pax_info)
+        self.list_plan_stops = list(stops)
+        self.utility = utility
+        self.retimed_pax_info = retimed_pax_info
+        self.retimed_on_self = 0        # a re-time on the stored plan is a trap-14 violation
+        self.copies_retimed = 0
+        self._origin = None
+
+    def copy(self):
+        cp = StubPlan({k: list(v) for k, v in self.pax_info.items()},
+                      [s.copy() for s in self.list_plan_stops],
+                      self.utility, self.retimed_pax_info)
+        cp._origin = self
+        return cp
+
+    def update_tt_and_check_plan(self, veh_obj, sim_time, routing_engine,
+                                 init_plan_state=None, keep_feasible=False, rq_dict_prq=None):
+        if self._origin is None:
+            self.retimed_on_self += 1
+        else:
+            self._origin.copies_retimed += 1
+        if self.retimed_pax_info is not None:
+            self.pax_info = {k: list(v) for k, v in self.retimed_pax_info.items()}
+        return True
+
+
+class StubOffer:
+    def __init__(self, offered_waiting_time):
+        self.offered_waiting_time = offered_waiting_time
 
 
 class StubPrq:
-    def __init__(self, rq_time):
+    def __init__(self, rq_time, o_pos=(1, None, None), d_pos=(2, None, None),
+                 nr_pax=1, offer=None):
         self.rq_time = rq_time
+        self.o_pos = o_pos
+        self.d_pos = d_pos
+        self.nr_pax = nr_pax
+        self.offer = offer
 
 
 class StubCtx:
-    """Stands in for PendingDecision."""
+    """Stands in for PendingDecision, with the stub operator the observer reads through."""
 
-    def __init__(self, candidates, rq_time=30000.0, sim_time=30000.0, rid_struct=7):
+    def __init__(self, candidates, rq_time=30000.0, sim_time=30000.0, rid_struct=7,
+                 o_pos=(1, None, None), d_pos=(2, None, None), op=None):
         self.candidates = candidates
-        self.prq = StubPrq(rq_time)
+        self.prq = StubPrq(rq_time, o_pos=o_pos, d_pos=d_pos)
         self.sim_time = sim_time
         self.rid_struct = rid_struct
+        self.op = op if op is not None else StubOperator(candidates)
 
 
 class StubVehicle:
-    def __init__(self, status):
+    def __init__(self, status=None, pos=(1, None, None), pax=(), max_pax=4,
+                 assigned_route=()):
         self.status = status
+        self.pos = pos
+        self.pax = list(pax)
+        self.max_pax = max_pax
+        self.assigned_route = list(assigned_route)
 
 
-class StubFleetCtrl:
+class StubLeg:
+    def __init__(self, destination_pos):
+        self.destination_pos = destination_pos
+
+
+class StubRider:
+    """A traveler object as `veh_obj.pax` holds them."""
+
+    def __init__(self, rid, nr_pax=1):
+        self.rid = rid
+        self.nr_pax = nr_pax
+
+    def get_rid_struct(self):
+        return self.rid
+
+
+class StubCoords:
+    """Hull-scaled node coordinates, linear in the node index so hand computation is trivial."""
+
+    def scaled(self, node):
+        n = float(node)
+        return (n * 0.1 - 1.0, 1.0 - n * 0.1)
+
+
+class StubNetwork:
+    """Just enough routing engine, with `NetworkBasicWithStore`'s cache semantics.
+
+    `travel_time_infos` is written **only when the key is absent**, exactly as
+    `_add_to_database` does, because that is what makes the observer's snapshot-and-delete
+    restore exact. A trivial route (same position) is resolved without touching the cache, as
+    `test_and_get_trivial_route_tt_and_dis` does.
+    """
+
+    def __init__(self, coords=None, with_cache=True):
+        #: node -> (x, y) in metres
+        self.coords = coords or {i: (float(i) * 100.0, 0.0) for i in range(20)}
+        self.queries = []
+        if with_cache:
+            self.travel_time_infos = {}
+
+    def return_node_coordinates(self, node):
+        return self.coords[node]
+
+    def return_position_coordinates(self, pos):
+        if pos[1] is None:
+            return self.return_node_coordinates(pos[0])
+        c0 = np.array(self.coords[pos[0]], dtype=float)
+        c1 = np.array(self.coords[pos[1]], dtype=float)
+        c = pos[2] * c1 + (1.0 - pos[2]) * c0
+        return (float(c[0]), float(c[1]))
+
+    def return_travel_costs_1to1(self, o_pos, d_pos, customized_section_cost_function=None):
+        self.queries.append((o_pos, d_pos))
+        if o_pos == d_pos:
+            return (0.0, 0.0, 0.0)
+        a = np.array(self.return_position_coordinates(o_pos), dtype=float)
+        b = np.array(self.return_position_coordinates(d_pos), dtype=float)
+        dist = float(np.sqrt(((b - a) ** 2).sum()))
+        tt = dist / 10.0
+        key = ((o_pos[1] if o_pos[1] is not None else o_pos[0]), d_pos[0])
+        cache = getattr(self, "travel_time_infos", None)
+        if cache is not None and key not in cache:
+            cache[key] = (tt, tt, dist)
+        return (tt, tt, dist)
+
+
+class _GrowingFleet(list):
+    """`sim_vehicles`: a list indexed by vid, which grows rather than raising IndexError.
+
+    A fixture convenience only: the real `sim_vehicles` always holds every vid, and this keeps a
+    test from having to enumerate vehicles it does not care about.
+    """
+
+    def __getitem__(self, vid):
+        if isinstance(vid, int) and 0 <= vid >= len(self):
+            while len(self) <= vid:
+                self.append(StubVehicle())
+        return list.__getitem__(self, vid)
+
+
+class _GrowingPlans(dict):
+    """`veh_plans`: an empty committed plan for any vid a test did not spell out."""
+
+    def __missing__(self, vid):
+        plan = StubPlan({})
+        self[vid] = plan
+        return plan
+
+
+class StubOperator:
+    """Stands in for `RLPoolingIRSOnly` as the observers read it.
+
+    `sim_vehicles` is a **list indexed by vid** and `veh_plans` a dict keyed by vid, as
+    `FleetControlBase` holds them, so candidate vids are integers here too. The global observer
+    iterates the same list.
+    """
+
+    def __init__(self, candidates=(), statuses=None, vehicles=None, veh_plans=None,
+                 rq_dict=None, routing_engine=None):
+        self.routing_engine = routing_engine or StubNetwork()
+        if vehicles is not None:
+            self.sim_vehicles = _GrowingFleet(vehicles)
+        elif statuses is not None:
+            self.sim_vehicles = _GrowingFleet(StubVehicle(status=s) for s in statuses)
+        else:
+            self.sim_vehicles = _GrowingFleet()
+        needed = max([int(vid) for vid, _p, _c in candidates], default=-1) + 1
+        while len(self.sim_vehicles) < needed:
+            self.sim_vehicles.append(StubVehicle())
+        self.veh_plans = _GrowingPlans(veh_plans or {})
+        for vid, _plan, _cfv in candidates:
+            self.veh_plans.setdefault(vid, StubPlan({}))
+        self.rq_dict = dict(rq_dict or {})
+        self.rq_dict_store = dict(self.rq_dict)
+
+
+class StubFleetCtrl(StubOperator):
+    """The global observer's view: a fleet of the given statuses."""
+
     def __init__(self, statuses):
-        self.sim_vehicles = [StubVehicle(s) for s in statuses]
+        super().__init__(statuses=statuses)
+
+
+def candidate_observer(k_max=K, scenario=None, **kw):
+    """`CandidateObserver` over the stub coordinates, so tests need no node file.
+
+    `scenario={}` must reach the constructor and raise, so the default is a None check rather
+    than an `or`.
+    """
+    return CandidateObserver(k_max, SCENARIO if scenario is None else scenario,
+                             StubCoords(), **kw)
 
 
 def make_candidates(waits, cfvs, rq_time=30000.0, rid_struct=7):
     """Candidates whose plans quote the given waits (seconds) and insertion costs."""
     return [
-        (f"vid{i}", StubPlan({rid_struct: [rq_time + w, rq_time + w + 600.0]}), c)
+        (i, StubPlan({rid_struct: [rq_time + w, rq_time + w + 600.0]}), c)
         for i, (w, c) in enumerate(zip(waits, cfvs))
     ]
 
@@ -110,41 +313,41 @@ class TestSignedLog1p(unittest.TestCase):
 class TestCandidateObserver(unittest.TestCase):
 
     def setUp(self):
-        self.obs = CandidateObserver(K, SCENARIO)
+        self.obs = candidate_observer()
 
-    def test_output_length_is_three_k(self):
-        self.assertEqual(self.obs.output_length, 3 * K)
-        self.assertEqual(CandidateObserver(3, SCENARIO).output_length, 9)
+    def test_output_length_is_twelve_k(self):
+        self.assertEqual(self.obs.output_length, 12 * K)
+        self.assertEqual(candidate_observer(3).output_length, 36)
 
     def test_shape_and_dtype(self):
         ctx = StubCtx(make_candidates([100.0, 200.0], [1.0, 2.0]))
-        vec = self.obs.observe_vector(None, ctx)
-        self.assertEqual(vec.shape, (3 * K,))
+        vec = self.obs.observe_vector(ctx.op, ctx)
+        self.assertEqual(vec.shape, (12 * K,))
         self.assertEqual(vec.dtype, np.float32)
 
     def test_is_valid_comes_from_shared_function(self):
         for n in range(0, 12):
             with self.subTest(n=n):
                 ctx = StubCtx(make_candidates([100.0] * n, list(range(n))))
-                parts = self.obs.observe(None, ctx)
+                parts = self.obs.observe(ctx.op, ctx)
                 np.testing.assert_array_equal(
                     parts["is_valid"], candidate_slot_validity(n, K).astype(np.float32)
                 )
 
     def test_padded_slots_are_all_zero(self):
         ctx = StubCtx(make_candidates([100.0, 200.0], [5.0, 9.0]))
-        parts = self.obs.observe(None, ctx)
+        parts = self.obs.observe(ctx.op, ctx)
         for name in ("is_valid", "delta_cfv", "offered_wait"):
             np.testing.assert_array_equal(parts[name][2:], np.zeros(K - 2, dtype=np.float32))
 
     def test_delta_cfv_transformed_not_raw(self):
         ctx = StubCtx(make_candidates([100.0], [100.0]))
-        parts = self.obs.observe(None, ctx)
+        parts = self.obs.observe(ctx.op, ctx)
         self.assertAlmostEqual(float(parts["delta_cfv"][0]), math.log1p(100.0), places=5)
 
     def test_negative_delta_cfv(self):
         ctx = StubCtx(make_candidates([100.0], [-100.0]))
-        parts = self.obs.observe(None, ctx)
+        parts = self.obs.observe(ctx.op, ctx)
         self.assertAlmostEqual(float(parts["delta_cfv"][0]), -math.log1p(100.0), places=5)
 
     def test_offered_wait_matches_the_operator_formula(self):
@@ -152,7 +355,7 @@ class TestCandidateObserver(unittest.TestCase):
         rq_time = 30000.0
         ctx = StubCtx(make_candidates([300.0, 750.0], [1.0, 2.0], rq_time=rq_time),
                       rq_time=rq_time)
-        parts = self.obs.observe(None, ctx)
+        parts = self.obs.observe(ctx.op, ctx)
         self.assertAlmostEqual(float(parts["offered_wait"][0]), 300.0 / MAX_WT, places=6)
         self.assertAlmostEqual(float(parts["offered_wait"][1]), 750.0 / MAX_WT, places=6)
 
@@ -161,13 +364,13 @@ class TestCandidateObserver(unittest.TestCase):
         other = dict(SCENARIO, **{G_OP_MAX_WT: 4200.0})
         ctx = StubCtx(make_candidates([600.0], [1.0]))
         self.assertAlmostEqual(
-            float(CandidateObserver(K, other).observe(None, ctx)["offered_wait"][0]),
+            float(candidate_observer(scenario=other).observe(ctx.op, ctx)["offered_wait"][0]),
             600.0 / 4200.0, places=6)
 
     def test_truncates_to_k_preserving_order(self):
         cfvs = [float(i) for i in range(11)]
         ctx = StubCtx(make_candidates([100.0] * 11, cfvs))
-        parts = self.obs.observe(None, ctx)
+        parts = self.obs.observe(ctx.op, ctx)
         np.testing.assert_allclose(
             parts["delta_cfv"], signed_log1p(np.array(cfvs[:K])).astype(np.float32), atol=1e-6)
         np.testing.assert_array_equal(parts["is_valid"], np.ones(K, dtype=np.float32))
@@ -175,33 +378,34 @@ class TestCandidateObserver(unittest.TestCase):
     def test_slot_zero_is_the_minimum_for_a_sorted_list(self):
         cfvs = [1.0, 4.0, 9.0, 50.0]
         ctx = StubCtx(make_candidates([100.0] * 4, cfvs))
-        d = self.obs.observe(None, ctx)["delta_cfv"]
-        valid = self.obs.observe(None, ctx)["is_valid"] > 0
+        d = self.obs.observe(ctx.op, ctx)["delta_cfv"]
+        valid = self.obs.observe(ctx.op, ctx)["is_valid"] > 0
         self.assertEqual(int(np.argmin(d[valid])), 0)
 
     def test_missing_pax_info_yields_zero_wait_not_a_crash(self):
         # defensive: a plan that does not carry this rid must not raise
-        ctx = StubCtx([("vid0", StubPlan({}), 1.0)])
-        parts = self.obs.observe(None, ctx)
+        ctx = StubCtx([(0, StubPlan({}), 1.0)])
+        parts = self.obs.observe(ctx.op, ctx)
         self.assertEqual(float(parts["offered_wait"][0]), 0.0)
         self.assertEqual(float(parts["is_valid"][0]), 1.0)
 
     def test_empty_candidate_list(self):
-        parts = self.obs.observe(None, StubCtx([]))
-        for name in ("is_valid", "delta_cfv", "offered_wait"):
+        ctx = StubCtx([])
+        parts = self.obs.observe(ctx.op, ctx)
+        for name in CandidateObserver.FEATURE_NAMES:
             np.testing.assert_array_equal(parts[name], np.zeros(K, dtype=np.float32))
 
     def test_rejects_bad_config(self):
         with self.assertRaises(ValueError):
-            CandidateObserver(0, SCENARIO)
+            candidate_observer(0)
         with self.assertRaises(ValueError):
-            CandidateObserver(K, dict(SCENARIO, **{G_OP_MAX_WT: 0.0}))
+            candidate_observer(scenario=dict(SCENARIO, **{G_OP_MAX_WT: 0.0}))
         with self.assertRaises(KeyError):
-            CandidateObserver(K, {})
+            candidate_observer(scenario={})
 
     def test_no_nan_or_inf(self):
         ctx = StubCtx(make_candidates([0.0, 1500.0, 3000.0], [-1e6, 0.0, 1e6]))
-        vec = self.obs.observe_vector(None, ctx)
+        vec = self.obs.observe_vector(ctx.op, ctx)
         self.assertTrue(np.all(np.isfinite(vec)))
 
 
@@ -324,10 +528,10 @@ class TestPaddingMustNotCompeteInArgmin(unittest.TestCase):
     """
 
     def setUp(self):
-        self.obs = CandidateObserver(K, SCENARIO)
+        self.obs = candidate_observer()
         # two valid candidates, both POSITIVE, sorted ascending as insertion returns them
         self.ctx = StubCtx(make_candidates([100.0, 200.0], [3.0, 7.0]))
-        parts = self.obs.observe(None, self.ctx)
+        parts = self.obs.observe(self.ctx.op, self.ctx)
         self.delta = parts["delta_cfv"]
         self.valid = parts["is_valid"] > 0
 
@@ -355,7 +559,7 @@ class TestPaddingMustNotCompeteInArgmin(unittest.TestCase):
             with self.subTest(n_candidates=n):
                 cfvs = [float(i + 1) * 10.0 for i in range(n)]
                 ctx = StubCtx(make_candidates([100.0] * n, cfvs))
-                parts = self.obs.observe(None, ctx)
+                parts = self.obs.observe(ctx.op, ctx)
                 valid_idx = np.flatnonzero(parts["is_valid"] > 0)
                 picked = int(valid_idx[np.argmin(parts["delta_cfv"][valid_idx])])
                 self.assertEqual(picked, 0)
@@ -366,14 +570,14 @@ class TestPaddingMustNotCompeteInArgmin(unittest.TestCase):
         # the real scenario's sign: restriction must be harmless, not just necessary
         cfvs = [-500.0, -200.0, -10.0]
         ctx = StubCtx(make_candidates([100.0] * 3, cfvs))
-        parts = self.obs.observe(None, ctx)
+        parts = self.obs.observe(ctx.op, ctx)
         valid_idx = np.flatnonzero(parts["is_valid"] > 0)
         self.assertEqual(int(valid_idx[np.argmin(parts["delta_cfv"][valid_idx])]), 0)
         self.assertEqual(int(np.argmin(parts["delta_cfv"])), 0)  # coincides here
 
     def test_single_valid_slot_with_positive_cost(self):
         ctx = StubCtx(make_candidates([100.0], [42.0]))
-        parts = self.obs.observe(None, ctx)
+        parts = self.obs.observe(ctx.op, ctx)
         valid_idx = np.flatnonzero(parts["is_valid"] > 0)
         self.assertEqual(int(valid_idx[np.argmin(parts["delta_cfv"][valid_idx])]), 0)
 
@@ -388,14 +592,14 @@ class TestGreedyActionHelper(unittest.TestCase):
     """
 
     def setUp(self):
-        self.obs_builder = CandidateObserver(K, SCENARIO)
+        self.obs_builder = candidate_observer()
         self.glob = GlobalStateObserver(SCENARIO)
         # the same map the env publishes, built from the same specs in the same order (P2.8)
         self.layout = build_observation_layout([self.obs_builder, self.glob])
 
     def _full_obs(self, ctx):
         fc = StubFleetCtrl([VRL_STATES.IDLE])
-        return np.concatenate([self.obs_builder.observe_vector(None, ctx),
+        return np.concatenate([self.obs_builder.observe_vector(ctx.op, ctx),
                                self.glob.observe_vector(fc, ctx)])
 
     def test_picks_slot_zero_on_a_sorted_negative_list(self):
@@ -480,7 +684,7 @@ class TestGreedyActionHelper(unittest.TestCase):
         # follows, and greedy still selects on delta_cfv rather than on is_valid or
         # offered_wait
         ctx = StubCtx(make_candidates([100.0] * 3, [5.0, 1.0, 9.0]))
-        parts = self.obs_builder.observe(None, ctx)
+        parts = self.obs_builder.observe(ctx.op, ctx)
         obs = self._full_obs(ctx)
         np.testing.assert_allclose(obs[self.layout["delta_cfv"]], parts["delta_cfv"], atol=0)
         np.testing.assert_allclose(obs[self.layout["is_valid"]], parts["is_valid"], atol=0)
@@ -489,26 +693,26 @@ class TestGreedyActionHelper(unittest.TestCase):
 
 class TestCombinedLength(unittest.TestCase):
 
-    def test_sum_of_observer_lengths_is_three_k_plus_four(self):
-        total = CandidateObserver(K, SCENARIO).output_length + \
+    def test_sum_of_observer_lengths_is_twelve_k_plus_four(self):
+        total = candidate_observer().output_length + \
             GlobalStateObserver(SCENARIO).output_length
-        self.assertEqual(total, 3 * K + 4)
-        self.assertEqual(total, 28)
+        self.assertEqual(total, 12 * K + 4)
+        self.assertEqual(total, 100)
 
     def test_scales_with_k_without_hardcoding(self):
         for k in (1, 4, 8, 16):
             with self.subTest(k=k):
-                total = CandidateObserver(k, SCENARIO).output_length + \
+                total = candidate_observer(k).output_length + \
                     GlobalStateObserver(SCENARIO).output_length
-                self.assertEqual(total, 3 * k + 4)
+                self.assertEqual(total, 12 * k + 4)
 
     def test_concatenated_vector_shape_and_dtype(self):
-        cand = CandidateObserver(K, SCENARIO)
+        cand = candidate_observer()
         glob = GlobalStateObserver(SCENARIO)
         ctx = StubCtx(make_candidates([100.0, 200.0], [1.0, 2.0]))
         fc = StubFleetCtrl([VRL_STATES.IDLE, VRL_STATES.ROUTE])
         vec = np.concatenate([cand.observe_vector(fc, ctx), glob.observe_vector(fc, ctx)])
-        self.assertEqual(vec.shape, (3 * K + 4,))
+        self.assertEqual(vec.shape, (12 * K + 4,))
         self.assertEqual(vec.dtype, np.float32)
         self.assertTrue(np.all(np.isfinite(vec)))
 
@@ -711,7 +915,7 @@ class TestObservationLayout(unittest.TestCase):
     """The name -> slice map (P2.8), built from the static specs."""
 
     def setUp(self):
-        self.cand = CandidateObserver(K, SCENARIO)
+        self.cand = candidate_observer()
         self.glob = GlobalStateObserver(SCENARIO)
         self.observers = [self.cand, self.glob]
         self.layout = build_observation_layout(self.observers)
@@ -741,7 +945,7 @@ class TestObservationLayout(unittest.TestCase):
         self.assertEqual(self.layout["is_valid"], slice(0, K))
         self.assertEqual(self.layout["delta_cfv"], slice(K, 2 * K))
         self.assertEqual(self.layout["offered_wait"], slice(2 * K, 3 * K))
-        self.assertEqual(self.layout["idle_fraction"], slice(3 * K + 3, 3 * K + 4))
+        self.assertEqual(self.layout["idle_fraction"], slice(12 * K + 3, 12 * K + 4))
 
     def test_output_length_is_derived_from_the_spec(self):
         for o in self.observers:
@@ -771,7 +975,7 @@ class TestObservationLayout(unittest.TestCase):
         # P2.9 and P2.10 both add blocks; a collision would leave one feature unreachable by
         # name while the vector still had exactly the right length
         with self.assertRaises(ValueError) as cm:
-            build_observation_layout([self.cand, CandidateObserver(K, SCENARIO)])
+            build_observation_layout([self.cand, candidate_observer()])
         self.assertIn("duplicate", str(cm.exception).lower())
         self.assertIn("is_valid", str(cm.exception))
 
@@ -780,7 +984,7 @@ class TestObservationLayout(unittest.TestCase):
             def feature_spec(self):
                 return [("broken", 0)]
         with self.assertRaises(ValueError):
-            build_observation_layout([Bad(K, SCENARIO)])
+            build_observation_layout([Bad(K, SCENARIO, StubCoords())])
 
     def test_an_observe_that_disagrees_with_its_spec_raises(self):
         class Renamed(GlobalStateObserver):
@@ -805,7 +1009,7 @@ class TestGreedyEnforcesIsValidAgainstTheMask(unittest.TestCase):
     """
 
     def setUp(self):
-        self.cand = CandidateObserver(K, SCENARIO)
+        self.cand = candidate_observer()
         self.glob = GlobalStateObserver(SCENARIO)
         self.layout = build_observation_layout([self.cand, self.glob])
 
@@ -872,6 +1076,519 @@ class TestGreedyEnforcesIsValidAgainstTheMask(unittest.TestCase):
         obs = self._obs(3)
         with self.assertRaises(ValueError):
             greedy_action(obs[:K], build_action_mask(3, K), self.layout)
+
+
+class TestCandidateBlock(unittest.TestCase):
+    """§5.2's candidate features 4-12 (P2.10).
+
+    Stub doubles for the arithmetic, the guards and the state discipline. The hand computations
+    against a real episode, the feature distributions and the P1.10 gate live in P2.10's
+    verification, not here.
+    """
+
+    def setUp(self):
+        self.obs = candidate_observer()
+
+    # ------------------------------------------------------------------ #
+    # the spec
+    # ------------------------------------------------------------------ #
+
+    def test_twelve_features_in_sect_5_2_order(self):
+        spec = self.obs.feature_spec()
+        self.assertEqual([n for n, _ in spec], [
+            "is_valid", "delta_cfv", "offered_wait",
+            "veh_lat", "veh_lon", "free_seats", "remaining_stops", "directionality",
+            "lateness_pre", "lateness_post", "added_distance", "added_pickup_delay"])
+        self.assertEqual({w for _n, w in spec}, {K})
+
+    def test_the_phase_one_features_keep_their_positions(self):
+        # §5.2 keeps the layout feature-major, with the three Phase 1 features first
+        self.assertEqual([n for n, _ in self.obs.feature_spec()[:3]],
+                         ["is_valid", "delta_cfv", "offered_wait"])
+
+    def test_the_feature_names_do_not_depend_on_the_position_encoding(self):
+        # the layout must not move when the encoding changes (§5.2: same length either way)
+        a = candidate_observer(position_encoding="latlon").feature_spec()
+        b = candidate_observer(position_encoding="relative").feature_spec()
+        self.assertEqual(a, b)
+
+    def test_rejects_a_bad_position_encoding(self):
+        for bad in ("h3", "", "latlng", None):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError) as cm:
+                    candidate_observer(position_encoding=bad)
+                self.assertIn("position_encoding", str(cm.exception))
+
+    def test_rejects_a_non_positive_wait_normalizer(self):
+        for bad in (0.0, -1.0):
+            with self.assertRaises(ValueError):
+                candidate_observer(wait_normalizer_s=bad)
+
+    # ------------------------------------------------------------------ #
+    # the wait normalizer (§5.3)
+    # ------------------------------------------------------------------ #
+
+    def test_offered_wait_is_bit_identical_with_the_normalizer_absent(self):
+        # §5.3: absent -> op_max_wait_time, which must reproduce Phase 1 exactly
+        ctx = StubCtx(make_candidates([137.0, 912.0], [-3.0, -1.0]))
+        got = self.obs.observe(ctx.op, ctx)["offered_wait"]
+        want = np.array([137.0 / MAX_WT, 912.0 / MAX_WT] + [0.0] * (K - 2),
+                        dtype=np.float32)
+        np.testing.assert_array_equal(got, want)
+        self.assertEqual(self.obs.wait_normalizer_s, MAX_WT)
+
+    def test_an_explicit_normalizer_divides_every_wait_feature(self):
+        obs = candidate_observer(wait_normalizer_s=600.0)
+        ctx = self._lateness_ctx()
+        parts = obs.observe(ctx.op, ctx)
+        self.assertAlmostEqual(float(parts["lateness_pre"][0]), 100.0 / 600.0, places=6)
+        self.assertAlmostEqual(float(parts["lateness_post"][0]), 200.0 / 600.0, places=6)
+        self.assertAlmostEqual(float(parts["added_pickup_delay"][0]), 150.0 / 600.0, places=6)
+
+    # ------------------------------------------------------------------ #
+    # features 4-5: position
+    # ------------------------------------------------------------------ #
+
+    def test_vehicle_position_at_a_node(self):
+        ctx = StubCtx(make_candidates([100.0], [-1.0]))
+        ctx.op.sim_vehicles[0] = StubVehicle(pos=(5, None, None))
+        parts = self.obs.observe(ctx.op, ctx)
+        lat, lon = StubCoords().scaled(5)
+        self.assertAlmostEqual(float(parts["veh_lat"][0]), lat, places=6)
+        self.assertAlmostEqual(float(parts["veh_lon"][0]), lon, places=6)
+
+    def test_vehicle_position_interpolates_along_the_edge_by_rel_pos(self):
+        # rel_pos is the fraction ALREADY TRAVELLED: return_position_coordinates forms
+        # rel * c_dest + (1 - rel) * c_origin, so rel = 0 is the origin node
+        coords = StubCoords()
+        for rel in (0.0, 0.25, 0.5, 1.0):
+            with self.subTest(rel=rel):
+                ctx = StubCtx(make_candidates([100.0], [-1.0]))
+                ctx.op.sim_vehicles[0] = StubVehicle(pos=(2, 8, rel))
+                parts = self.obs.observe(ctx.op, ctx)
+                o_lat, o_lon = coords.scaled(2)
+                d_lat, d_lon = coords.scaled(8)
+                self.assertAlmostEqual(float(parts["veh_lat"][0]),
+                                       o_lat + rel * (d_lat - o_lat), places=6)
+                self.assertAlmostEqual(float(parts["veh_lon"][0]),
+                                       o_lon + rel * (d_lon - o_lon), places=6)
+
+    def test_relative_encoding_is_the_offset_from_the_request_origin(self):
+        obs = candidate_observer(position_encoding="relative")
+        ctx = StubCtx(make_candidates([100.0], [-1.0]), o_pos=(3, None, None))
+        ctx.op.sim_vehicles[0] = StubVehicle(pos=(9, None, None))
+        parts = obs.observe(ctx.op, ctx)
+        v_lat, v_lon = StubCoords().scaled(9)
+        o_lat, o_lon = StubCoords().scaled(3)
+        self.assertAlmostEqual(float(parts["veh_lat"][0]), v_lat - o_lat, places=6)
+        self.assertAlmostEqual(float(parts["veh_lon"][0]), v_lon - o_lon, places=6)
+
+    def test_relative_encoding_is_zero_when_the_vehicle_sits_at_the_origin(self):
+        obs = candidate_observer(position_encoding="relative")
+        ctx = StubCtx(make_candidates([100.0], [-1.0]), o_pos=(6, None, None))
+        ctx.op.sim_vehicles[0] = StubVehicle(pos=(6, None, None))
+        parts = obs.observe(ctx.op, ctx)
+        self.assertAlmostEqual(float(parts["veh_lat"][0]), 0.0, places=9)
+        self.assertAlmostEqual(float(parts["veh_lon"][0]), 0.0, places=9)
+
+    # ------------------------------------------------------------------ #
+    # features 6-7: capacity and stops
+    # ------------------------------------------------------------------ #
+
+    def test_free_seats_counts_passengers_not_rider_objects(self):
+        cases = [((), 4, 1.0),
+                 ((StubRider(1), StubRider(2)), 4, 0.5),
+                 ((StubRider(1, nr_pax=3),), 4, 0.25),
+                 ((StubRider(1, nr_pax=4),), 4, 0.0)]
+        for pax, max_pax, want in cases:
+            with self.subTest(n=len(pax)):
+                ctx = StubCtx(make_candidates([100.0], [-1.0]))
+                ctx.op.sim_vehicles[0] = StubVehicle(pax=pax, max_pax=max_pax)
+                parts = self.obs.observe(ctx.op, ctx)
+                self.assertAlmostEqual(float(parts["free_seats"][0]), want, places=6)
+
+    def test_remaining_stops_is_the_raw_pre_insertion_count(self):
+        for n in (0, 1, 3):
+            with self.subTest(n=n):
+                ctx = StubCtx(make_candidates([100.0], [-1.0]))
+                stops = [StubStop((i + 2, None, None)) for i in range(n)]
+                ctx.op.veh_plans[0] = StubPlan({}, stops=stops)
+                parts = self.obs.observe(ctx.op, ctx)
+                self.assertEqual(float(parts["remaining_stops"][0]), float(n))
+
+    def test_remaining_stops_is_pre_insertion_not_the_candidate_plan(self):
+        ctx = StubCtx(make_candidates([100.0], [-1.0]))
+        ctx.op.veh_plans[0] = StubPlan({}, stops=[StubStop((4, None, None))])
+        # the candidate plan carries the new rider's two extra stops
+        ctx.candidates[0][1].list_plan_stops = [StubStop((4, None, None)),
+                                                StubStop((5, None, None)),
+                                                StubStop((6, None, None))]
+        parts = self.obs.observe(ctx.op, ctx)
+        self.assertEqual(float(parts["remaining_stops"][0]), 1.0)
+
+    # ------------------------------------------------------------------ #
+    # feature 8: directionality
+    # ------------------------------------------------------------------ #
+
+    def _directionality(self, veh_pos, route_end, o_pos, d_pos, coords=None):
+        nw = StubNetwork(coords=coords)
+        ctx = StubCtx(make_candidates([100.0], [-1.0]), o_pos=o_pos, d_pos=d_pos,
+                      op=StubOperator(make_candidates([100.0], [-1.0]),
+                                      routing_engine=nw))
+        ctx.op.sim_vehicles[0] = StubVehicle(
+            pos=veh_pos,
+            assigned_route=[StubLeg(route_end)] if route_end is not None else [])
+        return float(self.obs.observe(ctx.op, ctx)["directionality"][0])
+
+    def test_directionality_of_a_parallel_vehicle_is_one(self):
+        coords = {1: (0.0, 0.0), 2: (100.0, 0.0), 3: (0.0, 0.0), 4: (50.0, 0.0)}
+        self.assertAlmostEqual(
+            self._directionality((3, None, None), (4, None, None),
+                                 (1, None, None), (2, None, None), coords), 1.0, places=6)
+
+    def test_directionality_of_an_opposed_vehicle_is_minus_one(self):
+        coords = {1: (0.0, 0.0), 2: (100.0, 0.0), 3: (50.0, 0.0), 4: (0.0, 0.0)}
+        self.assertAlmostEqual(
+            self._directionality((3, None, None), (4, None, None),
+                                 (1, None, None), (2, None, None), coords), -1.0, places=6)
+
+    def test_directionality_of_a_perpendicular_vehicle_is_zero(self):
+        coords = {1: (0.0, 0.0), 2: (100.0, 0.0), 3: (0.0, 0.0), 4: (0.0, 100.0)}
+        self.assertAlmostEqual(
+            self._directionality((3, None, None), (4, None, None),
+                                 (1, None, None), (2, None, None), coords), 0.0, places=6)
+
+    def test_directionality_matches_a_hand_dot_product(self):
+        coords = {1: (0.0, 0.0), 2: (3.0, 4.0), 3: (0.0, 0.0), 4: (1.0, 0.0)}
+        # request direction (0.6, 0.8); vehicle direction (1, 0) -> cosine 0.6
+        self.assertAlmostEqual(
+            self._directionality((3, None, None), (4, None, None),
+                                 (1, None, None), (2, None, None), coords), 0.6, places=6)
+
+    def test_directionality_is_zero_for_an_idle_vehicle(self):
+        # no assigned route at all: `filter_directionality` treats this as perpendicular, and
+        # with repositioning off `remaining_stops == 0` is what separates it from a real zero
+        coords = {1: (0.0, 0.0), 2: (100.0, 0.0), 3: (0.0, 0.0)}
+        self.assertEqual(
+            self._directionality((3, None, None), None,
+                                 (1, None, None), (2, None, None), coords), 0.0)
+
+    def test_directionality_is_zero_when_the_route_ends_where_the_vehicle_is(self):
+        coords = {1: (0.0, 0.0), 2: (100.0, 0.0), 3: (7.0, 9.0)}
+        self.assertEqual(
+            self._directionality((3, None, None), (3, None, None),
+                                 (1, None, None), (2, None, None), coords), 0.0)
+
+    # ------------------------------------------------------------------ #
+    # feature 11: added distance
+    # ------------------------------------------------------------------ #
+
+    def test_added_distance_is_the_difference_of_the_two_route_distances_in_km(self):
+        nw = StubNetwork(coords={0: (0.0, 0.0), 1: (0.0, 0.0), 2: (1000.0, 0.0),
+                                 3: (3000.0, 0.0)})
+        cands = [(0, StubPlan({7: [30100.0, 30700.0]},
+                              stops=[StubStop((2, None, None)), StubStop((3, None, None))]),
+                  -1.0)]
+        op = StubOperator(cands, routing_engine=nw)
+        op.sim_vehicles[0] = StubVehicle(pos=(1, None, None))
+        op.veh_plans[0] = StubPlan({}, stops=[StubStop((3, None, None))])
+        ctx = StubCtx(cands, op=op)
+        parts = self.obs.observe(op, ctx)
+        # pre: 1 -> 3 = 3000 m. post: 1 -> 2 -> 3 = 1000 + 2000 = 3000 m. difference 0
+        self.assertAlmostEqual(float(parts["added_distance"][0]), 0.0, places=9)
+
+    def test_added_distance_keeps_its_sign_when_the_insertion_shortens_the_route(self):
+        # routes minimise time rather than distance and stops can merge, so a negative value is
+        # real and must not be clipped (§5.2)
+        nw = StubNetwork(coords={0: (0.0, 0.0), 1: (0.0, 0.0), 2: (500.0, 0.0),
+                                 3: (4000.0, 0.0)})
+        cands = [(0, StubPlan({7: [30100.0, 30700.0]},
+                              stops=[StubStop((2, None, None))]), -1.0)]
+        op = StubOperator(cands, routing_engine=nw)
+        op.sim_vehicles[0] = StubVehicle(pos=(1, None, None))
+        op.veh_plans[0] = StubPlan({}, stops=[StubStop((3, None, None))])
+        ctx = StubCtx(cands, op=op)
+        parts = self.obs.observe(op, ctx)
+        self.assertAlmostEqual(float(parts["added_distance"][0]), (500.0 - 4000.0) / 1000.0,
+                               places=9)
+
+    def test_added_distance_is_zero_for_two_empty_plans(self):
+        ctx = StubCtx(make_candidates([100.0], [-1.0]))
+        self.assertEqual(float(self.obs.observe(ctx.op, ctx)["added_distance"][0]), 0.0)
+
+    # ------------------------------------------------------------------ #
+    # features 9, 10, 12: pending riders
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _lateness_ctx(onboard=(), pending=(101, 102), quotes=True, plan_times=True):
+        """Two pending riders, 101 quoted 1300 and 102 quoted 2100.
+
+        Re-timed pre-insertion pickups 1400 and 2000; under plan `k` 1500 and 2050. So
+        `lateness_pre = max(+100, -100) = +100`, `lateness_post = max(+200, -50) = +200`,
+        `added_pickup_delay = 100 + 50 = 150`.
+        """
+        post = {7: [30100.0, 30700.0]}
+        pre_retimed = {}
+        if plan_times:
+            post.update({101: [1500.0, 9000.0], 102: [2050.0, 9000.0]})
+            pre_retimed = {101: [1400.0, 9000.0], 102: [2000.0, 9000.0]}
+        cands = [(0, StubPlan(post), -5.0)]
+        rq_dict = {}
+        if quotes:
+            rq_dict = {101: StubPrq(1000.0, offer=StubOffer(300.0)),
+                       102: StubPrq(2000.0, offer=StubOffer(100.0))}
+        op = StubOperator(cands, rq_dict=rq_dict)
+        op.sim_vehicles[0] = StubVehicle(pax=[StubRider(r) for r in onboard])
+        op.veh_plans[0] = StubPlan(
+            {}, stops=[StubStop((4, None, None), boarding=list(pending) + list(onboard))],
+            retimed_pax_info=pre_retimed)
+        return StubCtx(cands, op=op)
+
+    def test_lateness_and_added_delay_match_a_hand_computation(self):
+        ctx = self._lateness_ctx()
+        parts = self.obs.observe(ctx.op, ctx)
+        self.assertAlmostEqual(float(parts["lateness_pre"][0]), 100.0 / MAX_WT, places=6)
+        self.assertAlmostEqual(float(parts["lateness_post"][0]), 200.0 / MAX_WT, places=6)
+        self.assertAlmostEqual(float(parts["added_pickup_delay"][0]), 150.0 / MAX_WT,
+                               places=6)
+
+    def test_lateness_is_a_max_and_added_delay_a_sum(self):
+        # the two differ in kind: the worst promise against the total pushed onto others
+        ctx = self._lateness_ctx()
+        parts = self.obs.observe(ctx.op, ctx)
+        self.assertGreater(float(parts["added_pickup_delay"][0]),
+                           float(parts["lateness_post"][0]) - float(parts["lateness_pre"][0]))
+
+    def test_lateness_keeps_a_negative_sign(self):
+        # common while the planner assumes 300 s per stop against a realized mean near 56 s
+        ctx = self._lateness_ctx(pending=(102,))
+        parts = self.obs.observe(ctx.op, ctx)
+        self.assertAlmostEqual(float(parts["lateness_pre"][0]), -100.0 / MAX_WT, places=6)
+        self.assertAlmostEqual(float(parts["lateness_post"][0]), -50.0 / MAX_WT, places=6)
+
+    def test_no_pending_riders_gives_zero_for_all_three(self):
+        ctx = self._lateness_ctx(pending=())
+        parts = self.obs.observe(ctx.op, ctx)
+        for name in ("lateness_pre", "lateness_post", "added_pickup_delay"):
+            self.assertEqual(float(parts[name][0]), 0.0, name)
+
+    def test_onboard_riders_are_not_pending(self):
+        # they can no longer cancel and the reward carries no ride-time term (§10, §5.2)
+        ctx = self._lateness_ctx(onboard=(101,), pending=(102,))
+        parts = self.obs.observe(ctx.op, ctx)
+        self.assertAlmostEqual(float(parts["lateness_pre"][0]), -100.0 / MAX_WT, places=6)
+        self.assertAlmostEqual(float(parts["added_pickup_delay"][0]), 50.0 / MAX_WT, places=6)
+
+    def test_a_rider_whose_boarding_is_in_progress_counts_as_onboard(self):
+        # a rider joins veh_obj.pax when the boarding leg STARTS (Vehicles.py:254), which is
+        # why get_nr_pax_without_currently_boarding exists; such a rider is not pending
+        ctx = self._lateness_ctx(onboard=(101, 102), pending=())
+        parts = self.obs.observe(ctx.op, ctx)
+        for name in ("lateness_pre", "lateness_post", "added_pickup_delay"):
+            self.assertEqual(float(parts[name][0]), 0.0, name)
+
+    def test_the_new_rider_is_never_pending(self):
+        cands = [(0, StubPlan({7: [30100.0, 30700.0]}), -1.0)]
+        op = StubOperator(cands, rq_dict={7: StubPrq(29000.0, offer=StubOffer(100.0))})
+        op.veh_plans[0] = StubPlan({}, stops=[StubStop((4, None, None), boarding=[7])],
+                                   retimed_pax_info={7: [30000.0, 30600.0]})
+        ctx = StubCtx(cands, op=op)
+        parts = self.obs.observe(op, ctx)
+        for name in ("lateness_pre", "lateness_post", "added_pickup_delay"):
+            self.assertEqual(float(parts[name][0]), 0.0, name)
+
+    def test_a_pending_rider_without_a_quote_is_counted_not_guessed(self):
+        ctx = self._lateness_ctx(quotes=False)
+        parts = self.obs.observe(ctx.op, ctx)
+        self.assertEqual(float(parts["lateness_pre"][0]), 0.0)
+        self.assertEqual(float(parts["lateness_post"][0]), 0.0)
+        # feature 12 needs no quote, so it is still computed
+        self.assertAlmostEqual(float(parts["added_pickup_delay"][0]), 150.0 / MAX_WT,
+                               places=6)
+        self.assertEqual(self.obs.diagnostics["riders_without_quote"], 2)
+
+    def test_a_pending_rider_without_a_plan_time_is_counted_not_guessed(self):
+        # the re-timer skips a boarding rid that is in no_shows_store_for_veh
+        ctx = self._lateness_ctx(plan_times=False)
+        parts = self.obs.observe(ctx.op, ctx)
+        for name in ("lateness_pre", "lateness_post", "added_pickup_delay"):
+            self.assertEqual(float(parts[name][0]), 0.0, name)
+        self.assertEqual(self.obs.diagnostics["riders_without_plan_time"], 2)
+
+    # ------------------------------------------------------------------ #
+    # padding
+    # ------------------------------------------------------------------ #
+
+    def test_every_feature_of_an_unoccupied_slot_is_zero(self):
+        ctx = self._lateness_ctx()
+        parts = self.obs.observe(ctx.op, ctx)
+        for name in CandidateObserver.FEATURE_NAMES:
+            np.testing.assert_array_equal(
+                parts[name][1:], np.zeros(K - 1, dtype=np.float32), name)
+
+    def test_no_nan_or_inf_across_the_whole_block(self):
+        ctx = self._lateness_ctx()
+        vec = self.obs.observe_vector(ctx.op, ctx)
+        self.assertEqual(vec.shape, (12 * K,))
+        self.assertTrue(np.all(np.isfinite(vec)))
+
+
+class TestCandidateBlockLeavesSimulationStateAlone(unittest.TestCase):
+    """Trap 14 and §5.2 exception (b), at the unit level.
+
+    The real arbiter is the P1.10 gate re-run; these fail faster and say which rule broke.
+    """
+
+    def setUp(self):
+        self.obs = candidate_observer()
+
+    def _ctx_with_pending(self):
+        cands = [(0, StubPlan({7: [30100.0, 30700.0], 101: [1500.0, 9000.0]}),
+                  -5.0)]
+        op = StubOperator(cands, rq_dict={101: StubPrq(1000.0, offer=StubOffer(300.0))})
+        op.veh_plans[0] = StubPlan(
+            {101: [1234.0, 5678.0]},
+            stops=[StubStop((4, None, None), boarding=[101]), StubStop((6, None, None))],
+            utility=-42.0,
+            retimed_pax_info={101: [1400.0, 9000.0]})
+        op.sim_vehicles[0] = StubVehicle(pos=(1, None, None))
+        return StubCtx(cands, op=op)
+
+    def test_the_stored_plan_is_never_re_timed_only_a_copy_is(self):
+        ctx = self._ctx_with_pending()
+        stored = ctx.op.veh_plans[0]
+        self.obs.observe(ctx.op, ctx)
+        self.assertEqual(stored.retimed_on_self, 0,
+                         "trap 14: the stored plan was re-timed in place")
+        self.assertEqual(stored.copies_retimed, 1, "exactly one re-timed copy per candidate")
+
+    def test_the_stored_plans_stops_pax_info_and_utility_survive(self):
+        ctx = self._ctx_with_pending()
+        stored = ctx.op.veh_plans[0]
+        before_pax = {k: list(v) for k, v in stored.pax_info.items()}
+        before_stops = [(s.get_pos(), s.get_list_boarding_rids()) for s in
+                        stored.list_plan_stops]
+        before_utility = stored.utility
+        self.obs.observe(ctx.op, ctx)
+        self.assertEqual({k: list(v) for k, v in stored.pax_info.items()}, before_pax)
+        self.assertEqual([(s.get_pos(), s.get_list_boarding_rids())
+                          for s in stored.list_plan_stops], before_stops)
+        self.assertEqual(stored.utility, before_utility)
+
+    def test_no_copy_is_made_when_there_are_no_pending_riders(self):
+        ctx = StubCtx(make_candidates([100.0], [-1.0]))
+        self.obs.observe(ctx.op, ctx)
+        self.assertEqual(ctx.op.veh_plans[0].copies_retimed, 0)
+        self.assertEqual(self.obs.diagnostics["retimings"], 0)
+
+    def test_one_copy_per_candidate_vehicle_shared_by_both_features(self):
+        ctx = self._ctx_with_pending()
+        self.obs.observe(ctx.op, ctx)
+        # features 9 and 12 share one re-timed copy (§5.2), so one per candidate vehicle
+        self.assertEqual(self.obs.diagnostics["retimings"], 1)
+
+    # ------------------------------------------------------------------ #
+    # the routing cache (§5.2 exception b)
+    # ------------------------------------------------------------------ #
+
+    def _routing_ctx(self, network=None):
+        nw = network or StubNetwork()
+        cands = [(0, StubPlan({7: [30100.0, 30700.0]},
+                              stops=[StubStop((2, None, None)), StubStop((3, None, None))]),
+                  -1.0)]
+        op = StubOperator(cands, routing_engine=nw)
+        op.sim_vehicles[0] = StubVehicle(pos=(1, None, None))
+        op.veh_plans[0] = StubPlan({}, stops=[StubStop((3, None, None))])
+        return StubCtx(cands, op=op), nw
+
+    def test_the_cache_holds_the_same_keys_before_and_after(self):
+        ctx, nw = self._routing_ctx()
+        before = set(nw.travel_time_infos)
+        self.obs.observe(ctx.op, ctx)
+        self.assertEqual(set(nw.travel_time_infos), before)
+
+    def test_entries_the_observer_adds_are_deleted_and_counted(self):
+        ctx, nw = self._routing_ctx()
+        self.obs.observe(ctx.op, ctx)
+        self.assertEqual(nw.travel_time_infos, {})
+        # the restore deletes exactly what was added, which is also the number of genuine route
+        # computations the observer triggered
+        self.assertGreater(self.obs.diagnostics["cache_entries_restored"], 0)
+        self.assertGreater(len(nw.queries), 0)
+
+    def test_the_simulations_own_entries_survive_untouched(self):
+        ctx, nw = self._routing_ctx()
+        nw.travel_time_infos[(1, 3)] = ("sentinel", 1.0, 2.0)
+        nw.travel_time_infos[(99, 98)] = ("other", 3.0, 4.0)
+        self.obs.observe(ctx.op, ctx)
+        self.assertEqual(nw.travel_time_infos,
+                         {(1, 3): ("sentinel", 1.0, 2.0), (99, 98): ("other", 3.0, 4.0)})
+
+    def test_the_restore_runs_even_when_a_feature_raises(self):
+        ctx, nw = self._routing_ctx()
+
+        def explode(*_a, **_kw):
+            raise RuntimeError("feature bug")
+
+        # make the pending-rider path raise after the routing has already cached something
+        self.obs._pending_rids = explode
+        with self.assertRaises(RuntimeError):
+            self.obs.observe(ctx.op, ctx)
+        self.assertEqual(nw.travel_time_infos, {},
+                         "the restore must sit in a finally, or a feature bug leaves the "
+                         "simulation's routing cache polluted")
+
+    def test_without_the_restore_the_cache_would_be_polluted(self):
+        """The counter-example, so the restore test above cannot pass vacuously.
+
+        If the observer stopped adding entries — a future routing engine that caches nothing,
+        say — `test_entries_the_observer_adds_are_deleted_and_counted` would still pass while
+        testing nothing. This pins that there is really something to restore.
+        """
+        class NoRestore(CandidateObserver):
+            def _restore_cache(self, routing_engine, before):
+                pass
+
+        obs = NoRestore(K, SCENARIO, StubCoords())
+        ctx, nw = self._routing_ctx()
+        obs.observe(ctx.op, ctx)
+        self.assertNotEqual(nw.travel_time_infos, {},
+                            "the observer's routing must actually write to the cache, or the "
+                            "restore tests prove nothing")
+
+    def test_a_network_without_a_cache_needs_no_restore(self):
+        ctx, nw = self._routing_ctx(network=StubNetwork(with_cache=False))
+        self.obs.observe(ctx.op, ctx)        # must not raise
+        self.assertFalse(hasattr(nw, "travel_time_infos"))
+        self.assertEqual(self.obs.diagnostics["cache_entries_restored"], 0)
+
+    def test_the_cache_is_read_through_the_attribute_not_held(self):
+        """A rebind mid-observation must not resurrect the old dict's keys.
+
+        `_reset_internal_attributes_after_travel_time_update` **rebinds**
+        `travel_time_infos` to a fresh dict rather than clearing it, and `load_tt_file` does
+        that at every operator travel-time file load. Code that snapshots the dict object
+        instead of the attribute goes stale from the first load onwards, and nothing raises.
+        """
+        class RebindingNetwork(StubNetwork):
+            def __init__(self):
+                super().__init__()
+                self.rebound = False
+
+            def return_travel_costs_1to1(self, o, d, customized_section_cost_function=None):
+                if not self.rebound:
+                    # as load_tt_file does, between the snapshot and the restore
+                    self.travel_time_infos = {}
+                    self.rebound = True
+                return super().return_travel_costs_1to1(o, d)
+
+        ctx, nw = self._routing_ctx(network=RebindingNetwork())
+        nw.travel_time_infos[("stale", "key")] = (0.0, 0.0, 0.0)
+        self.obs.observe(ctx.op, ctx)
+        self.assertTrue(nw.rebound)
+        # everything in the new dict was computed by the observer, so all of it goes
+        self.assertEqual(nw.travel_time_infos, {})
 
 
 if __name__ == "__main__":

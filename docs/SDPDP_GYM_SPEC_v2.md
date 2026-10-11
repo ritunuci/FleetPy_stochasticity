@@ -872,9 +872,50 @@ Definitions:
     cache exactly as it found it. VERIFY the attribute name; if the network type has no such
     cache, there is nothing to restore. Once the defect is fixed this is unnecessary but
     harmless.
+
+    Four findings from P2.10, all confirmed against the source:
+
+    - **`travel_time_infos` is the only cache in play.** `NetworkBasicWithStore` declares exactly
+      one store (`:72`), and it has two writers: `_add_to_database` (`:151`), which writes **only
+      when the key is absent** and so can never overwrite an entry the simulation owns, and
+      `add_travel_infos_to_database` (`:125`), which takes externally computed multiprocessing
+      results and is unreachable from the observation path. On `NetworkBasic` both the store hook
+      and the reset hook are `pass` (`:976`, `:979`), and every routing entry point funnels
+      writes through `_add_to_database` (`:514`, `:559`, `:619`), so the one override covers
+      `1to1`, `1toX`, `Xto1` and the `best_route` family alike. Because writes never overwrite,
+      `after − before` is **exactly** the added set, which is what makes the restore exact
+      without duplicating the engine's key derivation.
+    - **Read the cache through the attribute; never hold the dict.**
+      `_reset_internal_attributes_after_travel_time_update` **rebinds** `travel_time_infos` to a
+      fresh dict (`:123`) rather than clearing it, and `load_tt_file` does that at every operator
+      travel-time file load — observed at sim_times 32400, 43200, 57600 and 64800 on the
+      reference day. Code that snapshots the dict object goes stale from the first load onwards
+      and nothing raises. A test pins this with a network that rebinds mid-observation.
+    - **Two mutations the restore cannot undo, both inert.** Every Dijkstra writes scratch fields
+      on `Node` objects (`prev`, `next`, `cost`, `settled`, `cost_index`) and advances
+      `nw.current_dijkstra_number`. Each `Router` takes `current_dijkstra_number + 1` as its
+      generation (`Router.py:62`) and the counter is initialised to 1 at construction
+      (`NetworkBasic.py:191`) and never reset, so no run can read an earlier run's leftovers as
+      its own; the only number that could collide with the node defaults (`settled = 1`,
+      `cost_index = -1`) is 1, which no run ever gets.
+    - **In practice the observer adds no entries at all, on either day measured.** Of 6,946
+      `1to1` queries on the reference day (7,845 on 2024-10-09), **0** ran a Router: 191 were
+      trivial and the rest already cached. `insertion_with_heuristics` re-times every candidate
+      plan it returns, so every leg of plan `k` is cached by construction, and the pre-insertion
+      legs are a near-subset of what insertion explored at the same decision. The restore stays
+      regardless — it is 38 µs per decision, and "no entries today" is not "no entries ever".
 - **Pending riders** of a vehicle: riders with a boarding entry in the pre-insertion plan's
-  stops who are not in `veh_obj.pax`. The new rider is never pending. VERIFY how a rider whose
-  boarding is in progress appears, and record it.
+  stops who are not in `veh_obj.pax`. The new rider is never pending. *(VERIFIED in P2.10: a
+  rider whose boarding is **in progress** counts as onboard, not pending. A rider is appended to
+  `veh_obj.pax` when the boarding leg **starts** (`Vehicles.py:254`), which is exactly why
+  `get_nr_pax_without_currently_boarding` exists (`Vehicles.py:871`) — so such a rider already
+  holds a seat in feature 6 and is correctly not counted again in features 9, 10 and 12.)*
+- **At most one pending rider per candidate on the reference day.** Measured in P2.10 over 436
+  decisions and 1,982 candidate slots: the maximum is **1**, so features 9–12 never aggregate
+  more than one rider there and the `max`/`Σ` distinction is untestable on that day. On
+  2024-10-09 the maximum is **2**, on 23 candidate slots across 22 decisions. Anything that needs
+  a multi-rider candidate — the hand computation in §8's P2.10 included — has to use a busier
+  day.
 - **Quoted pickup** of pending rider `i` = `prq_i.rq_time` + the offered wait the operator
   quoted in `_create_user_offer`, as stored on the operator side (`prq.offer`, set by
   `set_service_offered`). VERIFY the attribute and that the quote is not overwritten after
@@ -883,9 +924,14 @@ Definitions:
   of the behavioural model (proposal §3.1.2).
 - **No pending riders** → 0.0 for features 9, 10 and 12.
 - **Signs are kept.** Lateness is negative when a rider will be picked up ahead of the quote,
-  which will be common while the planner assumes 300 s per stop against a realized mean of about
-  56 s (§4 gap 1). `added_distance` and `added_pickup_delay` can be slightly negative because
-  routes minimise time rather than distance, and stops can merge. Do not clip any of them.
+  which the planner's 300 s stop assumption against a realized mean of about 56 s (§4 gap 1)
+  suggests will be common. *(Measured in P2.10, it is only half so: of the 160 non-zero
+  `lateness_pre` slots on the reference day, 53% are negative and 47% positive. The feature is
+  ≤ 0 on 96.2% of all slots, but 91.9% of slots are exactly 0 for want of a pending rider, so
+  the headline share says nothing about the sign.)* `added_distance` and `added_pickup_delay` can
+  be slightly negative because routes minimise time rather than distance, and stops can merge —
+  3 of 1,979 non-zero `added_distance` slots are negative, so the case is real and rare. Do not
+  clip any of them.
 - **`added_distance`**: remaining route distance from `veh_obj.pos` through the plan's stops,
   summing `routing_engine.return_travel_costs_1to1(last_pos, pos)[2]` and skipping consecutive
   equal positions — exactly the distance term of `distance_and_user_times_with_walk` in
@@ -893,8 +939,12 @@ Definitions:
   term (§10).
 - **`remaining_stops`**: pre-insertion. With repositioning off, 0 means idle, and that is what
   separates idle vehicles from perpendicular ones in feature 8, so no companion flag is added.
-  VERIFY whether the stop currently being served still counts. The "0 means idle" equivalence
-  must be rechecked when repositioning goes on.
+  *(VERIFIED in P2.10: the stop currently being served **does** still count. Of 1,982 candidate
+  slots on the reference day, 84 had a first stop whose `get_started_at()` is set and 85 had it
+  locked, and `len(list_plan_stops)` includes it. So a vehicle mid-boarding reads 1, not 0 —
+  which is the right reading for a feature describing remaining work, but it means
+  `remaining_stops == 0` is "no stops at all", not "nothing happening now".)* The "0 means idle"
+  equivalence must be rechecked when repositioning goes on.
 - **`directionality`**: re-implement the dot product of `SelectRV.filter_directionality`
   (lines ~15–38); do not call the function — the heuristic behind it is off in this scenario,
   and it returns a filtered vehicle list, not scores. Request vector: destination minus origin
@@ -905,7 +955,12 @@ Definitions:
   `assigned_route` is the committed route, so this is pre-insertion by construction.
 - **Vehicle position**: `veh_obj.pos` is `(node, None, None)` at a node or
   `(o_node, d_node, rel_pos)` on an edge; interpolate linearly between the two nodes' lat/lon by
-  `rel_pos`. VERIFY that `rel_pos` is the fraction already travelled.
+  `rel_pos`. *(VERIFIED in P2.10: `rel_pos` **is** the fraction already travelled.
+  `return_position_coordinates` forms `rel * c_dest + (1 − rel) * c_origin`
+  (`NetworkBasic.py:410`), and `get_section_overhead` documents `position[2]` as the
+  already-travelled share with `from_start=True` (`:469`). Interpolating the two nodes'
+  hull-scaled coordinates is identical to scaling the interpolated ones, the scaling being
+  linear, so no raw-coordinate accessor is needed.)*
 - **Why `delta_cfv` carries almost nothing.** The objective subtracts `LARGE_INT = 1,000,000`
   per rider in the plan (`objectives.py`), so raw `delta_cfv` is about −1,000,000 plus a few
   hundred cents of real cost. After `sign·log1p` the real cost moves only the sixth significant
@@ -2382,8 +2437,18 @@ keys `wait_normalizer_s`, `position_encoding`), `tests/test_rl_gym_observers.py`
 `tests/test_rl_gym_env.py` (it asserts the observation shape)
 
 Per §5.2's candidate block: features 4–12 appended after the three Phase 1 features. One
-re-timed pre-insertion copy per candidate vehicle per decision, shared by features 9 and 12. The
-routing cache is restored after every observation, per §5.2 (b).
+re-timed pre-insertion copy per candidate vehicle per decision, shared by features 9 and 12 —
+and **skipped entirely when the vehicle has no pending rider**, which is what features 9, 10 and
+12 are 0.0 for anyway (§5.2); 168 of 436 decisions re-time anything at all on the reference day.
+The routing cache is restored after every observation, per §5.2 (b).
+
+Observation length 52 → **124** at `K = 8`: 96 candidate + 24 request + 4 global.
+
+The quoted pickup used by features 9 and 10 comes from the **one** definition
+`observers.quoted_pickup_time`, built on the same `prq.offer` lookup that
+`gym_env._make_quoted_wait_fn` hands P2.7's statistics tracker — which now delegates to it.
+A second copy of that lookup would be the drift trap 13 rules out for the exit classifier, in a
+quantity feeding both the statistics and the observation.
 
 **How Ritun verifies:**
 - **the P1.10 gate, byte for byte — the critical check for this item**, since it re-times plan
@@ -2392,12 +2457,26 @@ routing cache is restored after every observation, per §5.2 (b).
   that `routing_engine.travel_time_infos` holds the same keys before and after one;
 - with `wait_normalizer_s` absent, `offered_wait` is bit-identical to Phase 1's;
 - for 10 decisions where some candidate has two or more pending riders, features 9–12 match a
-  hand computation;
+  hand computation. **Such a candidate does not exist on the reference day** — the maximum there
+  is one pending rider, over 1,982 candidate slots (§5.2) — so this runs on a **busier day**;
+  P2.10 used **2024-10-09**, which has 23 such slots. The reference day additionally
+  gets 10 decisions at one pending rider, which exercises everything but the aggregation;
 - `directionality` matches `filter_directionality`'s formula on constructed cases, including an
   idle vehicle (0) and a vehicle whose route ends at its own position (0);
 - a distribution table over the reference day for features 6–12 (min, median, p95, max, share
-  exactly zero). Expect `lateness_pre` to be mostly ≤ 0 (§5.2);
-- throughput: steps per second against Phase 1's 11.47, and `reset()` time.
+  exactly zero). `lateness_pre` is ≤ 0 on 96.2% of slots, but that is mostly the 91.9% that are
+  exactly 0 (no pending rider); **among the 160 non-zero slots it is 53% negative and 47%
+  positive**, so §5.2's "picked up ahead of the quote will be common" holds much more weakly than
+  the 300 s-against-56 s stop-duration gap suggests. Reported, not acted on;
+- throughput. **Measure it as an interleaved A/B in one process, not as a figure compared against
+  11.47 from an earlier session.** P1.10's 11.47 is not reproducible on a loaded machine: during
+  P2.10 the *pre-P2.10* observation measured 11.40 steps/s early in the session and 9.66 two
+  hours later on the same code, so an absolute before/after comparison measures the machine.
+  Running both candidate blocks alternately in one process gives P2.10's own cost as **0.8%**
+  (9.66 → 9.57 steps/s), which agrees with the profiler: the whole observation is 0.16 s of a
+  40 s episode, 0.4%, of which the candidate block is 0.13 s (0.30 ms per decision), the cache
+  snapshot 38 µs per decision and its 6,946 routing calls 1.2 µs each. `reset()` is unchanged at
+  a median 0.50 s warm, 1.21 s cold, against §10's ~0.46 s.
 
 **Commit:** `RL-GYM: add Phase 2 candidate observation block`
 

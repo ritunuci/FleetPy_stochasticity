@@ -36,6 +36,7 @@ from src.rl_gym.day_rotation import (  # noqa: E402
     training_days,
 )
 from src.rl_gym.policies import greedy_action as policy_greedy_action  # noqa: E402,F401
+from src.rl_gym.observers import CandidateObserver  # noqa: E402
 from src.rl_gym.gym_env import (  # noqa: E402
     MAX_EPISODE_SEED,
     SDPDPAssignmentEnv,
@@ -49,6 +50,8 @@ CORPUS_ROOT = os.path.join(os.path.dirname(__file__), "..", "data", "demand",
 CORPUS_DIR = os.path.join(CORPUS_ROOT, "corpus")
 K = 8
 REQUEST_BLOCK = 24          # §5.2: 4 coords + n_pax + 3 dow + 10 month + 6 zone
+CANDIDATE_FEATURES = 12     # §5.2: per candidate slot, after P2.10
+OBS_LEN = CANDIDATE_FEATURES * K + REQUEST_BLOCK + 4      # 124 at K = 8
 
 
 def make_cfg(**overrides):
@@ -113,8 +116,8 @@ class TestConstruction(unittest.TestCase):
     def test_spaces(self):
         env = SDPDPAssignmentEnv(make_cfg())
         self.assertEqual(env.action_space.n, K + 1)
-        # 3K candidate + 24 request (P2.9) + 4 global; 52 at K = 8
-        self.assertEqual(env.observation_space.shape, (3 * K + REQUEST_BLOCK + 4,))
+        # 12K candidate (P2.10) + 24 request (P2.9) + 4 global; 124 at K = 8
+        self.assertEqual(env.observation_space.shape, (OBS_LEN,))
         self.assertEqual(env.observation_space.dtype, np.float32)
         self.assertTrue(np.all(env.observation_space.low == -np.inf))
         self.assertTrue(np.all(env.observation_space.high == np.inf))
@@ -124,7 +127,9 @@ class TestConstruction(unittest.TestCase):
         for k in (2, 4, 8):
             with self.subTest(K=k):
                 env = SDPDPAssignmentEnv(make_cfg(K=k))
-                self.assertEqual(env.observation_space.shape, (3 * k + REQUEST_BLOCK + 4,))
+                self.assertEqual(
+                    env.observation_space.shape,
+                    (CANDIDATE_FEATURES * k + REQUEST_BLOCK + 4,))
                 self.assertEqual(env.action_space.n, k + 1)
 
     def test_rl_settings_forced(self):
@@ -876,9 +881,9 @@ class TestRequestBlockInTheEnv(unittest.TestCase):
     def tearDownClass(cls):
         cls.env.close()
 
-    def test_observation_length_is_fifty_two(self):
-        self.assertEqual(self.env.observation_space.shape, (52,))
-        self.assertEqual(self.obs.shape, (52,))
+    def test_observation_length_is_one_hundred_and_twenty_four(self):
+        self.assertEqual(self.env.observation_space.shape, (OBS_LEN,))
+        self.assertEqual(self.obs.shape, (OBS_LEN,))
 
     def test_the_request_block_adds_twenty_four(self):
         self.assertEqual(self.env._request_observer.output_length, 24)
@@ -886,14 +891,17 @@ class TestRequestBlockInTheEnv(unittest.TestCase):
     def test_block_order_is_candidate_request_global(self):
         names = list(self.env.observation_layout)
         self.assertEqual(names[:3], ["is_valid", "delta_cfv", "offered_wait"])
-        self.assertEqual(names[3:8], ["o_lat", "o_lon", "d_lat", "d_lon", "n_pax"])
+        self.assertEqual(names[:CANDIDATE_FEATURES],
+                         list(CandidateObserver.FEATURE_NAMES))
+        self.assertEqual(names[CANDIDATE_FEATURES:CANDIDATE_FEATURES + 5],
+                         ["o_lat", "o_lon", "d_lat", "d_lon", "n_pax"])
         self.assertEqual(names[-4:],
                          ["time_sin", "time_cos", "day_progress", "idle_fraction"])
 
     def test_the_layout_still_tiles(self):
         slices = list(self.env.observation_layout.values())
         self.assertEqual(slices[0].start, 0)
-        self.assertEqual(slices[-1].stop, 52)
+        self.assertEqual(slices[-1].stop, OBS_LEN)
         for a, b in zip(slices, slices[1:]):
             self.assertEqual(a.stop, b.start)
 
@@ -939,6 +947,136 @@ class TestRequestBlockInTheEnv(unittest.TestCase):
             env.reset()
             # a stale tracker from the previous episode would still answer, so compare identity
             self.assertIs(env._request_observer._stats, env._stats)
+
+
+class TestCandidateBlockInTheEnv(unittest.TestCase):
+    """The candidate block against a real simulation (P2.10).
+
+    The unit tests in `test_rl_gym_observers.py` pin the arithmetic against stubs; these check
+    the two rules on the real objects, where `VehiclePlan`, `PlanStop` and
+    `NetworkBasicWithStore` are the actual ones. The P1.10 gate is still the arbiter.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.env = SDPDPAssignmentEnv(make_cfg())
+        cls.obs, cls.info = cls.env.reset()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.env.close()
+
+    def test_the_candidate_block_contributes_twelve_per_slot(self):
+        self.assertEqual(self.env._candidate_observer.output_length, 12 * K)
+        self.assertEqual(self.env.observation_space.shape, (OBS_LEN,))
+
+    def test_the_wait_normalizer_defaults_to_op_max_wait_time(self):
+        # §5.3: absent -> op_max_wait_time, so Phase 1's offered_wait does not change
+        self.assertEqual(self.env._candidate_observer.wait_normalizer_s,
+                         float(self.env.scenario_parameters["op_max_wait_time"]))
+
+    def test_an_explicit_wait_normalizer_reaches_the_observer(self):
+        env = SDPDPAssignmentEnv(make_cfg(wait_normalizer_s=900.0))
+        self.assertEqual(env._candidate_observer.wait_normalizer_s, 900.0)
+
+    def test_the_position_encoding_reaches_the_observer_and_is_validated(self):
+        env = SDPDPAssignmentEnv(make_cfg(position_encoding="relative"))
+        self.assertEqual(env._candidate_observer.position_encoding, "relative")
+        # same length either way (§5.2), so the layout does not move
+        self.assertEqual(env.observation_space.shape, (OBS_LEN,))
+        with self.assertRaises(ValueError):
+            SDPDPAssignmentEnv(make_cfg(position_encoding="h3"))
+
+    def test_an_observation_leaves_the_routing_cache_exactly_as_it_was(self):
+        """§5.2 exception (b), on the real `NetworkBasicWithStore`.
+
+        Read through the attribute, never a held reference: `load_tt_file` rebinds the dict.
+        """
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            obs, _ = env.reset()
+            op = env.sim.operators[0]
+            for _ in range(15):
+                before = set(op.routing_engine.travel_time_infos)
+                env._observe(env._pending)
+                self.assertEqual(set(op.routing_engine.travel_time_infos), before,
+                                 "the observation changed the routing cache's keys")
+                obs, _r, terminated, _t, _i = env.step(
+                    policy_greedy_action(obs, env.action_masks(),
+                                         env.observation_layout))
+                if terminated:
+                    break
+        finally:
+            env.close()
+
+    def test_an_observation_leaves_every_stored_plan_alone(self):
+        """Trap 14 on the real objects: stops, `pax_info` and utility all survive.
+
+        §5.2's exception (a) is the one admitted write — `PlanStop.copy()` shares the
+        `boarding_dict` lists, so the re-timer's no-show branch can reach the stored plan
+        through the copy. Insertion has already made that same call for every candidate vehicle
+        at this same decision, so nothing should change here either; this test asserts the
+        strict version and would fail if it did.
+        """
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            obs, _ = env.reset()
+            op = env.sim.operators[0]
+            for _ in range(15):
+                before = {}
+                for vid, plan in op.veh_plans.items():
+                    before[vid] = (
+                        [(ps.get_pos(), tuple(ps.get_list_boarding_rids()),
+                          tuple(ps.get_list_alighting_rids())) for ps in plan.list_plan_stops],
+                        {rid: list(v) for rid, v in plan.pax_info.items()},
+                        plan.utility,
+                    )
+                env._observe(env._pending)
+                for vid, plan in op.veh_plans.items():
+                    stops, pax_info, utility = before[vid]
+                    self.assertEqual(
+                        [(ps.get_pos(), tuple(ps.get_list_boarding_rids()),
+                          tuple(ps.get_list_alighting_rids()))
+                         for ps in plan.list_plan_stops], stops, f"vid {vid} stops changed")
+                    self.assertEqual({rid: list(v) for rid, v in plan.pax_info.items()},
+                                     pax_info, f"vid {vid} pax_info changed")
+                    self.assertEqual(plan.utility, utility, f"vid {vid} utility changed")
+                obs, _r, terminated, _t, _i = env.step(
+                    policy_greedy_action(obs, env.action_masks(),
+                                         env.observation_layout))
+                if terminated:
+                    break
+        finally:
+            env.close()
+
+    def test_the_observation_is_finite_and_in_space_over_many_real_decisions(self):
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            obs, _ = env.reset()
+            for _ in range(30):
+                self.assertTrue(np.all(np.isfinite(obs)))
+                self.assertTrue(env.observation_space.contains(obs))
+                obs, _r, terminated, _t, _i = env.step(
+                    policy_greedy_action(obs, env.action_masks(),
+                                         env.observation_layout))
+                if terminated:
+                    break
+        finally:
+            env.close()
+
+    def test_the_real_features_land_in_their_declared_ranges(self):
+        layout = self.env.observation_layout
+        valid = self.obs[layout["is_valid"]] > 0
+        for name in ("veh_lat", "veh_lon"):
+            vals = self.obs[layout[name]][valid]
+            self.assertTrue(np.all((vals >= -1.0) & (vals <= 1.0)), f"{name} outside [-1, 1]")
+        free = self.obs[layout["free_seats"]][valid]
+        self.assertTrue(np.all((free >= 0.0) & (free <= 1.0)))
+        direction = self.obs[layout["directionality"]][valid]
+        self.assertTrue(np.all((direction >= -1.0000001) & (direction <= 1.0000001)))
+        stops = self.obs[layout["remaining_stops"]][valid]
+        self.assertTrue(np.all(stops >= 0.0))
+        self.assertTrue(np.all(stops == np.round(stops)), "remaining_stops is a raw count")
 
 
 if __name__ == "__main__":

@@ -2683,3 +2683,213 @@ function — the name collision flagged in P2.8. Now imported as `policy_greedy_
 comment at the call site.
 
 Nothing failed. **Stopping here** — not starting P2.10.
+
+---
+
+## P2.10 — STARTED 2026-10-10 20:21
+Files I will touch: src/rl_gym/observers.py, src/rl_gym/gym_env.py,
+tests/test_rl_gym_observers.py, tests/test_rl_gym_env.py, docs/SDPDP_GYM_SPEC_v2.md,
+docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.9 committed as 29ec24b, tree clean. `K` stays 8.
+
+Measured before starting, so the "after" figure has a same-tree baseline: the gate driver on
+this tree runs **436 steps in 38.2 / 38.5 s → 11.48 and 11.32 steps/s** (median 11.40), against
+P1.10's 11.47. P2.7's tracker and P2.9's request block cost nothing measurable.
+
+Confirmed before starting (the two load-bearing facts of §5.2 exception b):
+- **`travel_time_infos` is the only cache the observer's calls can write.**
+  `NetworkBasicWithStore` declares exactly one store (`:72`) with two writers:
+  `_add_to_database` (`:151`), which writes **only if the key is absent** so a query can never
+  overwrite an entry, and `add_travel_infos_to_database` (`:125`) for externally computed
+  multiprocessing results, which nothing on the observer's path calls. On the base class both
+  hooks are `pass` (`NetworkBasic.py:976,979`) and every routing entry point funnels writes
+  through `_add_to_database` (`:514,559,619`), so the one override covers `1to1`, `1toX`,
+  `Xto1` and the `best_route` family. The observer's only routing call is
+  `return_travel_costs_1to1` — directly for `added_distance`, and as the **sole** routing call
+  inside the re-timing (`VehiclePlan.py:860`); `return_position_coordinates`,
+  `get_section_overhead` and `test_and_get_trivial_route_tt_and_dis` are pure reads.
+- **A correction that changes how the restore must be written:**
+  `_reset_internal_attributes_after_travel_time_update` **rebinds** `travel_time_infos` to a
+  fresh dict (`:123`) rather than clearing it, and `load_tt_file` calls it at every operator
+  travel-time file load — observed at sim_times 32400, 43200, 57600, 64800 in a full episode.
+  So the restore reads `routing_engine.travel_time_infos` through the attribute each time and
+  never holds the dict object. My own first measurement held a reference, went stale and
+  reported nonsense; it fails invisibly.
+- **Two mutations the restore cannot undo, both inert.** Every Dijkstra writes scratch fields on
+  `Node` objects (`prev`, `next`, `cost`, `settled`, `cost_index`) and advances
+  `nw.current_dijkstra_number`. Each `Router` takes `current_dijkstra_number + 1` as its
+  generation (`Router.py:62`) and the counter is initialised to 1 at construction
+  (`NetworkBasic.py:191`) and never reset, so no run can read an earlier run's leftovers as its
+  own, and the only number that could collide with the node defaults (`settled = 1`,
+  `cost_index = -1`) is 1, which no run ever gets.
+- **No random draw on the observation path.** The only RNG in the routing stack is the
+  stochastic travel-time redraw, which fires exclusively from `update_network`
+  (`NetworkBasic.py:291` → `_draw_stochastic_tt_new`, `np.random.lognormal` at `:367,372`). The
+  observer never calls `update_network`, `load_tt_file`, `reset_network`,
+  `assign_route_to_network` or `move_along_route`. `Router` has no RNG, `VehiclePlan.py` has
+  none, and `src/rl_gym/` draws only in `gym_env` (episode seed) and `day_rotation` (D10's
+  permutation), both outside the observation path.
+
+Projected before starting, by enumerating the legs the observer would route and checking each
+against the live cache read-only (routing nothing): 7,956 queries per episode, 18.2 per
+decision, of which 191 trivial, **7,765 already cached by the simulation and 0 genuine new
+Dijkstras**. The reason is structural: `insertion_with_heuristics` re-times every candidate plan
+it returns, so every leg of plan `k` is cached by construction, and at 0.72 pre-insertion stops
+per candidate the pre-insertion legs are a near-subset of what insertion already explored. For
+scale, the episode already runs 22,465 genuine Dijkstras itself, 27.6 s of its 38 s. So the
+restore is expected to have nothing to delete on the reference day, and it stays in regardless.
+
+Approved before starting:
+- The remedy (a private observer-side memo and a read-through proxy engine) is **out of P2.10**.
+  If the measurement contradicts the projection, report and stop; do not implement it.
+- `position_encoding` defaults to `"latlon"`; `"relative"` is implemented and tested but unused.
+- **Ritun's addition to the verification:** after implementing, also run the greedy driver on
+  **2024-10-09** (`corpus_eval`, fixed-day mode) and report steps per second, the number of new
+  route computations the observer triggers, and the number of cache entries the restore deletes,
+  alongside the reference-day figures. If either count is non-zero there, report how often and
+  **stop before proposing any remedy**.
+
+## P2.10 — DONE 2026-10-10 21:05 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/observers.py` — `CandidateObserver` extended from 3 to **12 features per slot**
+  (§5.2's 4–12); new module-level `operator_plan_request`, `quoted_waiting_time` (moved here
+  from `gym_env`), `quoted_pickup_time`, `route_distance` and `unit_vector`; new
+  `_cache_keys` / `_restore_cache` / `_retimed_copy` / `_scaled_position` / `_pending_rids`;
+  a `diagnostics` counter dict; `FEATURE_NAMES` as the vector order; module docstring now
+  carries the two rules (trap 14 and no-RNG).
+- `src/rl_gym/gym_env.py` — config keys `wait_normalizer_s` and `position_encoding`;
+  `NodeCoordinates` hoisted to a local and shared by the candidate and request blocks;
+  `_make_quoted_wait_fn` now delegates to `observers.quoted_waiting_time` so the quote has one
+  definition.
+- `tests/test_rl_gym_observers.py` — the stub harness rebuilt (`StubStop`, `StubPlan` with a
+  copy/re-time record, `StubOffer`, `StubRider`, `StubLeg`, `StubCoords`, `StubNetwork` with
+  `NetworkBasicWithStore`'s write-if-absent cache semantics, one `StubOperator` that both
+  observers can read, integer vids as the real operator uses); `TestCandidateBlock` (29) and
+  `TestCandidateBlockLeavesSimulationStateAlone` (11).
+- `tests/test_rl_gym_env.py` — `OBS_LEN` / `CANDIDATE_FEATURES` constants replacing the
+  hardcoded 52; `TestCandidateBlockInTheEnv` (8), which checks the cache and plan-integrity
+  rules against the **real** `VehiclePlan`, `PlanStop` and `NetworkBasicWithStore` over 15
+  consecutive decisions.
+- `docs/SDPDP_GYM_SPEC_v2.md` — §5.2 exception (b) gains the four cache findings; the pending
+  rider, `remaining_stops` and `rel_pos` VERIFY answers; the corrected `lateness_pre` sign
+  expectation; §8's P2.10 gains the length, the single quote definition, the skip-when-no-pending
+  note, and a rewritten verification list (see the two corrections below).
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+Verification — everything passed, nothing failed:
+
+1. **The P1.10 gate, byte for byte** — all 7 gate tests `ok`, including
+   `test_user_stats_matches_baseline_byte_for_byte`. Full suite **426 tests pass**, 171.8 s, no
+   failures and no skips (373 before; +53).
+2. **The routing cache, both days — nothing to restore, because nothing is added.**
+
+   | | reference day | 2024-10-09 |
+   |---|---|---|
+   | observer `1to1` queries | 6,946 | 7,845 |
+   | **new route computations** | **0** | **0** |
+   | **cache entries deleted by the restore** | **0** | **0** |
+   | steps | 436 | 512 |
+
+   So **Ritun's stop condition did not trigger**: both counts are zero on 2024-10-09 as well as
+   on the reference day. The reason is structural, confirmed rather than assumed:
+   `insertion_with_heuristics` re-times every candidate plan it returns, so every leg of plan `k`
+   is already cached at that decision, and the pre-insertion legs are a near-subset of what
+   insertion explored. The restore stays in regardless — it costs 38 µs per decision, and "no
+   entries today" is not "no entries ever".
+3. **The two rules, on the real objects.** Over 15 consecutive decisions per test:
+   `routing_engine.travel_time_infos` holds exactly the same keys before and after every
+   observation, and every `veh_plans[vid]` keeps its stops, boarding/alighting lists, `pax_info`
+   and `utility` — §5.2's exception (a) never fired, as predicted, because insertion has already
+   made that same call for every candidate vehicle at the same decision.
+4. **`offered_wait` is bit-identical to Phase 1's formula** with `wait_normalizer_s` absent:
+   exact `float32` equality on **1,982/1,982** candidate slots on the reference day and
+   **2,151/2,151** on 2024-10-09, 0 mismatches — and the gate agrees.
+5. **Hand computation of features 9, 10 and 12: 0 mismatches.** 10 decisions × 3 features on the
+   reference day (one pending rider each) and 10 decisions × 3 on 2024-10-09 **with two pending
+   riders**, recomputed independently from the stored plan's boarding rids, a separately re-timed
+   copy, `prq.offer` and plan `k`'s `pax_info`.
+6. **`directionality`** matches `filter_directionality`'s formula on constructed cases: parallel
+   +1, opposed −1, perpendicular 0, a hand dot product 0.6, an idle vehicle 0, and a vehicle
+   whose route ends at its own position 0.
+7. **Distribution over the reference day, valid slots only** (1,982 slots, scaled values):
+
+   | feature | min | median | p95 | max | exactly 0 |
+   |---|---|---|---|---|---|
+   | `free_seats` | +0.333 | +0.833 | +1.000 | +1.000 | 0.0% |
+   | `remaining_stops` | 0 | +1 | +2 | +3 | 39.6% |
+   | `directionality` | −1.000 | 0.000 | +0.959 | +1.000 | 41.4% |
+   | `lateness_pre` | −0.360 | 0.000 | 0.000 | +0.322 | 91.9% |
+   | `lateness_post` | −0.360 | 0.000 | 0.000 | +0.801 | 91.8% |
+   | `added_distance` (km) | −2.956 | +10.482 | +22.816 | +33.039 | 0.2% |
+   | `added_pickup_delay` | 0.000 | 0.000 | 0.000 | +0.791 | 99.4% |
+
+   `free_seats` never reaches 0, so no candidate vehicle is ever full. `added_distance` is large
+   because `pre` is 0 for an idle vehicle, making "added" the whole trip; 3 of its 1,979 non-zero
+   slots are negative, so §5.2's merge case is real and rare.
+8. **Throughput — and the measurement had to be redesigned, see the corrections below.**
+   Interleaved A/B in one process, Phase-1-sized block against P2.10's: **9.66 → 9.57 steps/s,
+   a 0.8% cost.** The profiler agrees: the whole observation is **0.16 s of a 40 s episode
+   (0.4%)**, of which `CandidateObserver` is 0.13 s (0.30 ms per decision), the cache snapshot
+   38 µs per decision, and its 6,946 routing calls 1.2 µs each. `reset()` is unchanged — median
+   **0.50 s** warm, 1.21 s cold, against §10's ~0.46 s. 2024-10-09 ran 512 steps at 10.81
+   steps/s under instrumentation.
+9. **Both new guards fail when removed**, checked by breaking them deliberately and reverting:
+   moving the restore out of its `finally` fails
+   `test_the_restore_runs_even_when_a_feature_raises`; holding the cache dict instead of reading
+   the attribute fails `test_the_cache_is_read_through_the_attribute_not_held`. A third test
+   (`test_without_the_restore_the_cache_would_be_polluted`) pins that the observer really does
+   write to the cache, so the restore tests cannot pass vacuously.
+
+VERIFY findings:
+- **`travel_time_infos` is the only cache the observer's calls can write: matched** what Ritun
+  and I both read. Two writers only, `_add_to_database` (write-if-absent, so `after − before` is
+  exactly the added set) and `add_travel_infos_to_database` (multiprocessing results,
+  unreachable here); `NetworkBasic`'s hooks are both `pass`; every routing entry point funnels
+  through `_add_to_database`.
+- **`rel_pos` is the fraction already travelled: matched the spec**
+  (`return_position_coordinates` forms `rel * c_dest + (1 − rel) * c_origin`,
+  `NetworkBasic.py:410`; `get_section_overhead` documents it as the already-travelled share).
+- **A rider whose boarding is in progress: resolved, and it is onboard rather than pending.**
+  `veh_obj.pax` gains the rider when the boarding leg **starts** (`Vehicles.py:254`), which is
+  why `get_nr_pax_without_currently_boarding` exists. My run-time probe for the divergence found
+  0 cases, so it is not observable within a decision epoch here; the source is the evidence.
+- **The stop currently being served still counts in `remaining_stops`: resolved, it counts.**
+  84 of 1,982 candidate slots had a first stop already started (85 locked) and
+  `len(list_plan_stops)` includes it, so a vehicle mid-boarding reads 1 rather than 0.
+- **The quoted pickup is not overwritten after acceptance: matched** P2.7's finding —
+  `prq.offer.offered_waiting_time`, set once by `_create_user_offer`; 0 pending riders lacked a
+  quote across both days.
+- **`update_tt_and_check_plan`'s signature and copy behaviour: matched.** Its only routing call
+  is `return_travel_costs_1to1` (`VehiclePlan.py:860`); `keep_feasible` and `init_plan_state`
+  stay at their defaults so neither `set_infeasible_locked` nor the `pax_info` carry-over branch
+  runs; `VehiclePlan.copy()` copies every `PlanStop` (`:578`); `pax_info` is rebound to `{}` and
+  repopulated with fresh lists before anything appends, so the shallow `pax_info.copy()` leaks
+  nothing. §5.2 exception (a) is confirmed at `PlanStop.copy()` (`:324`, shallow
+  `boarding_dict.copy()`) and `:897` (`boarding_dict[-1].remove(rid)`), and never fired.
+- **`free_seats` over `veh_obj.pax`: matched** — `rq.nr_pax` is on the traveler
+  (`TravelerModels.py:98`), and `max_parcels` is a separate capacity with no parcels in this
+  scenario.
+
+Two corrections to the spec, both found by the verification failing to be runnable as written:
+
+- **§8's P2.10 asked for "10 decisions where some candidate has two or more pending riders". No
+  such candidate exists on the reference day** — the maximum there is **1**, over 1,982 candidate
+  slots in 436 decisions. The requirement is not satisfiable on the day the item names, which is
+  why Ritun's 2024-10-09 addition mattered beyond the cache question: that day has 23 candidate
+  slots with 2 pending riders across 22 decisions, and the hand computation ran there. Both §5.2
+  and §8 now record the limit and where to go for a multi-rider candidate.
+- **An absolute steps/second comparison against P1.10's 11.47 measures the machine, not the
+  code.** The pre-P2.10 tree measured **11.40** steps/s early in this session and **9.66** two
+  hours later, unchanged, at a load average of 2.84. Had I reported the naive before/after I
+  would have claimed a 16% regression that the profiler puts at 0.4%. §8's P2.10 now specifies
+  the interleaved A/B instead, with the figures.
+
+One deliberate deviation from §5.2, stated because it is a change in when work happens: **the
+re-timed copy is skipped when a candidate vehicle has no pending rider.** §5.2 says "one
+re-timed copy per candidate vehicle per decision"; features 9, 10 and 12 are 0.0 in that case
+anyway, so the copy would be computed and discarded. 168 of 436 decisions re-time anything at
+all. No feature value changes, and a test pins both the skip and the one-copy-when-needed rule.
+
+Nothing failed. **Stopping here** — not starting P2.11.
