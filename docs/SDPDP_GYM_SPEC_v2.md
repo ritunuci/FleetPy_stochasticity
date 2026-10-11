@@ -1097,7 +1097,22 @@ Two layers.
    model; at evaluation set `training = False` and `norm_reward = False`. Evaluating with
    mismatched statistics is a silent and very common failure.
 
-The env raises if any observation value is non-finite (P2.12).
+   *(Wired in P2.12 as `train_sdpdp.build_venv` / `save_vecnormalize` / `load_vecnormalize`,
+   with `gamma` a config key the same value feeds to PPO in P2.13. Two findings worth carrying:
+   **the masks pass through the wrapper untouched** — `get_action_masks` calls
+   `env_method("action_masks")`, `VecNormalize` does not override it and `VecEnvWrapper`
+   forwards to `self.venv` — verified on a real 2-worker venv, including that
+   `is_masking_supported`, which is what `MaskablePPO` itself calls, also forwards; and
+   **`RunningMeanStd` starts at `count = 1e-4, mean = 0, var = 1`**, so even the very first
+   normalised observation is neither the raw value nor zero — a raw `is_valid` of 1.0 comes out
+   at about 0.005. That is what makes `greedy_action`'s `is_valid` guard refuse a normalised
+   vector from the first step onwards, rather than only once the statistics have moved.)*
+
+The env raises `ValueError` if any observation value is non-finite, at reset and at step
+(P2.12). **The message names the offending features through the layout map**, because with 139
+features the alternative is a silent dead policy: `VecNormalize` would absorb a NaN into its
+running mean, every later observation of that feature would come out NaN, and the loss would go
+to NaN some updates later with nothing pointing back at the observation that caused it.
 
 ---
 
@@ -2549,7 +2564,8 @@ committed `corpus_hash` and `baseline_hash` are unchanged and
 
 ### P2.12 — `VecNormalize` and the full-observation check
 
-**Files:** `train_sdpdp.py`, `src/rl_gym/gym_env.py`, `tests/test_rl_gym_env.py`
+**Files:** `train_sdpdp.py`, `src/rl_gym/gym_env.py`, `tests/test_rl_gym_env.py`,
+`tests/test_rl_gym_train.py` (new)
 
 - Wrap the `SubprocVecEnv` in `VecNormalize` per §5.3, `gamma` taken from the same config value
   as PPO's.
@@ -2557,10 +2573,25 @@ committed `corpus_hash` and `baseline_hash` are unchanged and
   `training = False` and `norm_reward = False`.
 - The env raises `ValueError` on any non-finite observation value, at reset and at step.
 
+**`tests/test_rl_gym_train.py` is the only test module that imports `torch` /
+`stable_baselines3` / `sb3_contrib`, and the only one that spawns `SubprocVecEnv` workers.**
+Ritun's decision in P2.12, and P2.13 extends the same file: §8a's OpenMP import-order
+constraint is a `torch` problem, so confining it to one file keeps it out of
+`tests/test_rl_gym_env.py` and the rest of the suite. That module must call
+`mp.set_forkserver_preload(["numpy"])` before building a venv — see §8a, which P2.12 extended
+with the measurement.
+
 **How Ritun verifies:** `check_env` through `MaskRespectingShim` on the full observation, with
 `base_seed` absent and set; a save → load round trip reproduces identical normalised observations
 for a fixed input; the P1.10 gate, byte for byte (`VecNormalize` sits outside the env, and the
-gate runs the unwrapped env).
+gate runs the unwrapped env). Plus the two checks Ritun added, both on a real wrapped venv:
+`get_action_masks` on the wrapped env equals what the unwrapped envs report, element for
+element; and the **normalised** observation is refused by `greedy_action`'s `is_valid` guard
+while the raw one from the same wrapper still passes.
+
+**What the gate does and does not prove here.** It drives the unwrapped env, so it cannot say
+anything about `VecNormalize`; what it proves is that the non-finite guard — new code in the
+env's hot path — changes nothing. The wrapper rests on the mask and round-trip tests instead.
 
 **Commit:** `RL-GYM: add VecNormalize wiring and non-finite observation guard`
 
@@ -2847,6 +2878,25 @@ else.** SB3 passes `CloudpickleWrapper(env_fn)` as a `Process` argument, so what
 the process boundary must pickle. A pre-constructed env holding a routing engine and open file
 handles cannot, under forkserver or spawn alike. That requirement is about picklability, not
 about how `__main__` is imported.
+
+**A test module that spawns `SubprocVecEnv` must preload `numpy` by name, because the
+`__main__` mechanism above does not work for it** (found in P2.12). Under
+`python -m unittest …`, `__main__` is unittest's own `__main__.py`, so the default
+`preload = ['__main__']` establishes no numpy-first ordering in the forkserver — and it would
+execute `unittest.main()` inside the forkserver process, re-entering the suite. Measured: the
+three wrapped-venv classes in `tests/test_rl_gym_train.py` died in `setUpClass` with
+`OMP: Error #15 … Abort trap: 6` under `-m unittest` while passing when the same file was run
+as a script. The fix is one line before any venv is built:
+
+```
+import multiprocessing as mp
+mp.set_forkserver_preload(["numpy"])
+```
+
+The forkserver then has numpy loaded before any worker forks from it, and nothing re-enters the
+test runner; both invocations pass. Keep that call, and its comment, at the top of any test
+module that builds a `SubprocVecEnv`. **Scripts keep relying on the `__main__` preload** —
+`train_sdpdp.py` is run as a script and needs no change.
 
 **An alphabetising linter or `isort` run will reintroduce a hard crash.** The import site
 carries a comment saying so; keep it.

@@ -686,13 +686,51 @@ class SDPDPAssignmentEnv(gym.Env):
         self._obs = np.concatenate([
             o.observe_vector(self.sim.operators[0], pending) for o in self._observers
         ]).astype(np.float32)
+        self._check_finite(self._obs, pending)
         self._mask = build_action_mask(len(pending.candidates), self.k_max)
+
+    def _check_finite(self, obs: np.ndarray, pending=None) -> None:
+        """Raise `ValueError` on any non-finite observation value (P2.12).
+
+        Both `reset()` and `step()` reach this through `_observe`, which is the only place a
+        real observation is built — the terminal observation is all zeros and finite by
+        construction.
+
+        **The message names the features**, through the layout map, rather than only reporting
+        that something is non-finite. With 139 features and `VecNormalize` downstream, a NaN
+        would otherwise surface as a silent dead policy: `VecNormalize` would fold it into a
+        running mean, every later observation of that feature would come out NaN, and the loss
+        would go to NaN some updates later with nothing pointing back here.
+        """
+        bad = ~np.isfinite(obs)
+        if not bad.any():
+            return
+        names = []
+        for name, sl in self.observation_layout.items():
+            offsets = np.flatnonzero(bad[sl])
+            if offsets.size:
+                values = obs[sl][offsets]
+                # plain ints and floats, not numpy scalars: under numpy 2 `list(offsets)`
+                # renders as [np.int64(3)], which turns a message meant to point at a slot
+                # into something you have to decode
+                names.append(f"{name}{[int(i) for i in offsets]}"
+                             f"={[float(v) for v in values]}")
+        where = (f" at rid {pending.rid_struct}, sim_time {pending.sim_time}"
+                 if pending is not None else "")
+        raise ValueError(
+            f"non-finite observation{where}: {int(bad.sum())} of {obs.size} values. "
+            f"Offending feature(s): {'; '.join(names) or 'none in the layout'}. "
+            f"A NaN or inf here would be absorbed into VecNormalize's running statistics and "
+            f"poison every later observation of that feature (§5.3), so the env stops instead."
+        )
 
     def _set_terminal_observation(self) -> None:
         """Zeros, with reject the only legal action.
 
         Zeros is in-space and reads correctly: every candidate slot is invalid, which is true
         -- there is no decision left. The mask keeps reject legal so it is never all-False.
+        All-zero is finite, so P2.12's guard has nothing to catch here; a test asserts that
+        rather than leaving it to be assumed.
         """
         self._obs = np.zeros(self.observation_space.shape, dtype=np.float32)
         self._mask = build_action_mask(0, self.k_max)

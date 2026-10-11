@@ -3067,3 +3067,137 @@ failed, correctly. Rewritten with explicit rows that exercise **both** sides of
 **§5.2 is now complete**: 96 candidate + 24 request + 19 global = 139 at `K = 8`.
 
 Nothing failed. **Stopping here** — not starting P2.12.
+
+---
+
+## P2.12 — STARTED 2026-10-10 22:55
+Files I will touch: train_sdpdp.py, src/rl_gym/gym_env.py, tests/test_rl_gym_env.py,
+tests/test_rl_gym_train.py (new), docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.11 committed, tree clean. Observation length 139.
+
+VERIFY confirmed before starting, against the installed sb3 2.9.0 / sb3_contrib 2.9.0 /
+torch 2.10.0 / gymnasium 1.3.0 / numpy 2.2.6:
+- **`VecNormalize(venv, training=True, norm_obs=True, norm_reward=True, clip_obs=10.0,
+  clip_reward=10.0, gamma=0.99, epsilon=1e-8, norm_obs_keys=None)`.** `gamma` **defaults to
+  0.99**, exactly the trap §5.3 warns about: left alone it would normalise rewards against a
+  ~100-step horizon while PPO discounts over ~1000. It must come from the same config value PPO
+  reads.
+- **`VecNormalize.save(path)` and `VecNormalize.load(path, venv)`**, the latter a static method
+  taking the venv to attach to.
+- **Masks pass through the wrapper untouched, structurally.** `get_action_masks` on a `VecEnv`
+  does `np.stack(env.env_method("action_masks"))`; `VecNormalize` **is** a `VecEnv`, does **not**
+  override `env_method`, and `VecEnvWrapper.env_method` is a bare forward to `self.venv`.
+- **`is_masking_supported`** — what `MaskablePPO` itself calls, and what would silently turn
+  masking off — goes through `has_attr`, which `VecEnvWrapper` also forwards.
+- **`VecNormalize` transforms observations and rewards only**, so there is no path by which
+  normalisation could reach a mask: masks never travel through `step()`'s return.
+
+Approved before starting:
+- **Ritun's placement decision: the wrapped-venv tests go in a new
+  `tests/test_rl_gym_train.py`, not `tests/test_rl_gym_env.py`** — that keeps `torch`, and with
+  it §8a's deferred OpenMP import-order constraint, out of the env test module. P2.13 extends
+  the same file. `tests/test_rl_gym_train.py` joins P2.12's Files line (§8 listed it under
+  P2.13).
+- **Ritun's two added checks**, both on a real wrapped `SubprocVecEnv`:
+  1. `get_action_masks` on the wrapped env returns each worker's mask **unchanged**, equal to
+     what the unwrapped envs report.
+  2. The **normalised** observation is never fed to `greedy_action`, and its `is_valid` guard
+     refuses it. Two cases, which fail differently: at the first reset the running variance is
+     zero so every normalised feature is 0.0, and after a few steps `is_valid` is a non-0/1
+     float. The raw observation must still pass, so the test cannot pass by `greedy_action`
+     refusing everything.
+- Stated plainly because it bounds what the gate proves: **the P1.10 gate cannot prove
+  `VecNormalize` is harmless**, since the gate drives the unwrapped env and the wrapper sits
+  outside it (§8). What the gate proves here is that the non-finite guard — new code in the
+  env's hot path — changes nothing. The wrapper rests on the mask and round-trip tests.
+
+## P2.12 — DONE 2026-10-10 23:40 — awaiting Ritun's verification
+
+Files changed:
+- `train_sdpdp.py` — `build_venv(cfg, n_workers, normalize=True, training=True)`,
+  `save_vecnormalize(venv, checkpoint_path)`, `load_vecnormalize(checkpoint_path, venv,
+  for_evaluation=True)`; `gamma` config key (0.999) and `VECNORMALIZE_FILE` / `CLIP_OBS`
+  constants; `smoke_test(..., normalize=True)` so the wrapper is exercised by
+  `python train_sdpdp.py` rather than first inside a training run; `--no-vecnormalize` and
+  `--gamma` flags; the worker-PID bookkeeping now reads through `venv.unwrapped`.
+- `src/rl_gym/gym_env.py` — `_check_finite`, called from `_observe`, which is the single site
+  both `reset()` and `step()` pass through.
+- `tests/test_rl_gym_env.py` — `TestNonFiniteObservationGuard` (7). No sb3 import.
+- `tests/test_rl_gym_train.py` — **new.** `TestVecNormalizeWiring` (10),
+  `TestMasksPassThroughVecNormalize` (4), `TestNormalisedObservationsNeverReachGreedy` (5).
+- `docs/SDPDP_GYM_SPEC_v2.md` — §5.3 gains the wiring note, the two findings and the guard's
+  message rule; §8's P2.12 gains the Files line, the test-module decision and what the gate
+  does and does not prove; **§8a gains the forkserver-preload measurement below**.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+Verification — everything passed, nothing failed:
+
+1. **The P1.10 gate, byte for byte** — all 7 gate tests `ok`. Full suite **503 tests pass**,
+   184.3 s, no failures and no skips (477 before; +26).
+2. **`check_env` through `MaskRespectingShim` on the full 139-length observation**, with
+   `base_seed` absent and set — both `ok`.
+3. **Ritun's check 1 — the masks pass through untouched.** On a real 2-worker
+   `VecNormalize(SubprocVecEnv)`: `get_action_masks(wrapped)` equals `get_action_masks(inner)`
+   and `np.stack(inner.env_method("action_masks"))` element for element, at the first decision
+   and across 5 further steps; shape `(2, 9)`, dtype `bool_`, values only `{True, False}`;
+   reject legal in every mask; a second read agrees with the first, so reading never advances
+   anything. `is_masking_supported` — what `MaskablePPO` itself calls, through `has_attr` — is
+   True on both the wrapped and the unwrapped venv.
+4. **Ritun's check 2 — the normalised observation is refused.** `greedy_action` raises
+   `ValueError` naming `VecNormalize` on the **very first** normalised observation and again
+   after 5 steps, when `is_valid` is a non-0/1 float. The control passes: the raw observation
+   from the **same** wrapper (`get_original_obs`) is accepted for both workers, its `is_valid`
+   equals the mask exactly, and the chosen action is legal — so the guard refuses normalised
+   input rather than everything. A further test asserts the wrapper really is transforming the
+   observation, so that comparison is not vacuous.
+5. **Save → load round trip**: `normalize_obs` on a fixed 139-vector is identical before and
+   after, and `obs_rms` mean, var and count all match. `save_vecnormalize` writes
+   `vecnormalize.pkl` beside the checkpoint and raises `TypeError` on an unwrapped venv;
+   `load_vecnormalize` raises `FileNotFoundError` naming the file when it is absent, sets
+   `training = False` **and** `norm_reward = False` for evaluation while leaving `norm_obs` on,
+   and leaves both flags on when `for_evaluation=False`.
+6. **`gamma` comes from the config, not SB3's default**: 0.999 on the wrapper, asserted
+   `!= 0.99`, and a config of 0.95 reaches it. §5.3's settings asserted directly:
+   `norm_obs`, `norm_reward`, `clip_obs = 10.0`, `training`.
+7. **The non-finite guard**, seven ways: a NaN at reset raises naming the feature and
+   `VecNormalize`; a NaN at step raises; an inf raises and reports the value; a poisoned
+   candidate slot names the slot (`delta_cfv[3]`); a whole poisoned feature reports
+   "8 of 139 values"; 40 real decisions never trip it; and the terminal all-zero observation is
+   finite and passes.
+8. **The wrapped smoke test runs**: `python train_sdpdp.py --workers 2` → 547 and 410 steps,
+   exit codes 0, no orphans, `VecNormalize: True`, forkserver, D10 rotation giving distinct
+   days (2024-09-26, 2024-03-27), `unclassified 0` on both.
+
+VERIFY findings:
+- **`VecNormalize`'s signature and defaults: matched**, and the `gamma = 0.99` default is real —
+  hence the explicit pass and the test that pins it.
+- **`save(path)` / `load(path, venv)`: matched**, `load` a static method taking the venv.
+- **Masks pass through `env_method`: matched** the structural reading, and now measured.
+- **`is_masking_supported` forwards through `has_attr`: matched.**
+
+**Two things I got wrong, both caught by the tests rather than by reasoning:**
+
+- **§8a's `__main__` preload does not carry the numpy-first order into a test module's
+  workers, and my proposal said it would.** Under `python -m unittest …`, `__main__` is
+  unittest's own `__main__.py`: the default `preload = ['__main__']` establishes no ordering in
+  the forkserver, and it would execute `unittest.main()` inside the forkserver, re-entering the
+  suite. All three wrapped-venv classes died in `setUpClass` with `OMP: Error #15 … Abort trap:
+  6`, while the same file run as a script passed — which is exactly the asymmetry §8a describes
+  for scripts. Fixed with `mp.set_forkserver_preload(["numpy"])` at the top of the module, which
+  loads numpy into the forkserver image before any worker forks from it and re-enters nothing:
+  **19/19 pass both under `-m unittest` and as a script.** Recorded in §8a with the measurement,
+  since the next test module that spawns workers will need the same line.
+- **"The first reset normalises everything to zero" was wrong.** I predicted a zero variance
+  from a single sample; SB3's `RunningMeanStd` starts at `count = 1e-4, mean = 0, var = 1`, so
+  the first update pulls the mean *almost* to the sample and leaves a tiny non-zero variance. A
+  raw `is_valid` of 1.0 comes out at about **0.005** with two workers and **0.007** with one —
+  neither 0.0 nor 1.0. My test asserted the all-zero vector and failed, correctly. Rewritten to
+  assert the measured mechanism, which is the stronger statement anyway: the guard refuses the
+  normalised observation from the very first step, not only once the statistics have moved.
+
+One smaller defect of my own, also caught by its test: the guard's message rendered offsets as
+`delta_cfv[np.int64(3)]` under numpy 2, turning a message meant to point at a slot into
+something you have to decode. Fixed in the code — plain `int`/`float` — not in the test.
+
+Nothing failed. **Stopping here** — not starting P2.13.

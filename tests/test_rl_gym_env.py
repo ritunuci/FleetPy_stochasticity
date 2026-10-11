@@ -1212,5 +1212,128 @@ class TestGlobalBlockInTheEnv(unittest.TestCase):
             env.close()
 
 
+class TestNonFiniteObservationGuard(unittest.TestCase):
+    """The env raises `ValueError` on any non-finite observation value (P2.12).
+
+    Why it is worth a guard rather than trusting the features: `VecNormalize` would absorb a
+    NaN into its running mean, every later observation of that feature would come out NaN, and
+    the loss would go to NaN some updates later with nothing pointing back at the observation
+    that caused it (§5.3).
+    """
+
+    @staticmethod
+    def _poison(env, feature="idle_fraction", value=float("nan")):
+        """Make one named feature non-finite from the next observation onwards."""
+        observer = env._global_observer
+        original = observer.observe
+
+        def poisoned(fleetpy_module, ctx):
+            parts = original(fleetpy_module, ctx)
+            parts[feature] = np.float32(value)
+            return parts
+
+        observer.observe = poisoned
+
+    def test_a_nan_at_reset_raises_and_names_the_feature(self):
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            self._poison(env)
+            with self.assertRaises(ValueError) as cm:
+                env.reset()
+            message = str(cm.exception)
+            self.assertIn("non-finite observation", message)
+            self.assertIn("idle_fraction", message)
+            self.assertIn("VecNormalize", message)
+        finally:
+            env.close()
+
+    def test_a_nan_at_step_raises(self):
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            obs, _ = env.reset()
+            self._poison(env)
+            with self.assertRaises(ValueError) as cm:
+                env.step(policy_greedy_action(obs, env.action_masks(),
+                                              env.observation_layout))
+            self.assertIn("idle_fraction", str(cm.exception))
+        finally:
+            env.close()
+
+    def test_an_inf_raises_too_and_reports_the_value(self):
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            self._poison(env, value=float("inf"))
+            with self.assertRaises(ValueError) as cm:
+                env.reset()
+            self.assertIn("inf", str(cm.exception))
+        finally:
+            env.close()
+
+    def test_a_poisoned_candidate_slot_names_the_slot(self):
+        # the message carries the offset within the feature, which for a K-wide candidate
+        # feature is the slot -- "delta_cfv[3]" rather than "something in delta_cfv"
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            observer = env._candidate_observer
+            original = observer.observe
+
+            def poisoned(fleetpy_module, ctx):
+                parts = original(fleetpy_module, ctx)
+                arr = np.array(parts["delta_cfv"], dtype=np.float32)
+                arr[3] = np.float32("nan")
+                parts["delta_cfv"] = arr
+                return parts
+
+            observer.observe = poisoned
+            with self.assertRaises(ValueError) as cm:
+                env.reset()
+            self.assertIn("delta_cfv[3]", str(cm.exception).replace(" ", ""))
+        finally:
+            env.close()
+
+    def test_the_guard_counts_every_offending_value(self):
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            observer = env._candidate_observer
+            original = observer.observe
+
+            def poisoned(fleetpy_module, ctx):
+                parts = original(fleetpy_module, ctx)
+                parts["offered_wait"] = np.full(env.k_max, np.nan, dtype=np.float32)
+                return parts
+
+            observer.observe = poisoned
+            with self.assertRaises(ValueError) as cm:
+                env.reset()
+            self.assertIn(f"{K} of {OBS_LEN} values", str(cm.exception))
+        finally:
+            env.close()
+
+    def test_a_clean_episode_never_trips_the_guard(self):
+        # 40 real decisions, so the guard is known not to fire on the normal path
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            obs, _ = env.reset()
+            for _ in range(40):
+                obs, _r, terminated, _t, _i = env.step(
+                    policy_greedy_action(obs, env.action_masks(), env.observation_layout))
+                if terminated:
+                    break
+        finally:
+            env.close()
+
+    def test_the_terminal_observation_is_finite(self):
+        # all-zero by construction, so the guard has nothing to catch there -- asserted rather
+        # than assumed, since `_set_terminal_observation` bypasses `_observe`
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            env.reset()
+            env._set_terminal_observation()
+            self.assertTrue(np.all(np.isfinite(env._obs)))
+            env._check_finite(env._obs)              # must not raise
+        finally:
+            env.close()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
