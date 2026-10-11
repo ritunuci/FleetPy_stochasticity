@@ -38,7 +38,9 @@ from src.misc import config
 from src.misc.globals import (
     G_DAY_DIR,
     G_DIR_DEMAND,
+    G_DIR_FCTRL,
     G_NETWORK_NAME,
+    G_OP_ACT_FLEET_SIZE,
     G_OP_MODULE,
     G_RANDOM_SEED,
     G_RL_MODE,
@@ -54,6 +56,8 @@ from src.misc.init_modules import load_simulation_environment
 from src.rl_gym.day_rotation import day_for_episode, training_days
 from src.rl_gym.corpus import DEFAULT_CORPUS_DIR, load_manifest, verify_corpus
 from src.rl_gym.observers import (
+    ActiveFleetSchedule,
+    ArrivalBaseline,
     CandidateObserver,
     GlobalStateObserver,
     NodeCoordinates,
@@ -183,7 +187,18 @@ class SDPDPAssignmentEnv(gym.Env):
             weekday_vocab=self.manifest["weekday_vocab"],
             month_vocab=self.manifest["month_vocab"],
         )
-        self._global_observer = GlobalStateObserver(self.scenario_parameters)
+        # P2.6's baseline, with its manifest-recorded hash verified against the parsed rows
+        # (trap 16, guard 2), and the scheduled active fleet curve. Both static, both built
+        # once; the baseline additionally checks that its minute grid and windows cover this
+        # scenario, so a scenario off the grid fails here rather than mid-episode (guard 1).
+        self._arrival_baseline = ArrivalBaseline(self.manifest)
+        self._active_fleet = ActiveFleetSchedule(self._active_fleet_path())
+        self._global_observer = GlobalStateObserver(
+            self.scenario_parameters,
+            arrival_baseline=self._arrival_baseline,
+            active_fleet=self._active_fleet,
+            wait_normalizer_s=cfg.get("wait_normalizer_s"),
+        )
         #: the order the observers are concatenated in, and so the order of the layout map.
         #: Block order is candidate, request, global (§5.2).
         self._observers = (self._candidate_observer, self._request_observer,
@@ -353,6 +368,23 @@ class SDPDPAssignmentEnv(gym.Env):
                 f"np.random.seed, which rejects anything above 2**32 - 1 (P1.9)."
             )
 
+    def _active_fleet_path(self) -> str:
+        """`op_act_fs_file`'s absolute path, the way `TimeBasedFS.add_init` builds it.
+
+        `dir_names[G_DIR_FCTRL]/elastic_fleet_size/<file>` (`TimeBasedFS.py:51`), through
+        `get_directory_dict` rather than a reassembled path, so this cannot drift from what the
+        simulation will resolve. Read-only; the fleet-sizing module is never touched (§5.2).
+        """
+        file_name = self.scenario_parameters.get(G_OP_ACT_FLEET_SIZE)
+        if file_name is None:
+            raise ValueError(
+                f"the global block's `active_*` features need {G_OP_ACT_FLEET_SIZE}, which this "
+                f"scenario does not set. `TimeBasedFS` raises on the same thing, so a scenario "
+                f"without it could not have run anyway (§5.2)."
+            )
+        fctrl_dir = get_directory_dict(dict(self.scenario_parameters))[G_DIR_FCTRL]
+        return os.path.join(fctrl_dir, "elastic_fleet_size", str(file_name))
+
     def _resolve_demand_dir(self, day_dir_name: str) -> str:
         """Absolute demand directory for `day_dir_name`, via FleetPy's own path builder.
 
@@ -495,6 +527,10 @@ class SDPDPAssignmentEnv(gym.Env):
         # before the episode runs, rather than at the first decision.
         self._request_observer.set_stats_tracker(self._stats)
         self._request_observer.set_episode_day(self._episode_weekday, self._episode_month)
+        # the global block's two, the same way (P2.11). set_episode_month raises here, at reset,
+        # against the baseline's own months.
+        self._global_observer.set_stats_tracker(self._stats)
+        self._global_observer.set_episode_month(self._episode_month)
 
         self.sim.demand._boarding_callback = self._on_pickup
         self.sim.demand._exit_callback = self._on_exit

@@ -51,7 +51,8 @@ CORPUS_DIR = os.path.join(CORPUS_ROOT, "corpus")
 K = 8
 REQUEST_BLOCK = 24          # §5.2: 4 coords + n_pax + 3 dow + 10 month + 6 zone
 CANDIDATE_FEATURES = 12     # §5.2: per candidate slot, after P2.10
-OBS_LEN = CANDIDATE_FEATURES * K + REQUEST_BLOCK + 4      # 124 at K = 8
+GLOBAL_BLOCK = 19           # §5.2: after P2.11
+OBS_LEN = CANDIDATE_FEATURES * K + REQUEST_BLOCK + GLOBAL_BLOCK   # 139 at K = 8
 
 
 def make_cfg(**overrides):
@@ -116,7 +117,7 @@ class TestConstruction(unittest.TestCase):
     def test_spaces(self):
         env = SDPDPAssignmentEnv(make_cfg())
         self.assertEqual(env.action_space.n, K + 1)
-        # 12K candidate (P2.10) + 24 request (P2.9) + 4 global; 124 at K = 8
+        # 12K candidate (P2.10) + 24 request (P2.9) + 19 global (P2.11); 139 at K = 8
         self.assertEqual(env.observation_space.shape, (OBS_LEN,))
         self.assertEqual(env.observation_space.dtype, np.float32)
         self.assertTrue(np.all(env.observation_space.low == -np.inf))
@@ -129,7 +130,7 @@ class TestConstruction(unittest.TestCase):
                 env = SDPDPAssignmentEnv(make_cfg(K=k))
                 self.assertEqual(
                     env.observation_space.shape,
-                    (CANDIDATE_FEATURES * k + REQUEST_BLOCK + 4,))
+                    (CANDIDATE_FEATURES * k + REQUEST_BLOCK + GLOBAL_BLOCK,))
                 self.assertEqual(env.action_space.n, k + 1)
 
     def test_rl_settings_forced(self):
@@ -881,7 +882,7 @@ class TestRequestBlockInTheEnv(unittest.TestCase):
     def tearDownClass(cls):
         cls.env.close()
 
-    def test_observation_length_is_one_hundred_and_twenty_four(self):
+    def test_observation_length_is_one_hundred_and_thirty_nine(self):
         self.assertEqual(self.env.observation_space.shape, (OBS_LEN,))
         self.assertEqual(self.obs.shape, (OBS_LEN,))
 
@@ -895,8 +896,9 @@ class TestRequestBlockInTheEnv(unittest.TestCase):
                          list(CandidateObserver.FEATURE_NAMES))
         self.assertEqual(names[CANDIDATE_FEATURES:CANDIDATE_FEATURES + 5],
                          ["o_lat", "o_lon", "d_lat", "d_lon", "n_pax"])
-        self.assertEqual(names[-4:],
+        self.assertEqual(names[-GLOBAL_BLOCK:-GLOBAL_BLOCK + 4],
                          ["time_sin", "time_cos", "day_progress", "idle_fraction"])
+        self.assertEqual(names[-3:], ["active_now", "active_30", "active_60"])
 
     def test_the_layout_still_tiles(self):
         slices = list(self.env.observation_layout.values())
@@ -1077,6 +1079,137 @@ class TestCandidateBlockInTheEnv(unittest.TestCase):
         stops = self.obs[layout["remaining_stops"]][valid]
         self.assertTrue(np.all(stops >= 0.0))
         self.assertTrue(np.all(stops == np.round(stops)), "remaining_stops is a raw count")
+
+
+class TestGlobalBlockInTheEnv(unittest.TestCase):
+    """The global block's wiring against a real simulation (P2.11)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.env = SDPDPAssignmentEnv(make_cfg())
+        cls.obs, cls.info = cls.env.reset()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.env.close()
+
+    def test_the_global_block_contributes_nineteen(self):
+        self.assertEqual(self.env._global_observer.output_length, GLOBAL_BLOCK)
+        self.assertEqual(self.env.observation_space.shape, (OBS_LEN,))
+
+    def test_the_committed_artifacts_are_loaded_and_verified(self):
+        # ArrivalBaseline verifies baseline_hash against the manifest at construction (trap 16)
+        self.assertEqual(len(self.env._arrival_baseline.rows), 14940)
+        self.assertEqual(self.env._arrival_baseline.sd_floor, 1.0)
+        self.assertTrue(self.env._active_fleet.path.endswith("example_active_fleetsize.csv"))
+        self.assertIn("elastic_fleet_size", self.env._active_fleet.path)
+
+    def test_the_active_fleet_path_is_the_one_timebasedfs_uses(self):
+        # TimeBasedFS.add_init: dir_names[G_DIR_FCTRL]/elastic_fleet_size/<file>
+        self.assertTrue(os.path.isfile(self.env._active_fleet.path))
+
+    def test_the_episode_month_is_injected_on_every_reset(self):
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            for _ in range(2):
+                env.reset()
+                self.assertEqual(env._global_observer._month, env._episode_month)
+                self.assertIs(env._global_observer._stats, env._stats)
+        finally:
+            env.close()
+
+    def test_the_active_features_follow_the_schedule_over_the_day(self):
+        """§8's P2.11 figures: 8 → 11 at 08:00, 11 → 12 at 10:00, 12 → 11 at 17:00."""
+        sched = self.env._active_fleet
+        for t, want in ((25200, 8), (28799, 8), (28800, 11), (35999, 11), (36000, 12),
+                        (61199, 12), (61200, 11), (70000, 11)):
+            with self.subTest(t=t):
+                self.assertEqual(round(sched.active_fraction(t, 12) * 12), want)
+
+    def test_the_anomaly_is_consistent_with_the_committed_table(self):
+        layout = self.env.observation_layout
+        baseline = self.env._arrival_baseline
+        month = self.env._episode_month
+        t = baseline.floor_minute(self.env._pending.sim_time)
+        for window_s, key in ((1800, "30"), (3600, "60")):
+            observed = float(self.obs[layout[f"arrivals_{key}"]][0])
+            expected = float(self.obs[layout[f"arrivals_expected_{key}"]][0])
+            z = float(self.obs[layout[f"arrivals_z_{key}"]][0])
+            self.assertAlmostEqual(expected, baseline.expected(month, t, window_s), places=4)
+            sd = max(baseline.sd(t, window_s), baseline.sd_floor)
+            self.assertAlmostEqual(z, (observed - expected) / sd, places=4)
+
+    def test_the_rolling_counts_match_the_tracker_at_a_real_decision(self):
+        stats = self.env._stats
+        layout = self.env.observation_layout
+        for kind, stem in (("arrival", "arrivals"), ("decline", "declines"),
+                           ("cancel", "cancels")):
+            for window_s in (1800, 3600):
+                self.assertEqual(
+                    float(self.obs[layout[f"{stem}_{window_s // 60}"]][0]),
+                    float(stats.count(kind, window_s)),
+                    f"{stem}_{window_s // 60}")
+
+    def test_a_corrupted_baseline_stops_construction(self):
+        """Guard 2 end to end: the env refuses to start on a baseline the manifest disowns."""
+        from src.rl_gym import corpus
+        from src.rl_gym.observers import ArrivalBaseline
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = corpus.read_baseline()
+            month, t, window_s, mean, sd = rows[0]
+            rows[0] = (month, t, window_s, mean + 1.0, sd)
+            path = os.path.join(tmp, "arrival_baseline.csv")
+            with open(path, "w", newline="") as fh:
+                fh.write(",".join(corpus.BASELINE_COLUMNS) + "\n")
+                for m, tt, w, mu, s in rows:
+                    fh.write(f"{m},{tt},{w},{corpus.FLOAT_FMT.format(mu)},"
+                             f"{corpus.FLOAT_FMT.format(s)}\n")
+            with self.assertRaises(ValueError) as cm:
+                ArrivalBaseline(corpus.load_manifest(), path)
+            self.assertIn("baseline_hash", str(cm.exception))
+            self.assertIn("build_arrival_baseline", str(cm.exception))
+
+    def test_every_global_feature_is_finite_over_many_real_decisions(self):
+        env = SDPDPAssignmentEnv(make_cfg())
+        layout_names = [n for n in env.observation_layout][-GLOBAL_BLOCK:]
+        try:
+            obs, _ = env.reset()
+            for _ in range(40):
+                for name in layout_names:
+                    v = obs[env.observation_layout[name]]
+                    self.assertTrue(np.all(np.isfinite(v)), name)
+                obs, _r, terminated, _t, _i = env.step(
+                    policy_greedy_action(obs, env.action_masks(), env.observation_layout))
+                if terminated:
+                    break
+        finally:
+            env.close()
+
+    def test_decision_times_are_minute_aligned_so_the_flooring_is_a_no_op(self):
+        """§5.2 calls the online and offline windows identical; that needs minute alignment.
+
+        Every `rq_time` in the corpus is minute-aligned and steps are multiples of 10 s, so a
+        decision should land exactly on a minute and `floor_minute` should change nothing. If
+        this ever fails, observed `[sim_time − W, sim_time)` and expected `[t − W, t)` are
+        offset by up to 59 s and the z-score compares slightly different windows.
+        """
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            obs, _ = env.reset()
+            misaligned = 0
+            checked = 0
+            for _ in range(60):
+                checked += 1
+                if float(env._pending.sim_time) % 60 != 0:
+                    misaligned += 1
+                obs, _r, terminated, _t, _i = env.step(
+                    policy_greedy_action(obs, env.action_masks(), env.observation_layout))
+                if terminated:
+                    break
+            self.assertEqual(misaligned, 0, f"{misaligned} of {checked} decisions were not "
+                                            f"minute-aligned")
+        finally:
+            env.close()
 
 
 if __name__ == "__main__":

@@ -2893,3 +2893,177 @@ anyway, so the copy would be computed and discarded. 168 of 436 decisions re-tim
 all. No feature value changes, and a test pins both the skip and the one-copy-when-needed rule.
 
 Nothing failed. **Stopping here** — not starting P2.11.
+
+---
+
+## P2.11 — STARTED 2026-10-10 21:40
+Files I will touch: src/rl_gym/observers.py, src/rl_gym/gym_env.py, src/rl_gym/corpus.py,
+src/rl_gym/offline/build_arrival_baseline.py, tests/test_rl_gym_observers.py,
+tests/test_rl_gym_env.py, docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.10 committed, tree clean. `K` stays 8. Observation length 124 → **139**.
+
+VERIFY confirmed before starting, all four against the source:
+- **The `op_act_fs_file` path and formula: matched §5.2 exactly.**
+  `dir_names[G_DIR_FCTRL]/elastic_fleet_size/<file>` (`TimeBasedFS.py:51`) and
+  `min(max(int(np.round(share × nr_vehicles)), 0), nr_vehicles)` (`:98`) over the column
+  `share_active_fleet_size`. It reproduces §8's expected steps: 0.7 × 12 = 8.4 → **8** at 07:00,
+  0.9 × 12 = 10.8 → **11** at 08:00, 1.0 → **12** at 10:00, 0.9 → **11** at 17:00. The rounding
+  is why the feature is not simply the share (8/12 = 0.667), which is why `nr_vehicles` is needed
+  at all — taken from `fleetpy_module.nr_vehicles`, the identical attribute `TimeBasedFS`
+  multiplies by, rather than parsed out of `op_fleet_composition`.
+  `_read_active_vehicle_file` also drops rows before `start_time`, which changes nothing here
+  because the file's first row is exactly `start_time`.
+- **The committed baseline's `sd` is pooled across months**, as P2.6 defines it: exactly one
+  distinct value per `(t_seconds, window_s)` over all ten months. The lookup may therefore take
+  `sd` from the episode's own month row.
+- **The grid is 747 minutes × 10 months × 2 windows = 14,940 rows**, `t_seconds` 25200–69960,
+  and October's mean is the highest at `W = 30` (22.45 against 16.8–19.8) — consistent with
+  P2.6's verification.
+- **P2.7's API gives what the block needs**: `count(kind, window_s)` fleet-wide with `cells`
+  omitted, and `wait_gap_mean(window_s)` returning seconds or `None`.
+
+Approved before starting — all three guards, plus:
+- **Guard 2 brings two files into the item.** `baseline_hash`, `canonical_baseline_text`,
+  `FLOAT_FMT`, `BASELINE_COLUMNS` and `read_baseline` move from
+  `offline/build_arrival_baseline.py` to `src/rl_gym/corpus.py`, because `src/rl_gym/` must not
+  import from `offline/`; the builder imports them back. Ritun's condition, as in P2.9: the
+  committed `corpus_hash` and `baseline_hash` must be **unchanged** and
+  `build_arrival_baseline --check` must still pass. Recorded here for the comparison:
+  `corpus_hash   6b232cf105d05ad3ccc6c9121e845dace88e406471e3bbd04286edc5dabb85a3`
+  `baseline_hash 5638cb266b54615492c85cb52de1be49faefde16cfe55e532f623fe5913622e1`
+- **Guard 1:** the observer validates its windows and the scenario's `start_time`/`end_time`
+  against the manifest at construction, so a scenario off the baseline's grid fails there rather
+  than as a `KeyError` 40 s into an episode.
+- **Guard 3:** an unknown month raises at `reset()`, as P2.9's `set_episode_day` does.
+- **Record the minute-alignment count in §5.2.** §5.2 calls the online and offline windows the
+  "identical definition", which is exactly true only when `sim_time` is minute-aligned; otherwise
+  observed `[sim_time − W, sim_time)` and expected `[t − W, t)` are offset by up to 59 s. Every
+  `rq_time` in both days checked is minute-aligned, so the flooring should be a no-op. Measure
+  the count of decisions with `sim_time % 60 ≠ 0`, record it, change no behaviour either way.
+
+## P2.11 — DONE 2026-10-10 22:30 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/observers.py` — `GlobalStateObserver` extended from 4 to **19 features**; new
+  `ArrivalBaseline` (P2.6's table, the `z` formula, `floor_minute`, `check_scenario`) and
+  `ActiveFleetSchedule` (`share_at`, `active_fraction`) loaders beside `NodeCoordinates`; both
+  are **required** constructor arguments of the observer, with `set_stats_tracker` and
+  `set_episode_month` as the per-episode injection.
+- `src/rl_gym/corpus.py` — `BASELINE_COLUMNS`, `FLOAT_FMT`, `DEFAULT_BASELINE`,
+  `canonical_baseline_text`, `baseline_hash`, `read_baseline` moved in from the offline builder,
+  plus new `verify_baseline`.
+- `src/rl_gym/offline/build_arrival_baseline.py` — imports those six back instead of defining
+  them; its now-unused `hashlib` import removed. No behaviour change.
+- `src/rl_gym/gym_env.py` — builds the baseline and the schedule at construction (the baseline
+  verifying its hash and checking the scenario's grid as it loads); new `_active_fleet_path`
+  resolving `op_act_fs_file` through `get_directory_dict` the way `TimeBasedFS.add_init` does;
+  injects the tracker and the month into the global observer in `reset()`.
+- `tests/test_rl_gym_observers.py` — `write_baseline` / `write_active_fleet` /
+  `global_observer` / `wide_global_observer` factories that build the **real** loaders over temp
+  artifacts rather than stub doubles; the tracker stubs gained `count` and `wait_gap_mean`;
+  `TestArrivalBaseline` (14), `TestActiveFleetSchedule` (9), `TestGlobalBlock` (18).
+- `tests/test_rl_gym_env.py` — `GLOBAL_BLOCK` constant and `OBS_LEN` now 139;
+  `TestGlobalBlockInTheEnv` (10).
+- `docs/SDPDP_GYM_SPEC_v2.md` — the `active_*` and pooled-`sd` VERIFY answers, the two new
+  guards and the injection rule in §5.2; the minute-alignment measurement under §5.2 Windows;
+  §8's P2.11 Files line, the `corpus.py` move and its proof; trap 16 extended to the baseline.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+Verification — everything passed, nothing failed:
+
+1. **The P1.10 gate, byte for byte** — all 7 gate tests `ok`. Full suite **477 tests pass**,
+   169.8 s, no failures and no skips (426 before; +51).
+2. **Observation length 124 → 139**, the global block contributing exactly 19, the layout still
+   tiling `[0, 139)` with no gap or overlap, block order candidate → request → global, and
+   `active_60` last.
+3. **Every one of the 15 new features hand-computed at 10 decisions: 0 mismatches.** The
+   recomputation is independent of P2.7's tracker: arrival counts come from the demand file's
+   kept rows (both `load_demand_file` filters), declines and cancellations from a separate spy on
+   the exit callback, the wait gap from the pickup callback and `prq.offer`, `expected` and `sd`
+   straight out of `arrival_baseline.csv` with pandas, and `active_*` from
+   `example_active_fleetsize.csv` with the formula applied by hand.
+4. **`active_now` × 12 over the reference day: 8 → 11 → 12 → 11**, at the first decision after
+   each schedule change (07:01, 08:01, 10:00, 17:00) — §8's expected figures. `active_30` and
+   `active_60` lead by 30 and 60 min, checked both in a unit test and against the committed file
+   at 25200/28800/36000/61200/69999.
+5. **Minute alignment: 0 of 436 decisions** have `sim_time % 60 ≠ 0`, so the baseline's flooring
+   is a no-op and §5.2's "identical definition" of the online and offline windows is exactly
+   true here. Recorded in §5.2 with the structural reason; a test keeps the count at 0.
+6. **Distribution of the 15 new features over the reference day** (436 decisions):
+
+   | feature | min | median | p95 | max | exactly 0 |
+   |---|---|---|---|---|---|
+   | `arrivals_30` | 0 | 19 | 26 | 30 | 0.5% |
+   | `arrivals_60` | 0 | 39 | 48 | 51 | 0.5% |
+   | `arrivals_expected_30` | 0.44 | 21.50 | 26.78 | 28.11 | 0% |
+   | `arrivals_expected_60` | 0.44 | 42.72 | 51.22 | 54.44 | 0% |
+   | `arrivals_z_30` | −3.63 | −0.53 | +0.97 | +1.72 | 0% |
+   | `arrivals_z_60` | −2.68 | −0.64 | +0.58 | +0.89 | 0% |
+   | `declines_30` / `_60` | 0 / 0 | 4 / 9 | 10 / 17 | 15 / 20 | 2.8% |
+   | `cancels_30` / `_60` | 0 / 0 | 1 / 2 | 4 / 5 | 5 / 5 | 38.5% / 17.4% |
+   | `wait_gap_30` | −0.099 | −0.022 | +0.058 | +0.136 | 0.7% |
+   | `wait_gap_60` | −0.087 | −0.025 | +0.047 | +0.097 | 0.7% |
+   | `active_now` | 0.667 | 1.000 | 1.000 | 1.000 | 0% |
+   | `active_60` | 0.917 | 1.000 | 1.000 | 1.000 | 0% |
+
+   Worth noting, not a defect: **`arrivals_z` runs negative on this day** (median −0.53 at
+   W = 30). 2024-06-20 is an evaluation day with 445 requests, and the baseline is built from
+   **training** days only (§8 P2.6), June's averaging 19.75 arrivals per 30 min against this
+   day's median 19. A single day sitting half an SD below its month's training mean is ordinary;
+   the negative median is the anomaly feature working, not misreading.
+7. **Guard 1**, four ways: a window the baseline has no rows for raises and names it; a scenario
+   starting before or ending after the grid raises and names the covered minutes; the reference
+   window is accepted; and an observer subclass declaring a 7200 s window fails at construction.
+8. **Guard 2**, five ways: an edited baseline row makes construction raise, naming
+   `baseline_hash` and trap 16; a manifest without `baseline_hash` raises; a missing baseline
+   names the build command; the committed pair loads cleanly through the runtime path; and the
+   end-to-end env test corrupts a copy of the real baseline and gets the raise with the rebuild
+   command in it.
+9. **Guard 3**: an unknown month raises at `set_episode_month` over four cases including `None`;
+   `observe` raises without a tracker and without a month; and the env re-injects both on every
+   reset (asserted by identity, so a stale tracker from the previous episode fails).
+10. **Throughput: no measurable cost.** Interleaved A/B in one process, 4-feature global block
+    against 19: **10.98 → 10.99 steps/s, −0.0%**. Measured this way for the reason P2.10
+    established — an absolute figure compared across sessions measures the machine.
+
+**Ritun's condition on the `corpus.py` move — neither hash moved.**
+- `build_arrival_baseline --check`: "the committed baseline and manifest match a fresh build,
+  and agree with each other".
+- `corpus_hash` **6b232cf105d05ad3ccc6c9121e845dace88e406471e3bbd04286edc5dabb85a3** and
+  `baseline_hash` **5638cb266b54615492c85cb52de1be49faefde16cfe55e532f623fe5913622e1** — each
+  identical three ways: the value recorded in the STARTED entry, the committed manifest, and a
+  fresh recomputation through `corpus.py`.
+- `git status -- data/` is empty: nothing under `data/` changed.
+
+VERIFY findings:
+- **The `op_act_fs_file` path and formula: matched the spec exactly**, including the figures §8
+  expects. Recorded in §5.2 with the note that the rounding is why the feature is not the share,
+  and that `nr_vehicles` comes from `fleetpy_module.nr_vehicles`.
+- **The committed baseline's `sd` is pooled across months: matched P2.6's definition** — one
+  distinct value per `(t_seconds, window_s)` over all ten months. A test asserts it against the
+  real artifact, because the lookup is keyed by `(t, window)` and would silently take one
+  month's value if that ever stopped being true.
+- **The baseline's grid: matched** — 14,940 rows, 747 minutes, 25200–69960, ten months, both
+  windows, `sd_floor` 1.0 and `minute_s` 60 read from the manifest rather than literals.
+- **P2.7's query API: matched** — `count(kind, window_s)` fleet-wide with `cells` omitted (a test
+  asserts the global block never passes `cells`, which is the request block's job) and
+  `wait_gap_mean` returning seconds or `None`.
+
+One mistake of mine, caught immediately by a guard P2.8 added: **my first `observe` emitted
+`arrivals_expected_30, arrivals_z_30, arrivals_expected_60, arrivals_z_60` while `feature_spec`
+declares both `expected`s then both `z`s.** `observe_vector` raised on the very first run and
+named both lists. Without P2.8's check the vector would have been built in the emission order
+while every consumer read it in the declared order — two features silently swapped, which no
+byte gate would catch. Fixed by computing the pair per window and emitting in declared order,
+with a comment saying why.
+
+A second mistake, in a test of mine rather than the code: `test_z_uses_the_sd_floor` asserted the
+fixture's `sd` was below the floor, but the fixture writes `sd = 0.25 × month` and the lookup is
+keyed by `(t, window)`, so the last month written (10) wins at 2.5 — above the floor. The test
+failed, correctly. Rewritten with explicit rows that exercise **both** sides of
+`max(sd, sd_floor)`: sd 0.25 with the floor applying, and sd 4.0 with the real sd applying.
+
+**§5.2 is now complete**: 96 candidate + 24 request + 19 global = 139 at `K = 8`.
+
+Nothing failed. **Stopping here** — not starting P2.12.

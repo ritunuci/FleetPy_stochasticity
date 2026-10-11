@@ -34,7 +34,6 @@ place to look and the two files cannot drift apart unnoticed.
 import argparse
 import csv
 import datetime as dt
-import hashlib
 import json
 import os
 import statistics
@@ -46,9 +45,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 # the single definitions of "a training day" and of corpus_hash, shared with the env's
 # construction-time check (P2.9). `offline/` may import from `src/rl_gym/`, never the reverse.
 from src.rl_gym.corpus import (  # noqa: E402
+    BASELINE_COLUMNS,
+    FLOAT_FMT,
+    baseline_hash,
+    canonical_baseline_text,
     corpus_file_hashes,
     corpus_hash,
     file_sha256,
+    read_baseline,
     training_day_files,
 )
 
@@ -70,10 +74,6 @@ MINUTE = 60
 MONTH_VOCAB = list(range(1, 11))                     # Jan-Oct
 WEEKDAY_VOCAB = ["Tue", "Wed", "Thu"]
 _WEEKDAY_OF = {1: "Tue", 2: "Wed", 3: "Thu"}
-
-BASELINE_COLUMNS = ["month", "t_seconds", "window_s", "mean", "sd"]
-#: float format used both when writing and when hashing, so parse -> format is idempotent
-FLOAT_FMT = "{:.12g}"
 
 EXPECTED_TRAINING_DAYS = 101
 
@@ -154,38 +154,9 @@ def compute_baseline(corpus_dir: str = CORPUS) -> Tuple[List[Tuple], Dict[str, o
 # hashing -- parsed content, never bytes
 # ------------------------------------------------------------------------------------ #
 
-def canonical_baseline_text(rows: Sequence[Tuple]) -> str:
-    """One line per row, sorted, floats at a fixed precision.
-
-    Hashed instead of the file's bytes so a line-ending or trailing-newline difference on
-    another machine cannot change the hash. `FLOAT_FMT` is used both here and when writing, so
-    write -> parse -> format is idempotent and the hash round-trips exactly.
-    """
-    lines = []
-    for month, t, window_s, mean, sd in sorted(rows, key=lambda r: (r[0], r[1], r[2])):
-        lines.append(f"{int(month)},{int(t)},{int(window_s)},"
-                     f"{FLOAT_FMT.format(mean)},{FLOAT_FMT.format(sd)}")
-    return "\n".join(lines)
-
-
-def baseline_hash(rows: Sequence[Tuple]) -> str:
-    return hashlib.sha256(canonical_baseline_text(rows).encode("utf-8")).hexdigest()
-
-
 # ------------------------------------------------------------------------------------ #
 # read / write
 # ------------------------------------------------------------------------------------ #
-
-def read_baseline(path: str = BASELINE) -> List[Tuple]:
-    """The committed baseline as parsed rows. A plain table: no comments, no metadata."""
-    with open(path, newline="") as fh:
-        reader = csv.DictReader(fh)
-        if reader.fieldnames != BASELINE_COLUMNS:
-            raise ValueError(f"{path}: expected header {BASELINE_COLUMNS}, "
-                             f"got {reader.fieldnames}")
-        return [(int(r["month"]), int(r["t_seconds"]), int(r["window_s"]),
-                 float(r["mean"]), float(r["sd"])) for r in reader]
-
 
 def write_both(rows: Sequence[Tuple], corpus_dir: str, baseline_path: str,
                manifest_path: str) -> Dict[str, object]:

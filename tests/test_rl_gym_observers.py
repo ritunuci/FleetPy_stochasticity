@@ -8,6 +8,7 @@ slot 0 always the argmin) live in P1.6's verification script and later in P1.10.
 import math
 import os
 import sys
+import tempfile
 import unittest
 
 import numpy as np
@@ -272,6 +273,113 @@ def candidate_observer(k_max=K, scenario=None, **kw):
                              StubCoords(), **kw)
 
 
+#: a tiny baseline grid covering the stub scenario's minutes, written to a temp file by
+#: `make_baseline`. Three months, both windows, the whole [START, END) minute range would be
+#: 747 rows, so the tests use a coarse grid and widen START/END only where needed.
+BASELINE_MONTHS = (5, 6, 10)
+
+
+def write_baseline(tmpdir, rows=None, start=25200, end=70000, step=60):
+    """A real `arrival_baseline.csv` plus the manifest that hashes it.
+
+    The tests build the **real** `ArrivalBaseline` over this rather than a stub double: the
+    lookup, the sd floor, `check_scenario` and `verify_baseline` are all things a stub would
+    reimplement and then fail to keep in step.
+    """
+    from src.rl_gym import corpus
+    if rows is None:
+        rows = []
+        for month in BASELINE_MONTHS:
+            for t in range(start, end, step):
+                for window_s in (1800, 3600):
+                    # mean rises with the month and the hour; sd stays small so the floor bites
+                    mean = month + (t - start) / 3600.0 + (0.0 if window_s == 1800 else 10.0)
+                    rows.append((month, t, window_s, round(mean, 6), 0.25 * month))
+    path = os.path.join(tmpdir, "arrival_baseline.csv")
+    with open(path, "w", newline="") as fh:
+        fh.write(",".join(corpus.BASELINE_COLUMNS) + "\n")
+        for month, t, window_s, mean, sd in rows:
+            fh.write(f"{month},{t},{window_s},{corpus.FLOAT_FMT.format(mean)},"
+                     f"{corpus.FLOAT_FMT.format(sd)}\n")
+    manifest = {"baseline_hash": corpus.baseline_hash(rows), "baseline_rows": len(rows),
+                "sd_floor": 1.0, "minute_s": 60}
+    return path, manifest, rows
+
+
+def write_active_fleet(tmpdir, pairs=((25200, 0.7), (28800, 0.9), (36000, 1.0),
+                                      (61200, 0.9))):
+    from src.misc.globals import G_ACT_VEH_SHARE as share_col
+    path = os.path.join(tmpdir, "example_active_fleetsize.csv")
+    with open(path, "w", newline="") as fh:
+        fh.write(f"time,{share_col}\n")
+        for t, share in pairs:
+            fh.write(f"{t},{share}\n")
+    return path
+
+
+def wide_global_observer(tmpdir):
+    """A global observer whose baseline covers 00:00-25:00, for the clock-time features.
+
+    The production grid is the scenario's own `[start_time, end_time)` and a lookup outside it
+    raises by design (guard 1) — a decision cannot occur there, so a `KeyError` would be a real
+    bug. The `time_sin`/`time_cos`/`day_progress` tests deliberately probe times no decision can
+    reach, so they get a table that covers them rather than a tolerant lookup.
+    """
+    from src.rl_gym.observers import ActiveFleetSchedule, ArrivalBaseline
+    sub = os.path.join(tmpdir, "wide")
+    os.makedirs(sub, exist_ok=True)
+    rows = [(6, t, w, 1.0, 1.0) for t in range(0, 90120, 60) for w in (1800, 3600)]
+    path, manifest, _rows = write_baseline(sub, rows=rows)
+    obs = GlobalStateObserver(SCENARIO, ArrivalBaseline(manifest, path),
+                              ActiveFleetSchedule(write_active_fleet(sub)))
+    obs.set_stats_tracker(_ZeroTracker())
+    obs.set_episode_month(6)
+    return obs
+
+
+def global_observer(tmpdir, scenario=None, **kw):
+    """`GlobalStateObserver` over a real baseline and a real schedule in `tmpdir`."""
+    from src.rl_gym.observers import ActiveFleetSchedule, ArrivalBaseline
+    path, manifest, _rows = write_baseline(tmpdir)
+    return GlobalStateObserver(SCENARIO if scenario is None else scenario,
+                               ArrivalBaseline(manifest, path),
+                               ActiveFleetSchedule(write_active_fleet(tmpdir)), **kw)
+
+
+class _ZeroTracker:
+    """A rolling-stats tracker that has seen nothing."""
+
+    def zone_count(self, kind, window_s, node):
+        return 0
+
+    def count(self, kind, window_s, cells=None):
+        return 0
+
+    def wait_gap_mean(self, window_s):
+        return None
+
+
+class _RecordingTracker:
+    """Returns a distinguishable number per query and records what was asked."""
+
+    def __init__(self, counts=None, wait_gap=None):
+        self.calls = []
+        self.fleet_calls = []
+        self.counts = counts or {}
+        self.wait_gap = wait_gap
+
+    def zone_count(self, kind, window_s, node):
+        self.calls.append((kind, window_s, int(node)))
+        return 11
+
+    def count(self, kind, window_s, cells=None):
+        self.fleet_calls.append((kind, window_s, cells))
+        return self.counts.get((kind, window_s), 0)
+
+    def wait_gap_mean(self, window_s):
+        return None if self.wait_gap is None else self.wait_gap.get(window_s)
+
+
 def make_candidates(waits, cfvs, rq_time=30000.0, rid_struct=7):
     """Candidates whose plans quote the given waits (seconds) and insertion costs."""
     return [
@@ -412,32 +520,36 @@ class TestCandidateObserver(unittest.TestCase):
 class TestGlobalStateObserver(unittest.TestCase):
 
     def setUp(self):
-        self.obs = GlobalStateObserver(SCENARIO)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.obs = global_observer(self.tmp.name)
+        self.obs.set_stats_tracker(_ZeroTracker())
+        self.obs.set_episode_month(6)
 
-    def test_output_length_is_four(self):
-        self.assertEqual(self.obs.output_length, 4)
+    def test_output_length_is_nineteen(self):
+        self.assertEqual(self.obs.output_length, 19)
 
     def test_shape_and_dtype(self):
         fc = StubFleetCtrl([VRL_STATES.IDLE] * 3)
         vec = self.obs.observe_vector(fc, StubCtx([], sim_time=START))
-        self.assertEqual(vec.shape, (4,))
+        self.assertEqual(vec.shape, (19,))
         self.assertEqual(vec.dtype, np.float32)
 
     def test_time_of_day_is_absolute_clock_not_episode_fraction(self):
         fc = StubFleetCtrl([VRL_STATES.IDLE])
         # 06:00 -> t_of_day = 0.25 -> sin = 1, cos = 0
-        parts = self.obs.observe(fc, StubCtx([], sim_time=21600.0))
+        parts = wide_global_observer(self.tmp.name).observe(fc, StubCtx([], sim_time=21600.0))
         self.assertAlmostEqual(float(parts["time_sin"]), 1.0, places=5)
         self.assertAlmostEqual(float(parts["time_cos"]), 0.0, places=5)
         # midnight -> sin = 0, cos = 1
-        parts = self.obs.observe(fc, StubCtx([], sim_time=0.0))
+        parts = wide_global_observer(self.tmp.name).observe(fc, StubCtx([], sim_time=0.0))
         self.assertAlmostEqual(float(parts["time_sin"]), 0.0, places=5)
         self.assertAlmostEqual(float(parts["time_cos"]), 1.0, places=5)
 
     def test_time_of_day_wraps_at_midnight(self):
         fc = StubFleetCtrl([VRL_STATES.IDLE])
-        a = self.obs.observe(fc, StubCtx([], sim_time=3600.0))
-        b = self.obs.observe(fc, StubCtx([], sim_time=3600.0 + 86400.0))
+        a = wide_global_observer(self.tmp.name).observe(fc, StubCtx([], sim_time=3600.0))
+        b = wide_global_observer(self.tmp.name).observe(fc, StubCtx([], sim_time=3600.0 + 86400.0))
         self.assertAlmostEqual(float(a["time_sin"]), float(b["time_sin"]), places=6)
         self.assertAlmostEqual(float(a["time_cos"]), float(b["time_cos"]), places=6)
 
@@ -458,9 +570,9 @@ class TestGlobalStateObserver(unittest.TestCase):
     def test_episode_progress_clipped_past_end_time(self):
         # record_remaining_assignments advances past end_time
         fc = StubFleetCtrl([VRL_STATES.IDLE])
-        parts = self.obs.observe(fc, StubCtx([], sim_time=END + 14400.0))
+        parts = wide_global_observer(self.tmp.name).observe(fc, StubCtx([], sim_time=END + 14400.0))
         self.assertEqual(float(parts["day_progress"]), 1.0)
-        parts = self.obs.observe(fc, StubCtx([], sim_time=START - 100.0))
+        parts = wide_global_observer(self.tmp.name).observe(fc, StubCtx([], sim_time=START - 100.0))
         self.assertEqual(float(parts["day_progress"]), 0.0)
 
     def test_idle_fraction_excludes_out_of_service_from_denominator(self):
@@ -505,11 +617,15 @@ class TestGlobalStateObserver(unittest.TestCase):
 
     def test_rejects_bad_config(self):
         with self.assertRaises(ValueError):
-            GlobalStateObserver({G_SIM_START_TIME: 70000.0, G_SIM_END_TIME: 25200.0})
+            global_observer(self.tmp.name,
+                            scenario=dict(SCENARIO, **{G_SIM_START_TIME: 70000.0,
+                                                       G_SIM_END_TIME: 25200.0}))
         with self.assertRaises(ValueError):
-            GlobalStateObserver({G_SIM_START_TIME: 100.0, G_SIM_END_TIME: 100.0})
+            global_observer(self.tmp.name,
+                            scenario=dict(SCENARIO, **{G_SIM_START_TIME: 100.0,
+                                                       G_SIM_END_TIME: 100.0}))
         with self.assertRaises(KeyError):
-            GlobalStateObserver({})
+            global_observer(self.tmp.name, scenario={})
 
 
 class TestPaddingMustNotCompeteInArgmin(unittest.TestCase):
@@ -593,7 +709,11 @@ class TestGreedyActionHelper(unittest.TestCase):
 
     def setUp(self):
         self.obs_builder = candidate_observer()
-        self.glob = GlobalStateObserver(SCENARIO)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.glob = global_observer(self.tmp.name)
+        self.glob.set_stats_tracker(_ZeroTracker())
+        self.glob.set_episode_month(6)
         # the same map the env publishes, built from the same specs in the same order (P2.8)
         self.layout = build_observation_layout([self.obs_builder, self.glob])
 
@@ -693,26 +813,32 @@ class TestGreedyActionHelper(unittest.TestCase):
 
 class TestCombinedLength(unittest.TestCase):
 
-    def test_sum_of_observer_lengths_is_twelve_k_plus_four(self):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_sum_of_observer_lengths_is_twelve_k_plus_nineteen(self):
         total = candidate_observer().output_length + \
-            GlobalStateObserver(SCENARIO).output_length
-        self.assertEqual(total, 12 * K + 4)
-        self.assertEqual(total, 100)
+            global_observer(self.tmp.name).output_length
+        self.assertEqual(total, 12 * K + 19)
+        self.assertEqual(total, 115)
 
     def test_scales_with_k_without_hardcoding(self):
         for k in (1, 4, 8, 16):
             with self.subTest(k=k):
                 total = candidate_observer(k).output_length + \
-                    GlobalStateObserver(SCENARIO).output_length
-                self.assertEqual(total, 12 * k + 4)
+                    global_observer(self.tmp.name).output_length
+                self.assertEqual(total, 12 * k + 19)
 
     def test_concatenated_vector_shape_and_dtype(self):
         cand = candidate_observer()
-        glob = GlobalStateObserver(SCENARIO)
+        glob = global_observer(self.tmp.name)
+        glob.set_stats_tracker(_ZeroTracker())
+        glob.set_episode_month(6)
         ctx = StubCtx(make_candidates([100.0, 200.0], [1.0, 2.0]))
         fc = StubFleetCtrl([VRL_STATES.IDLE, VRL_STATES.ROUTE])
         vec = np.concatenate([cand.observe_vector(fc, ctx), glob.observe_vector(fc, ctx)])
-        self.assertEqual(vec.shape, (12 * K + 4,))
+        self.assertEqual(vec.shape, (12 * K + 19,))
         self.assertEqual(vec.dtype, np.float32)
         self.assertTrue(np.all(np.isfinite(vec)))
 
@@ -897,26 +1023,16 @@ class TestRequestObserver(unittest.TestCase):
         self.assertEqual(vec.dtype, np.float32)
 
 
-class _ZeroTracker:
-    def zone_count(self, kind, window_s, node):
-        return 0
-
-
-class _RecordingTracker:
-    def __init__(self):
-        self.calls = []
-
-    def zone_count(self, kind, window_s, node):
-        self.calls.append((kind, window_s, int(node)))
-        return 11
-
-
 class TestObservationLayout(unittest.TestCase):
     """The name -> slice map (P2.8), built from the static specs."""
 
     def setUp(self):
         self.cand = candidate_observer()
-        self.glob = GlobalStateObserver(SCENARIO)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.glob = global_observer(self.tmp.name)
+        self.glob.set_stats_tracker(_ZeroTracker())
+        self.glob.set_episode_month(6)
         self.observers = [self.cand, self.glob]
         self.layout = build_observation_layout(self.observers)
         self.obs_len = sum(o.output_length for o in self.observers)
@@ -946,6 +1062,7 @@ class TestObservationLayout(unittest.TestCase):
         self.assertEqual(self.layout["delta_cfv"], slice(K, 2 * K))
         self.assertEqual(self.layout["offered_wait"], slice(2 * K, 3 * K))
         self.assertEqual(self.layout["idle_fraction"], slice(12 * K + 3, 12 * K + 4))
+        self.assertEqual(self.layout["active_60"], slice(12 * K + 18, 12 * K + 19))
 
     def test_output_length_is_derived_from_the_spec(self):
         for o in self.observers:
@@ -994,7 +1111,10 @@ class TestObservationLayout(unittest.TestCase):
                 return parts
         ctx = StubCtx(make_candidates([100.0], [1.0]))
         with self.assertRaises(ValueError) as cm:
-            Renamed(SCENARIO).observe_vector(StubFleetCtrl([VRL_STATES.IDLE]), ctx)
+            renamed = Renamed(SCENARIO, self.glob.baseline, self.glob.active_fleet)
+            renamed.set_stats_tracker(_ZeroTracker())
+            renamed.set_episode_month(6)
+            renamed.observe_vector(StubFleetCtrl([VRL_STATES.IDLE]), ctx)
         self.assertIn("feature_spec", str(cm.exception))
 
 
@@ -1010,7 +1130,11 @@ class TestGreedyEnforcesIsValidAgainstTheMask(unittest.TestCase):
 
     def setUp(self):
         self.cand = candidate_observer()
-        self.glob = GlobalStateObserver(SCENARIO)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.glob = global_observer(self.tmp.name)
+        self.glob.set_stats_tracker(_ZeroTracker())
+        self.glob.set_episode_month(6)
         self.layout = build_observation_layout([self.cand, self.glob])
 
     def _obs(self, n, cfvs=None):
@@ -1589,6 +1713,391 @@ class TestCandidateBlockLeavesSimulationStateAlone(unittest.TestCase):
         self.assertTrue(nw.rebound)
         # everything in the new dict was computed by the observer, so all of it goes
         self.assertEqual(nw.travel_time_infos, {})
+
+
+class TestArrivalBaseline(unittest.TestCase):
+    """P2.6's table as the anomaly reads it, plus guards 1 and 2 (P2.11)."""
+
+    def setUp(self):
+        from src.rl_gym.observers import ArrivalBaseline
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path, self.manifest, self.rows = write_baseline(self.tmp.name)
+        self.baseline = ArrivalBaseline(self.manifest, self.path)
+
+    def test_mean_is_read_per_month_and_minute(self):
+        for month, t, window_s, mean, _sd in self.rows[:40]:
+            self.assertAlmostEqual(self.baseline.expected(month, t, window_s), mean, places=9)
+
+    def test_sd_is_pooled_across_months(self):
+        """P2.6 pools the SD over all training days; the committed table reflects that.
+
+        Verified against the real artifact in P2.11: exactly one distinct `sd` per
+        `(t_seconds, window_s)` across all ten months. Here the fixture deliberately writes a
+        *per-month* sd, so this test pins what the lookup does — it is keyed by `(t, window)`
+        and the last row written wins — rather than claiming the fixture is pooled.
+        """
+        from src.rl_gym.corpus import read_baseline
+        committed = read_baseline()
+        by_key = {}
+        for month, t, window_s, _mean, sd in committed:
+            by_key.setdefault((t, window_s), set()).add(sd)
+        self.assertEqual(max(len(v) for v in by_key.values()), 1,
+                         "the committed baseline's sd must be pooled across months (P2.6)")
+
+    def test_z_uses_the_sd_floor(self):
+        """`z = (observed − expected) / max(sd, sd_floor)` (§5.2), tested both sides of it.
+
+        Explicit rows rather than the shared fixture: its `sd` is keyed by `(t, window)`, so
+        the last month written wins and which value lands there is not something to reason
+        about in a test about the floor.
+        """
+        from src.rl_gym.observers import ArrivalBaseline
+        rows = [(6, 25200, 1800, 10.0, 0.25),      # sd below the floor
+                (6, 25260, 1800, 10.0, 4.0),       # sd above it
+                (6, 25200, 3600, 10.0, 0.25),
+                (6, 25260, 3600, 10.0, 4.0)]
+        path, manifest, _rows = write_baseline(os.path.join(self.tmp.name), rows=rows)
+        baseline = ArrivalBaseline(manifest, path)
+        self.assertEqual(baseline.sd_floor, 1.0)
+
+        # sd 0.25 -> the floor of 1.0 applies, so a 3-arrival excess is 3 SD, not 12
+        exp, z = baseline.z(13.0, 6, 25200, 1800)
+        self.assertEqual(exp, 10.0)
+        self.assertAlmostEqual(z, 3.0, places=9)
+
+        # sd 4.0 -> the real sd applies
+        exp, z = baseline.z(14.0, 6, 25260, 1800)
+        self.assertEqual(exp, 10.0)
+        self.assertAlmostEqual(z, 1.0, places=9)
+
+    def test_z_is_zero_when_observed_equals_expected(self):
+        month, t, window_s = 6, 25200, 3600
+        exp = self.baseline.expected(month, t, window_s)
+        _e, z = self.baseline.z(exp, month, t, window_s)
+        self.assertEqual(z, 0.0)
+
+    def test_z_keeps_its_sign(self):
+        month, t, window_s = 6, 25200, 1800
+        exp = self.baseline.expected(month, t, window_s)
+        self.assertLess(self.baseline.z(exp - 5.0, month, t, window_s)[1], 0.0)
+        self.assertGreater(self.baseline.z(exp + 5.0, month, t, window_s)[1], 0.0)
+
+    def test_floor_minute(self):
+        for sim_time, want in ((25200, 25200), (25259.9, 25200), (25260, 25260),
+                               (33720, 33720), (33725, 33720)):
+            self.assertEqual(self.baseline.floor_minute(sim_time), want)
+
+    def test_an_unknown_month_or_minute_raises_rather_than_returning_zero(self):
+        with self.assertRaises(KeyError):
+            self.baseline.expected(11, 25200, 1800)
+        with self.assertRaises(KeyError):
+            self.baseline.expected(6, 25230, 1800)       # not on the minute grid
+        with self.assertRaises(KeyError):
+            self.baseline.sd(99999, 1800)
+
+    # ---- guard 1 ---------------------------------------------------- #
+
+    def test_check_scenario_rejects_an_uncovered_window(self):
+        with self.assertRaises(ValueError) as cm:
+            self.baseline.check_scenario(25200, 70000, (1800, 7200))
+        self.assertIn("7200", str(cm.exception))
+
+    def test_check_scenario_rejects_a_scenario_outside_the_minute_grid(self):
+        with self.assertRaises(ValueError) as cm:
+            self.baseline.check_scenario(0.0, 70000, (1800, 3600))
+        self.assertIn("covers minutes", str(cm.exception))
+        with self.assertRaises(ValueError):
+            self.baseline.check_scenario(25200, 100000, (1800, 3600))
+
+    def test_check_scenario_accepts_the_reference_window(self):
+        self.baseline.check_scenario(25200, 70000, (1800, 3600))      # must not raise
+
+    # ---- guard 2 ---------------------------------------------------- #
+
+    def test_an_edited_baseline_fails_the_manifest_hash(self):
+        from src.rl_gym.observers import ArrivalBaseline
+        edited = list(self.rows)
+        month, t, window_s, mean, sd = edited[5]
+        edited[5] = (month, t, window_s, mean + 0.5, sd)
+        path, _manifest, _rows = write_baseline(os.path.join(self.tmp.name), rows=edited)
+        with self.assertRaises(ValueError) as cm:
+            ArrivalBaseline(self.manifest, path)         # the OLD manifest
+        self.assertIn("baseline_hash", str(cm.exception))
+        self.assertIn("trap 16", str(cm.exception))
+
+    def test_a_manifest_without_a_baseline_hash_raises(self):
+        from src.rl_gym.observers import ArrivalBaseline
+        bad = {k: v for k, v in self.manifest.items() if k != "baseline_hash"}
+        with self.assertRaises(ValueError) as cm:
+            ArrivalBaseline(bad, self.path)
+        self.assertIn("baseline_hash", str(cm.exception))
+
+    def test_a_missing_baseline_file_names_the_build_command(self):
+        from src.rl_gym.observers import ArrivalBaseline
+        with self.assertRaises(ValueError) as cm:
+            ArrivalBaseline(self.manifest, os.path.join(self.tmp.name, "nope.csv"))
+        self.assertIn("build_arrival_baseline", str(cm.exception))
+
+    def test_the_committed_artifacts_agree_with_each_other(self):
+        """The real pair, through the runtime path rather than the builder's `--check`."""
+        from src.rl_gym.corpus import load_manifest
+        from src.rl_gym.observers import ArrivalBaseline
+        baseline = ArrivalBaseline(load_manifest())      # raises if they disagree
+        self.assertEqual(len(baseline.rows), 14940)
+        self.assertEqual(baseline.months, list(range(1, 11)))
+        self.assertEqual(baseline.windows_s, [1800, 3600])
+        self.assertEqual(len(baseline.minutes), 747)
+        baseline.check_scenario(25200, 70000, (1800, 3600))
+
+
+class TestActiveFleetSchedule(unittest.TestCase):
+    """`active_*` from `op_act_fs_file`, with `TimeBasedFS`'s own formula (§5.2, P2.11)."""
+
+    def setUp(self):
+        from src.rl_gym.observers import ActiveFleetSchedule
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.schedule = ActiveFleetSchedule(write_active_fleet(self.tmp.name))
+
+    def test_share_in_force_is_the_last_row_at_or_below_t(self):
+        for t, want in ((25200, 0.7), (28799, 0.7), (28800, 0.9), (35999, 0.9),
+                        (36000, 1.0), (61199, 1.0), (61200, 0.9)):
+            with self.subTest(t=t):
+                self.assertAlmostEqual(self.schedule.share_at(t), want, places=9)
+
+    def test_the_last_row_applies_beyond_the_end_of_the_file(self):
+        # §5.2: the schedule's last row holds for the rest of the day
+        self.assertAlmostEqual(self.schedule.share_at(70000), 0.9, places=9)
+        self.assertAlmostEqual(self.schedule.share_at(200000), 0.9, places=9)
+
+    def test_before_the_first_row_the_first_share_applies(self):
+        # unreachable in the reference scenario, whose first row is exactly start_time, but a
+        # clamp beats an IndexError
+        self.assertAlmostEqual(self.schedule.share_at(0), 0.7, places=9)
+
+    def test_the_rounding_is_the_point_not_the_share(self):
+        # TimeBasedFS: min(max(int(np.round(share * n)), 0), n). 0.7 * 12 = 8.4 -> 8 -> 0.667,
+        # which is NOT 0.7 -- which is why nr_vehicles is needed at all
+        self.assertAlmostEqual(self.schedule.active_fraction(25200, 12), 8 / 12, places=9)
+        self.assertNotAlmostEqual(self.schedule.active_fraction(25200, 12), 0.7, places=3)
+
+    def test_the_reference_days_steps(self):
+        """The figures §8's P2.11 expects, times the fleet of 12."""
+        for t, want in ((25200, 8), (28800, 11), (32400, 11), (36000, 12),
+                        (57600, 12), (61200, 11), (64800, 11)):
+            with self.subTest(t=t):
+                self.assertEqual(round(self.schedule.active_fraction(t, 12) * 12), want)
+
+    def test_the_formula_clamps_to_the_fleet(self):
+        from src.rl_gym.observers import ActiveFleetSchedule
+        sched = ActiveFleetSchedule(write_active_fleet(
+            self.tmp.name, pairs=((25200, 1.4), (28800, -0.2))))
+        self.assertEqual(sched.active_fraction(25200, 12), 1.0)
+        self.assertEqual(sched.active_fraction(28800, 12), 0.0)
+
+    def test_no_vehicles_gives_zero_rather_than_dividing_by_zero(self):
+        self.assertEqual(self.schedule.active_fraction(25200, 0), 0.0)
+
+    def test_a_missing_file_or_column_raises(self):
+        from src.rl_gym.observers import ActiveFleetSchedule
+        with self.assertRaises(ValueError):
+            ActiveFleetSchedule(os.path.join(self.tmp.name, "nope.csv"))
+        bad = os.path.join(self.tmp.name, "bad.csv")
+        with open(bad, "w") as fh:
+            fh.write("time,something_else\n25200,0.7\n")
+        with self.assertRaises(ValueError) as cm:
+            ActiveFleetSchedule(bad)
+        self.assertIn("share_active_fleet_size", str(cm.exception))
+
+    def test_the_committed_file_reproduces_the_reference_curve(self):
+        from src.rl_gym.observers import ActiveFleetSchedule
+        real = ActiveFleetSchedule(os.path.join(
+            os.path.dirname(__file__), "..", "data", "fleetctrl", "elastic_fleet_size",
+            "example_active_fleetsize.csv"))
+        for t, want in ((25200, 8), (28800, 11), (36000, 12), (61200, 11), (69999, 11)):
+            with self.subTest(t=t):
+                self.assertEqual(round(real.active_fraction(t, 12) * 12), want)
+
+
+class TestGlobalBlock(unittest.TestCase):
+    """§5.2's 15 new global features (P2.11)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.fc = StubFleetCtrl([VRL_STATES.IDLE] * 12)
+        self.fc.nr_vehicles = 12
+
+    def _observer(self, counts=None, wait_gap=None, month=6, **kw):
+        obs = global_observer(self.tmp.name, **kw)
+        self.tracker = _RecordingTracker(counts=counts, wait_gap=wait_gap)
+        obs.set_stats_tracker(self.tracker)
+        obs.set_episode_month(month)
+        return obs
+
+    def test_nineteen_features_in_sect_5_2_order(self):
+        names = [n for n, _w in self._observer().feature_spec()]
+        self.assertEqual(names, [
+            "time_sin", "time_cos", "day_progress", "idle_fraction",
+            "arrivals_30", "arrivals_60",
+            "arrivals_expected_30", "arrivals_expected_60",
+            "arrivals_z_30", "arrivals_z_60",
+            "declines_30", "declines_60", "cancels_30", "cancels_60",
+            "wait_gap_30", "wait_gap_60",
+            "active_now", "active_30", "active_60"])
+        self.assertEqual(len(names), 19)
+
+    def test_the_four_phase_one_features_keep_their_names_and_positions(self):
+        self.assertEqual([n for n, _w in self._observer().feature_spec()[:4]],
+                         ["time_sin", "time_cos", "day_progress", "idle_fraction"])
+
+    def test_counts_come_from_the_tracker_fleet_wide(self):
+        counts = {("arrival", 1800): 14, ("arrival", 3600): 34,
+                  ("decline", 1800): 3, ("decline", 3600): 7,
+                  ("cancel", 1800): 1, ("cancel", 3600): 5}
+        obs = self._observer(counts=counts)
+        parts = obs.observe(self.fc, StubCtx([], sim_time=33720.0))
+        self.assertEqual(float(parts["arrivals_30"]), 14.0)
+        self.assertEqual(float(parts["arrivals_60"]), 34.0)
+        self.assertEqual(float(parts["declines_30"]), 3.0)
+        self.assertEqual(float(parts["declines_60"]), 7.0)
+        self.assertEqual(float(parts["cancels_30"]), 1.0)
+        self.assertEqual(float(parts["cancels_60"]), 5.0)
+        # fleet-wide means `cells` is not passed (§5.2); the zone counts are the request block's
+        self.assertTrue(all(cells is None for _k, _w, cells in self.tracker.fleet_calls))
+
+    def test_counts_are_raw_not_scaled(self):
+        obs = self._observer(counts={("arrival", 1800): 97})
+        parts = obs.observe(self.fc, StubCtx([], sim_time=33720.0))
+        self.assertEqual(float(parts["arrivals_30"]), 97.0)
+
+    def test_the_observed_count_and_the_anomaly_use_the_same_number(self):
+        """§5.2: "the fleet-wide arrival count and the anomaly's observed count are the same
+        number and appear once"."""
+        obs = self._observer(counts={("arrival", 1800): 20, ("arrival", 3600): 50})
+        t = 33720.0
+        parts = obs.observe(self.fc, StubCtx([], sim_time=t))
+        for window_s, key in ((1800, "30"), (3600, "60")):
+            expected = obs.baseline.expected(6, obs.baseline.floor_minute(t), window_s)
+            sd = max(obs.baseline.sd(obs.baseline.floor_minute(t), window_s),
+                     obs.baseline.sd_floor)
+            self.assertAlmostEqual(float(parts[f"arrivals_expected_{key}"]), expected,
+                                   places=4)
+            self.assertAlmostEqual(
+                float(parts[f"arrivals_z_{key}"]),
+                (float(parts[f"arrivals_{key}"]) - expected) / sd, places=4)
+
+    def test_the_baseline_is_read_at_the_floored_minute(self):
+        obs = self._observer(counts={("arrival", 1800): 5})
+        a = obs.observe(self.fc, StubCtx([], sim_time=33720.0))
+        b = obs.observe(self.fc, StubCtx([], sim_time=33779.0))     # same minute
+        c = obs.observe(self.fc, StubCtx([], sim_time=33780.0))     # the next one
+        self.assertEqual(float(a["arrivals_expected_30"]),
+                         float(b["arrivals_expected_30"]))
+        self.assertNotEqual(float(a["arrivals_expected_30"]),
+                            float(c["arrivals_expected_30"]))
+
+    def test_the_month_selects_the_row(self):
+        counts = {("arrival", 1800): 10}
+        t = 33720.0
+        seen = {}
+        for month in BASELINE_MONTHS:
+            obs = self._observer(counts=counts, month=month)
+            parts = obs.observe(self.fc, StubCtx([], sim_time=t))
+            seen[month] = float(parts["arrivals_expected_30"])
+        # the fixture's mean rises with the month, so a wrong month cannot read the same value
+        self.assertEqual(sorted(seen, key=seen.get), sorted(BASELINE_MONTHS))
+
+    def test_wait_gap_divides_by_the_wait_normalizer(self):
+        obs = self._observer(wait_gap={1800: 150.0, 3600: -30.0})
+        parts = obs.observe(self.fc, StubCtx([], sim_time=33720.0))
+        self.assertAlmostEqual(float(parts["wait_gap_30"]), 150.0 / MAX_WT, places=6)
+        self.assertAlmostEqual(float(parts["wait_gap_60"]), -30.0 / MAX_WT, places=6)
+
+    def test_an_explicit_wait_normalizer_is_used_for_the_wait_gap(self):
+        obs = self._observer(wait_gap={1800: 150.0, 3600: 150.0}, wait_normalizer_s=600.0)
+        parts = obs.observe(self.fc, StubCtx([], sim_time=33720.0))
+        self.assertAlmostEqual(float(parts["wait_gap_30"]), 150.0 / 600.0, places=6)
+
+    def test_an_empty_window_writes_zero_for_the_wait_gap(self):
+        # the tracker returns None when no pickup in the window carried a quote (§5.2)
+        obs = self._observer(wait_gap=None)
+        parts = obs.observe(self.fc, StubCtx([], sim_time=33720.0))
+        self.assertEqual(float(parts["wait_gap_30"]), 0.0)
+        self.assertEqual(float(parts["wait_gap_60"]), 0.0)
+
+    def test_active_features_lead_by_thirty_and_sixty_minutes(self):
+        obs = self._observer()
+        # at 07:30 the schedule reads 0.7 now, 0.9 at 08:00 (+30) and 0.9 at 08:30 (+60)
+        parts = obs.observe(self.fc, StubCtx([], sim_time=27000.0))
+        self.assertAlmostEqual(float(parts["active_now"]), 8 / 12, places=6)
+        self.assertAlmostEqual(float(parts["active_30"]), 11 / 12, places=6)
+        self.assertAlmostEqual(float(parts["active_60"]), 11 / 12, places=6)
+
+    def test_active_features_use_the_operators_fleet_size(self):
+        obs = self._observer()
+        small = StubFleetCtrl([VRL_STATES.IDLE] * 6)
+        small.nr_vehicles = 6
+        parts = obs.observe(small, StubCtx([], sim_time=25200.0))
+        # 0.7 * 6 = 4.2 -> 4 -> 0.667, a different number from the 12-vehicle case
+        self.assertAlmostEqual(float(parts["active_now"]), 4 / 6, places=6)
+
+    def test_everything_is_finite_and_the_right_shape(self):
+        obs = self._observer(counts={("arrival", 1800): 14}, wait_gap={1800: 10.0})
+        vec = obs.observe_vector(self.fc, StubCtx([], sim_time=33720.0))
+        self.assertEqual(vec.shape, (19,))
+        self.assertEqual(vec.dtype, np.float32)
+        self.assertTrue(np.all(np.isfinite(vec)))
+
+    # ---- guard 3 and the injected dependencies ---------------------- #
+
+    def test_an_unknown_month_raises_at_set_episode_month(self):
+        for month in (None, 0, 11, 99):
+            with self.subTest(month=month):
+                obs = global_observer(self.tmp.name)
+                with self.assertRaises(ValueError) as cm:
+                    obs.set_episode_month(month)
+                self.assertIn("month", str(cm.exception))
+
+    def test_observe_raises_without_a_tracker(self):
+        obs = global_observer(self.tmp.name)
+        obs.set_episode_month(6)
+        with self.assertRaises(RuntimeError) as cm:
+            obs.observe(self.fc, StubCtx([], sim_time=33720.0))
+        self.assertIn("rolling-stats tracker", str(cm.exception))
+
+    def test_observe_raises_without_an_episode_month(self):
+        obs = global_observer(self.tmp.name)
+        obs.set_stats_tracker(_ZeroTracker())
+        with self.assertRaises(RuntimeError) as cm:
+            obs.observe(self.fc, StubCtx([], sim_time=33720.0))
+        self.assertIn("episode month", str(cm.exception))
+
+    def test_the_two_artifacts_are_required_not_optional(self):
+        """A missing baseline could only mean zeros for 10 of the 19 features."""
+        from src.rl_gym.observers import ActiveFleetSchedule
+        with self.assertRaises(ValueError) as cm:
+            GlobalStateObserver(SCENARIO, None,
+                                ActiveFleetSchedule(write_active_fleet(self.tmp.name)))
+        self.assertIn("zeros", str(cm.exception))
+        path, manifest, _rows = write_baseline(self.tmp.name)
+        from src.rl_gym.observers import ArrivalBaseline
+        with self.assertRaises(ValueError):
+            GlobalStateObserver(SCENARIO, ArrivalBaseline(manifest, path), None)
+
+    def test_the_windows_are_checked_against_the_baseline_at_construction(self):
+        """Guard 1: a window the baseline has no rows for must fail here, not mid-episode."""
+        from src.rl_gym.observers import ActiveFleetSchedule, ArrivalBaseline
+
+        class WiderWindows(GlobalStateObserver):
+            WINDOWS_S = (1800, 7200)
+
+        path, manifest, _rows = write_baseline(self.tmp.name)
+        with self.assertRaises(ValueError) as cm:
+            WiderWindows(SCENARIO, ArrivalBaseline(manifest, path),
+                         ActiveFleetSchedule(write_active_fleet(self.tmp.name)))
+        self.assertIn("7200", str(cm.exception))
 
 
 if __name__ == "__main__":

@@ -1013,9 +1013,32 @@ Definitions:
   the parsed table is local to that method, and the activation lists it leaves behind are
   consumed as they fire — so reading the file is the only route. The share in force at time `t`
   is the last row with time ≤ `t`, and the last row beyond the end. Read-only: nothing on the
-  fleet-sizing module is touched. VERIFY the path and the formula. The fleet is
+  fleet-sizing module is touched. *(VERIFIED in P2.11: both the path (`TimeBasedFS.py:51`) and
+  the formula (`:98`, over the column `share_active_fleet_size`) matched exactly. The rounding
+  is why the feature is **not** simply the share — 0.7 × 12 = 8.4 → 8 → 0.667 — so
+  `nr_vehicles` is needed, and it is read from `fleetpy_module.nr_vehicles`, the identical
+  attribute `TimeBasedFS` multiplies by, rather than parsed out of `op_fleet_composition`.
+  `_read_active_vehicle_file` also drops rows before `start_time`, which changes nothing here
+  because the reference file's first row is exactly `start_time`.)* The fleet is
   `default_vehtype:12` and the schedule is the same on every day, so these are a deterministic
   function of clock time, included as an explicit signal.
+- **The baseline's `sd` is pooled across months**, so a lookup may take it from any month's row.
+  *(VERIFIED in P2.11 against the committed artifact: exactly one distinct `sd` per
+  `(t_seconds, window_s)` over all ten months, as P2.6's definition requires.)*
+- **Two construction-time guards, added in P2.11**, because every failure they catch would
+  otherwise surface as a `KeyError` or a silent zero mid-episode:
+  - the observer's windows and the scenario's `[start_time, end_time)` are checked against the
+    baseline's own windows and minute grid. The baseline covers 747 minutes of the reference
+    scenario; a scenario outside that grid has no row to read.
+  - the manifest's `baseline_hash` is verified against the baseline's parsed rows, the companion
+    to P2.9's `corpus_hash` check (trap 16). P2.11 is the first item that reads the baseline at
+    runtime, so it is the first that can check it.
+- **The anomaly's two per-episode dependencies are injected, not discovered**, as P2.9 does for
+  the request block: the rolling-stats tracker and the episode's month. An unknown month —
+  `None` included, which is what a non-ISO demand filename yields — **raises at `reset()`**.
+  Both the baseline and the schedule are **required** constructor arguments: an absent one could
+  only mean zeros for 10 of the 19 features, and a feature that silently reads 0.0 is the
+  failure this design keeps engineering out.
 
 #### Windows
 
@@ -1025,6 +1048,16 @@ and cancellations by the moment they fire, pickups by pickup time. Requests with
 timestamp that were processed earlier in the same step are therefore not counted. P2.6's
 offline baseline uses the identical definition, which is what keeps observed and expected
 comparable.
+
+**That identity depends on `sim_time` being minute-aligned, and it is.** The baseline is read at
+`sim_time` floored to the minute, so a decision at, say, 30 030 s would compare an observed
+window `[28 230, 30 030)` against an expected one for `[28 200, 30 000)` — 30 minutes each, but
+offset. **Measured in P2.11: 0 of the 436 decisions on the reference day have
+`sim_time % 60 ≠ 0`**, so the flooring is a no-op and the two windows coincide exactly. The
+reason is structural rather than lucky: every `rq_time` in the corpus is minute-aligned (§2.9),
+`start_time` is a multiple of 60, and `time_step` is 10, so a request is processed at the step
+equal to its own `rq_time`. A test asserts the count stays 0; if it ever fails, the z-score is
+comparing slightly different windows and the offset is what to look at first.
 
 #### Positions
 
@@ -2484,16 +2517,31 @@ quantity feeding both the statistics and the observation.
 
 ### P2.11 — Global block
 
-**Files:** `src/rl_gym/observers.py` (`GlobalStateObserver`), `src/rl_gym/gym_env.py`,
-`tests/test_rl_gym_observers.py`, `tests/test_rl_gym_env.py` (it asserts the observation shape)
+**Files:** `src/rl_gym/observers.py` (`GlobalStateObserver`, `ArrivalBaseline`,
+`ActiveFleetSchedule`), `src/rl_gym/gym_env.py`, `src/rl_gym/corpus.py`,
+`src/rl_gym/offline/build_arrival_baseline.py`, `tests/test_rl_gym_observers.py`,
+`tests/test_rl_gym_env.py` (it asserts the observation shape)
 
 Per §5.2's global block: rolling counts and the wait gap from P2.7, the anomaly from P2.6's
-baseline, `active_*` from `op_act_fs_file` read as §5.2 describes.
+baseline, `active_*` from `op_act_fs_file` read as §5.2 describes. Observation length 124 →
+**139** at `K = 8`, which completes §5.2's table.
+
+**The last two files are there for the `baseline_hash` guard** (§5.2). `baseline_hash`,
+`canonical_baseline_text`, `read_baseline`, `BASELINE_COLUMNS` and `FLOAT_FMT` move from
+`offline/build_arrival_baseline.py` into `corpus.py`, because `src/rl_gym/` may not import from
+`offline/` and a second implementation of the hash in the runtime path is the drift the manifest
+exists to prevent — the same move, for the same reason, that P2.9 made for `corpus_hash`. The
+builder imports them back. *(Done in P2.11: both committed hashes unchanged and `--check` still
+passing, proved below.)*
 
 **How Ritun verifies:** the P1.10 gate, byte for byte; for 10 decisions, every feature matches a
 hand computation; across the reference day `active_now` × 12 steps 8 → 11 at 08:00, 11 → 12 at
 10:00 and 12 → 11 at 17:00, with `active_30` and `active_60` leading by 30 and 60 min; total
-observation length 139 at `K = 8`.
+observation length 139 at `K = 8`. Plus, for the guards: an edited baseline makes construction
+raise and names `baseline_hash`; a window or scenario window outside the baseline's grid raises
+at construction; an unknown month raises at `reset()`; and after the `corpus.py` move the
+committed `corpus_hash` and `baseline_hash` are unchanged and
+`build_arrival_baseline --check` still passes.
 
 **Commit:** `RL-GYM: add Phase 2 global observation block`
 
@@ -2861,6 +2909,12 @@ carries a comment saying so; keep it.
     over the training files' names and contents, and from P2.9 on the env raises at construction
     when `corpus/` no longer matches. A baseline computed
     over a different set of days produces plausible-looking anomalies that are simply wrong.
+    **From P2.11 the manifest's `baseline_hash` is verified too**, against the baseline's parsed
+    rows, so the other half of the pair cannot drift either: a baseline rebuilt or hand-edited
+    without its manifest, or a manifest restored over a newer baseline, stops the env instead of
+    feeding the policy expectations the corpus never produced. Both checks live in
+    `src/rl_gym/corpus.py` alongside the hash definitions the offline builder uses, so the
+    runtime check and the builder cannot disagree about what either hash is.
 
 ---
 

@@ -3,8 +3,8 @@
 Three observers, each producing a dict of named feature arrays and each reporting its own
 output length. The env concatenates them in the order candidate, request, global (§5.2) and
 builds `observation_space` by summing those lengths, so nothing anywhere hardcodes a total.
-At `K = 8` the length is 124 after P2.10 — 96 candidate + 24 request + 4 global — and 139 once
-P2.11 widens the global block.
+At `K = 8` the length is **139** after P2.11 — 96 candidate + 24 request + 19 global — which
+completes §5.2's table.
 
 Design rules this module is bound by:
 
@@ -42,6 +42,7 @@ Design rules this module is bound by:
   construction; the `observe()` dicts exist only after a decision, so they cannot be the source.
 """
 
+import bisect
 import math
 import os
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -49,6 +50,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from src.misc.globals import (
+    G_ACT_VEH_SHARE,
     G_OP_MAX_WT,
     G_SIM_END_TIME,
     G_SIM_START_TIME,
@@ -754,24 +756,206 @@ class RequestObserver(AbstractObserver):
         return out
 
 
-class GlobalStateObserver(AbstractObserver):
-    """Fleet- and time-level features: 4 scalars (§5.1).
+class ArrivalBaseline:
+    """P2.6's month-conditioned arrival baseline, as the anomaly features read it (§5.2).
 
-    1. `sin(2π · t_of_day)`   — absolute clock time, `(sim_time mod 86400) / 86400`
-    2. `cos(2π · t_of_day)`
-    3. episode progress, `(sim_time - start_time) / (end_time - start_time)`
-    4. fraction of active vehicles idle, `IDLE / (not OUT_OF_SERVICE)`
+    `expected(month, t, W)` is the mean arrival count of that month's training days in the
+    window `[t − W, t)`; `sd(t, W)` is the spread, **pooled across months** because 9-12 days
+    per month are too few to estimate it per month. Verified in P2.11: the committed table holds
+    exactly one distinct `sd` per `(t_seconds, window_s)` across all ten months, so reading it
+    from the episode's own month row is the same number.
 
-    Features 1-2 and 3 are different quantities: the first pair is where the day sits on a
-    24-hour clock, the third is the horizon signal D6 needs. The circular encoding is
-    convention here — the reference day never wraps midnight.
+    The table's grid is the reference scenario's minutes, `[start_time, end_time)` — 747 of them
+    — so a scenario with a different window would miss every lookup. `check_scenario` raises at
+    construction rather than letting that surface as a `KeyError` mid-episode (guard 1).
 
-    Feature 4 is deliberately the coarse notion. `simple_insert` also skips vehicles with
-    `no_show_event`, so the genuinely-available fleet is narrower; §5.2 carries the proper
-    availability count.
+    Static data, loaded once at env construction and shared across episodes. The manifest's
+    `baseline_hash` is verified against these rows by the env, so a baseline rebuilt or edited
+    without its manifest stops the run (trap 16).
     """
 
-    def __init__(self, scenario_parameters: dict):
+    def __init__(self, manifest: Dict[str, Any], baseline_path: Optional[str] = None):
+        from src.rl_gym.corpus import DEFAULT_BASELINE, read_baseline, verify_baseline
+        self.path = baseline_path or DEFAULT_BASELINE
+        rows = read_baseline(self.path)
+        # guard 2: the manifest records the baseline it was built beside (trap 16)
+        verify_baseline(manifest, rows)
+        self.rows = rows
+        self._mean: Dict[Tuple[int, int, int], float] = {}
+        self._sd: Dict[Tuple[int, int], float] = {}
+        for month, t, window_s, mean, sd in rows:
+            self._mean[(month, t, window_s)] = mean
+            self._sd[(t, window_s)] = sd
+        self.months = sorted({m for m, _t, _w, _mu, _sd in rows})
+        self.windows_s = sorted({w for _m, _t, w, _mu, _sd in rows})
+        self.minutes = sorted({t for _m, t, _w, _mu, _sd in rows})
+        self.sd_floor = float(manifest["sd_floor"])
+        self.minute_s = int(manifest["minute_s"])
+        if self.sd_floor <= 0:
+            raise ValueError(f"sd_floor must be positive, got {self.sd_floor}")
+
+    def check_scenario(self, start_time: float, end_time: float,
+                       windows_s: Sequence[int]) -> None:
+        """Raise unless this table covers the scenario's window and the observer's windows."""
+        missing = [w for w in windows_s if w not in self.windows_s]
+        if missing:
+            raise ValueError(
+                f"{os.path.basename(self.path)} holds no rows for window(s) {missing} s; it "
+                f"covers {self.windows_s}. The baseline and the observation must use the same "
+                f"windows or `expected` is not comparable with `observed` (§5.2); rebuild the "
+                f"baseline with `python -m src.rl_gym.offline.build_arrival_baseline`."
+            )
+        grid_lo, grid_hi = self.minutes[0], self.minutes[-1]
+        if float(start_time) < grid_lo or float(end_time) - self.minute_s > grid_hi:
+            raise ValueError(
+                f"the scenario runs [{start_time:.0f}, {end_time:.0f}) but "
+                f"{os.path.basename(self.path)} covers minutes [{grid_lo}, {grid_hi}]. Every "
+                f"decision would need a row that is not there, so the anomaly features would "
+                f"fail mid-episode. Rebuild the baseline for this scenario's window."
+            )
+
+    def floor_minute(self, sim_time: float) -> int:
+        """`sim_time` floored to the baseline's minute grid (§5.2)."""
+        return int(sim_time // self.minute_s) * self.minute_s
+
+    def expected(self, month: int, t: int, window_s: int) -> float:
+        try:
+            return self._mean[(int(month), int(t), int(window_s))]
+        except KeyError:
+            raise KeyError(
+                f"no baseline row for month {month}, minute {t}, window {window_s} s in "
+                f"{os.path.basename(self.path)}"
+            ) from None
+
+    def sd(self, t: int, window_s: int) -> float:
+        try:
+            return self._sd[(int(t), int(window_s))]
+        except KeyError:
+            raise KeyError(
+                f"no baseline sd for minute {t}, window {window_s} s in "
+                f"{os.path.basename(self.path)}"
+            ) from None
+
+    def z(self, observed: float, month: int, t: int, window_s: int) -> Tuple[float, float]:
+        """`(expected, z)` with `z = (observed − expected) / max(sd, sd_floor)` (§5.2)."""
+        exp = self.expected(month, t, window_s)
+        return exp, (observed - exp) / max(self.sd(t, window_s), self.sd_floor)
+
+
+class ActiveFleetSchedule:
+    """The scheduled active fleet size over the day, from `op_act_fs_file` (§5.2).
+
+    Read once at env construction from the same path `TimeBasedFS.add_init` uses
+    (`dir_names[G_DIR_FCTRL]/elastic_fleet_size/<file>`), with the identical formula
+    `min(max(int(np.round(share × nr_vehicles)), 0), nr_vehicles)` from
+    `TimeBasedFS._read_active_vehicle_file`. **Read-only: nothing on the fleet-sizing module is
+    touched** — and reading the file is the only route, because `TimeBasedFS` keeps no queryable
+    schedule: its parsed table is local to that method and the activation lists it leaves behind
+    are consumed as they fire.
+
+    The share in force at `t` is the last row with `time <= t`, and the last row applies beyond
+    the end of the file. `TimeBasedFS` additionally drops rows before `start_time` (keeping the
+    last one before it), which changes nothing here: for any `t >= start_time` the last row at or
+    below `t` is the same row either way, and the reference file's first row is exactly
+    `start_time`.
+
+    The rounding is why this is not simply the share: 0.7 × 12 = 8.4 rounds to 8, i.e. 0.667.
+    `nr_vehicles` therefore has to be the fleet the operator actually holds, and it is read from
+    `fleetpy_module.nr_vehicles` at observation time — the identical attribute `TimeBasedFS`
+    multiplies by — rather than parsed out of `op_fleet_composition`.
+    """
+
+    def __init__(self, path: str):
+        import pandas as pd
+        if not os.path.isfile(path):
+            raise ValueError(f"no active fleet size file at {path}")
+        df = pd.read_csv(path, index_col=0)
+        if G_ACT_VEH_SHARE not in df.columns:
+            raise ValueError(f"{path} has no {G_ACT_VEH_SHARE!r} column, so the share in force "
+                             f"cannot be read; columns are {list(df.columns)}")
+        self.path = path
+        pairs = sorted((int(t), float(s)) for t, s in df[G_ACT_VEH_SHARE].items())
+        if not pairs:
+            raise ValueError(f"{path} holds no rows")
+        self.times = [t for t, _s in pairs]
+        self.shares = [s for _t, s in pairs]
+
+    def share_at(self, t: float) -> float:
+        """The share in force at `t`: the last row with `time <= t`."""
+        i = bisect.bisect_right(self.times, int(t)) - 1
+        # before the first row the first share applies; the reference scenario cannot reach this
+        # (its first row is exactly start_time), but a clamp beats an IndexError
+        return self.shares[max(i, 0)]
+
+    def active_fraction(self, t: float, nr_vehicles: int) -> float:
+        """Scheduled active vehicles at `t`, over the fleet size.
+
+        `TimeBasedFS`'s own formula, then divided by `nr_vehicles` as §5.2 asks. The division
+        does not cancel the rounding, which is the point.
+        """
+        if nr_vehicles <= 0:
+            return 0.0
+        count = min(max(int(np.round(self.share_at(t) * nr_vehicles)), 0), nr_vehicles)
+        return count / nr_vehicles
+
+
+class GlobalStateObserver(AbstractObserver):
+    """Fleet- and time-level features: 19 scalars (§5.2).
+
+    | feature | what it says |
+    |---|---|
+    | `time_sin`, `time_cos` | where the day sits on a 24-hour clock |
+    | `day_progress` | episode progress, the horizon signal D6 needs |
+    | `idle_fraction` | fraction of active vehicles idle |
+    | `arrivals_30/60` | fleet-wide arrivals in the window — also the anomaly's "observed" |
+    | `arrivals_expected_30/60` | P2.6's baseline mean for this month at this minute |
+    | `arrivals_z_30/60` | `(observed − expected) / max(sd, sd_floor)` |
+    | `declines_30/60` | fleet-wide rider declines |
+    | `cancels_30/60` | fleet-wide post-match cancellations |
+    | `wait_gap_30/60` | mean realized-minus-quoted wait over riders picked up in the window |
+    | `active_now/30/60` | scheduled active vehicles now, at +30 min and at +60 min |
+
+    `time_sin`/`time_cos` and `day_progress` are **different quantities**: the first pair is
+    absolute clock time, `(sim_time mod 86400) / 86400`, the third is
+    `(sim_time − start_time) / (end_time − start_time)`. The circular encoding is convention
+    here — the reference day never wraps midnight.
+
+    `idle_fraction` is deliberately the coarse notion: `simple_insert` also skips vehicles with
+    `no_show_event`, so the genuinely-available fleet is narrower. `active_*` is the scheduled
+    count, a deterministic function of clock time, included as an explicit signal.
+
+    The fleet-wide arrival count and the anomaly's observed count are **the same number and
+    appear once** (§5.2). Counts are raw; the wait gap divides by `wait_normalizer_s`;
+    `active_*` divides by the fleet size.
+
+    Two per-episode dependencies are injected rather than discovered, as P2.9 does for the
+    request block: the rolling-stats tracker (rebuilt every reset, §10) and the episode's month,
+    which the baseline is conditioned on. `set_episode_month` validates against the baseline's
+    own months and **raises at reset**, not at the first decision (guard 3).
+    """
+
+    #: §5.2's two trailing windows, in seconds. Checked against the baseline at construction,
+    #: so these and P2.6's artifact cannot silently disagree (guard 1).
+    WINDOWS_S = (1800, 3600)
+
+    def __init__(self, scenario_parameters: dict,
+                 arrival_baseline: ArrivalBaseline,
+                 active_fleet: ActiveFleetSchedule,
+                 wait_normalizer_s: Optional[float] = None):
+        """
+        :param arrival_baseline: P2.6's table. **Required**, not optional: an absent baseline
+            could only mean zeros for `arrivals_expected_*` and `arrivals_z_*`, and a feature
+            that silently reads 0.0 instead of raising is the failure mode this project keeps
+            engineering out.
+        :param active_fleet: the `op_act_fs_file` curve, required for the same reason
+        :param wait_normalizer_s: divisor for `wait_gap_*`; absent -> `op_max_wait_time` (§5.3)
+        """
+        if arrival_baseline is None or active_fleet is None:
+            raise ValueError(
+                "GlobalStateObserver needs both an ArrivalBaseline and an ActiveFleetSchedule: "
+                "without them 10 of its 19 features could only be zeros, which reads as real "
+                "data (§5.2)."
+            )
         self.start_time = float(scenario_parameters[G_SIM_START_TIME])
         self.end_time = float(scenario_parameters[G_SIM_END_TIME])
         span = self.end_time - self.start_time
@@ -781,11 +965,66 @@ class GlobalStateObserver(AbstractObserver):
                 f"{self.end_time} and {self.start_time}"
             )
         self._span = span
+        self.baseline = arrival_baseline
+        self.active_fleet = active_fleet
+        max_wait = float(scenario_parameters[G_OP_MAX_WT])
+        self.wait_normalizer_s = (max_wait if wait_normalizer_s is None
+                                  else float(wait_normalizer_s))
+        if self.wait_normalizer_s <= 0:
+            raise ValueError(f"wait_normalizer_s must be positive, got {wait_normalizer_s}")
+        # guard 1, at construction: the windows and the minute grid must cover this scenario
+        self.baseline.check_scenario(self.start_time, self.end_time, self.WINDOWS_S)
+        self._stats = None
+        self._month: Optional[int] = None
+
+    # ---------------------------------------------------------------- #
+    # per-episode injection
+    # ---------------------------------------------------------------- #
+
+    def set_stats_tracker(self, tracker) -> None:
+        """Attach P2.7's tracker for this episode. Called from `reset()`."""
+        self._stats = tracker
+
+    def set_episode_month(self, month: Optional[int]) -> None:
+        """Fix the month the baseline is read at, validating against the table (guard 3).
+
+        Raises at reset rather than at the first decision. `None` is what P2.3's
+        `parse_day_stem` returns for a demand filename that is not an ISO date, and it is the
+        case this mostly catches.
+        """
+        if month is None or int(month) not in self.baseline.months:
+            raise ValueError(
+                f"month {month!r} has no rows in "
+                f"{os.path.basename(self.baseline.path)}, which covers "
+                f"{self.baseline.months}. The month is parsed from the demand filename, the "
+                f"only record of which day a file is (§2.9); `None` means it is not an ISO "
+                f"date."
+            )
+        self._month = int(month)
 
     def feature_spec(self) -> List[Tuple[str, int]]:
-        return [("time_sin", 1), ("time_cos", 1), ("day_progress", 1), ("idle_fraction", 1)]
+        spec: List[Tuple[str, int]] = [
+            ("time_sin", 1), ("time_cos", 1), ("day_progress", 1), ("idle_fraction", 1),
+        ]
+        # the arrival count is also the anomaly's observed value, so it appears once (§5.2)
+        for stem in ("arrivals", "arrivals_expected", "arrivals_z", "declines", "cancels",
+                     "wait_gap"):
+            for window_s in self.WINDOWS_S:
+                spec.append((f"{stem}_{window_s // 60}", 1))
+        spec.extend([("active_now", 1), ("active_30", 1), ("active_60", 1)])
+        return spec
 
     def observe(self, fleetpy_module, ctx) -> Dict[str, np.ndarray]:
+        if self._stats is None:
+            raise RuntimeError(
+                "GlobalStateObserver has no rolling-stats tracker; the env attaches one in "
+                "reset() (P2.7). Without it every rolling count would silently be zero."
+            )
+        if self._month is None:
+            raise RuntimeError(
+                "GlobalStateObserver has no episode month; the env calls set_episode_month() "
+                "in reset() (P2.11)."
+            )
         sim_time = float(ctx.sim_time)
 
         t_of_day = (sim_time % SECONDS_PER_DAY) / SECONDS_PER_DAY
@@ -806,9 +1045,42 @@ class GlobalStateObserver(AbstractObserver):
                 n_idle += 1
         idle_fraction = (n_idle / n_active) if n_active > 0 else 0.0
 
-        return {
+        out: Dict[str, np.ndarray] = {
             "time_sin": np.float32(math.sin(angle)),
             "time_cos": np.float32(math.cos(angle)),
             "day_progress": np.float32(progress),
             "idle_fraction": np.float32(idle_fraction),
         }
+
+        minute = self.baseline.floor_minute(sim_time)
+        arrivals = {}
+        for window_s in self.WINDOWS_S:
+            arrivals[window_s] = self._stats.count("arrival", window_s)
+            out[f"arrivals_{window_s // 60}"] = np.float32(arrivals[window_s])
+        # computed together per window, but emitted in the order feature_spec declares --
+        # expected for both windows, then z for both. `observe_vector` raises on a mismatch
+        # (P2.8), which is what caught this being interleaved on the first run.
+        anomaly = {}
+        for window_s in self.WINDOWS_S:
+            anomaly[window_s] = self.baseline.z(arrivals[window_s], self._month, minute,
+                                                window_s)
+        for window_s in self.WINDOWS_S:
+            out[f"arrivals_expected_{window_s // 60}"] = np.float32(anomaly[window_s][0])
+        for window_s in self.WINDOWS_S:
+            out[f"arrivals_z_{window_s // 60}"] = np.float32(anomaly[window_s][1])
+        for stem, kind in (("declines", "decline"), ("cancels", "cancel")):
+            for window_s in self.WINDOWS_S:
+                out[f"{stem}_{window_s // 60}"] = np.float32(
+                    self._stats.count(kind, window_s))
+        for window_s in self.WINDOWS_S:
+            gap = self._stats.wait_gap_mean(window_s)
+            # None means the window held no priced pickup; §5.2 writes 0.0 for that
+            out[f"wait_gap_{window_s // 60}"] = np.float32(
+                0.0 if gap is None else gap / self.wait_normalizer_s)
+
+        # nr_vehicles from the operator, the identical attribute TimeBasedFS multiplies by
+        nr_vehicles = getattr(fleetpy_module, "nr_vehicles", 0) or 0
+        for name, offset in (("active_now", 0), ("active_30", 1800), ("active_60", 3600)):
+            out[name] = np.float32(
+                self.active_fleet.active_fraction(sim_time + offset, nr_vehicles))
+        return out
