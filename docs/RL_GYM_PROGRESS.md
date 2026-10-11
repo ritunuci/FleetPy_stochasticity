@@ -1925,3 +1925,105 @@ Spec changes made this turn:
   evidence that none existed.
 
 **Stopping here** — not starting P2.5.
+
+---
+
+## P2.5 — STARTED 2026-10-10 17:01
+Files I will touch: src/rl_gym/offline/__init__.py (new),
+src/rl_gym/offline/build_zone_table.py (new),
+data/rl_gym/example_network/h3_neighbours.csv (new), src/rl_gym/zones.py (new),
+tests/test_rl_gym_zones.py (new), docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.4 committed as 4c9969d, tree clean. K stays at 8 for now, per Ritun; D3 and
+P2.13's K-binding watch unchanged.
+
+Approved before starting:
+- `src/rl_gym/offline/__init__.py`, not in P2.5's Files line — the same explicit-package
+  convention as `tools/__init__.py` in P2.0b.
+- A `--check` mode on the builder, rebuilding in memory and diffing against the committed CSV,
+  so the artifact is re-verifiable without regenerating it.
+- **Ritun's adjustment: `--check` compares the parsed `(cell, neighbour)` pairs as sets, not
+  file bytes**, so a line-ending difference on another machine cannot fail it — the same lesson
+  as the corpus/thursday twins in §2.9.
+- One sentence added to P2.5 recording the measured gap behind the 1e-9° rule: the 88 neighbour
+  pairs are at distance exactly 0.0 and the nearest non-neighbour is 1.377e-02, so every
+  threshold from 0 to 1e-2 gives the same 88 pairs. The rule is exact, not approximate, and the
+  sentence exists so nobody later "tightens" it thinking it is delicate.
+- Both lookups raise on an unknown key rather than returning empty: P2.7 keys events by origin
+  cell and P2.9 reads the counts, so an empty set would zero out every zone count silently.
+
+## P2.5 — DONE 2026-10-10 17:08 — awaiting Ritun's verification
+
+Files changed — all new except the two docs:
+- `src/rl_gym/offline/__init__.py` — package marker, with the one-way dependency rule: nothing
+  in `src/rl_gym/` may import from `offline/`, so a builder cannot be pulled into a training run.
+- `src/rl_gym/offline/build_zone_table.py` — the builder, with `--check`.
+- `data/rl_gym/example_network/h3_neighbours.csv` — **213 rows + header**, sorted.
+- `src/rl_gym/zones.py` — `ZoneTable` with `cell_of_node`, `zone_set`, `zone_set_of_node`,
+  `neighbours`, `cells`, `n_nodes`.
+- `tests/test_rl_gym_zones.py` — 38 tests.
+- `docs/SDPDP_GYM_SPEC_v2.md` — the approved sentence on the measured gap.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+No existing source file modified: `git diff --stat -- src/ tests/` is empty, everything under
+`src/rl_gym/offline/`, `src/rl_gym/zones.py` and `tests/test_rl_gym_zones.py` is new. P2.5 is
+not in §8's gate list (P2.0b, P2.3, P2.7–P2.14) and `zones.py` is unused until P2.7 and P2.9,
+so no P1.10 gate was required; the full suite was run anyway.
+
+Verification — everything passed, nothing failed:
+
+1. **Full suite: 249 tests pass**, 118.7 s, no failures and no skips (211 before; +38).
+   Re-run under `-W error::ResourceWarning` as well, to confirm the suite is warning-clean.
+2. **Every figure P2.5 names, read back from the committed CSV** rather than from the builder's
+   in-memory data, by an independent script: header `cell,neighbour`, **213 rows**, **37 cells**,
+   **88 undirected pairs**, degree histogram **2:1, 3:9, 4:5, 5:5, 6:17** — so every cell has
+   2–6 neighbours inside the set and **17 have all 6** — symmetric, reflexive, sorted, no
+   duplicate rows.
+3. **The geojson's 37 ids equal the `nodes.csv` set**, both directions, and every id in the
+   table is one of them.
+4. **`--check` passes**, comparing parsed `(cell, neighbour)` pairs. A test writes a CRLF copy of
+   the table, asserts the two files differ **as bytes**, and asserts `read_table` returns the
+   same pair set from both — Ritun's adjustment, exercised rather than just implemented.
+5. `zone_set` sizes are `1 + degree`: 3 on one cell, 4 on nine, 5 on five, 6 on five, 7 on
+   seventeen. `cell_of_node` matches `nodes.csv` on sampled nodes and accepts numpy ints and
+   int-valued floats, which is what FleetPy positions carry.
+6. **Unknown keys raise**, with the offending key in the message: an unknown node (−1, 4084,
+   1e9), a non-numeric node, an unknown cell. `zone_set` never returns empty for any of the 37.
+7. **Malformed tables are rejected at construction**, not at the first decision: missing file
+   (the message names the build command), wrong header, asymmetric relation, missing self row,
+   empty table, and a table that is internally consistent but does not cover every cell the
+   network's nodes sit in.
+8. **`h3` is not imported and not installed**, asserted three ways: importing `zones` and the
+   builder leaves `h3` out of `sys.modules`; `import h3` raises; and a regex scan of every
+   `*.py` under `src/rl_gym/` finds no `import h3` / `from h3` line (§10).
+
+VERIFY findings: **P2.5 carries no `VERIFY` markers.** Every figure in its "How Ritun verifies"
+list was checked and **matched**: 88 undirected pairs, 2–6 neighbours per cell, 17 cells with
+all 6, symmetry, and the geojson/`nodes.csv` id agreement. Also checked and matched: 37 valid
+single polygons, no null `h3_id`, `node_index` unique over 0–4083, 4,084 nodes mapped,
+1–379 nodes per cell (median 68).
+
+**The finding behind the spec sentence.** P2.5 describes the neighbour rule as "polygons lie
+within 1e-9° of each other", which reads like a float tolerance chosen by judgement. Measured
+over all 666 cell pairs: the 88 neighbour pairs are at shapely distance **exactly 0.0** —
+adjacent hexagons in this geojson share identical vertex coordinates, so edge-sharing is exact,
+not approximate — and the nearest **non**-neighbour pair is at **1.377e-02**. Every threshold
+from 0 to 1e-2 yields the same 88 pairs. The rule is therefore doing no rounding at all, and the
+tolerance sits in a gap seven orders of magnitude wide on either side. Three tests pin this: all
+neighbours at exactly 0.0, every non-neighbour more than 1e6× the tolerance away, and the pair
+count invariant across 1e-15 … 1e-3.
+
+Two design choices worth recording:
+- **`ZoneTable` is a class, not module-level functions with global state.** P2.5 says `zones.py`
+  "exposes `cell_of_node(node)` and `zone_set(cell)`", which methods satisfy; a class lets a test
+  point the loader at a temporary table, which is what the six malformed-table tests need.
+  `zone_set` returns a `frozenset` and is precomputed per cell, so it is O(1) per decision —
+  P2.7 calls it for every event and P2.9 for every request.
+- **The self rows are what make `zone_set` mean "cell plus ring"** without the reader adding the
+  cell back, and `zones.py` refuses a table missing one rather than silently returning a zone set
+  that omits its own cell.
+
+Spec changes made this turn: the one approved sentence in P2.5, recording the measured gap with
+the numbers and an explicit "do not tighten or loosen it thinking it is delicate".
+
+Nothing failed. **Stopping here** — not starting P2.6.

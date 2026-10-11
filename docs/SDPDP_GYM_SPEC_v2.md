@@ -2079,7 +2079,12 @@ The cells are the 37 resolution-7 cells in the `h3_id` column of `base/nodes.csv
 against `h3` 4.5.0 `latlng_to_cell` for all 4,084 nodes during drafting). Neighbours are
 computed from `data/networks/example_network/h3_hexagons.geojson` with shapely, which
 `fleetpy_rl` already has: two cells are neighbours when their polygons lie within 1e-9° of each
-other, which in a hexagonal tiling is exactly edge-sharing. Output rows `(cell, neighbour)`,
+other, which in a hexagonal tiling is exactly edge-sharing. **That tolerance is not a rounding
+decision — it sits in a gap seven orders of magnitude wide on either side.** Measured over all
+666 cell pairs under P2.5: the 88 neighbour pairs are at shapely distance **exactly 0.0**,
+because adjacent hexagons in this geojson share identical vertex coordinates, and the nearest
+**non**-neighbour pair is at **1.377e-02**; every threshold from 0 to 1e-2 yields the same 88
+pairs. Do not tighten or loosen it thinking it is delicate. Output rows `(cell, neighbour)`,
 including `(cell, cell)`, restricted to the 37 cells — neighbours outside them contain no nodes,
 so no event can land there. **Nothing imports `h3`** (§10).
 
