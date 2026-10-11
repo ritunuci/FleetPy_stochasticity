@@ -2027,3 +2027,224 @@ Spec changes made this turn: the one approved sentence in P2.5, recording the me
 the numbers and an explicit "do not tighten or loosen it thinking it is delicate".
 
 Nothing failed. **Stopping here** — not starting P2.6.
+
+---
+
+## P2.6 — STARTED 2026-10-10 17:19
+Files I will touch: src/rl_gym/offline/build_arrival_baseline.py (new),
+data/rl_gym/example_network/arrival_baseline.csv (new),
+data/rl_gym/example_network/corpus_manifest.json (new),
+tests/test_rl_gym_baseline.py (new), docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.5 committed as 743fd5d, tree clean.
+
+Approved before starting:
+- **`c_d(t, W)` counts requests as `load_demand_file` keeps them — both filters.** 5 of the 7
+  same-node days are training days (2024-02-15, 02-20, 03-05, 05-30, 06-13); counting their
+  same-node rows would inflate 150 (month, minute) buckets at W=30 and 300 at W=60 by up to
+  0.11 arrivals, and the online side cannot see them, since P2.7's arrival hook is
+  `build_assignment_context`.
+- Correcting the two figures that did not reproduce, plus verifying the other three in that
+  paragraph, with the instruction: **if any re-measured figure no longer supports the
+  month-over-weekday conclusion, stop and report rather than just updating the number.**
+  It still supports it — see the DONE entry.
+- The builder writes **both artifacts or neither**.
+- **Ritun's adjustment: no metadata inside `arrival_baseline.csv`** — a comment line breaks a
+  plain `pd.read_csv`. The manifest records a hash of the baseline next to `corpus_hash`, so the
+  manifest ties corpus and baseline together while the CSV stays a plain table. The baseline
+  hash is over **parsed content**, like `--check`, not bytes.
+
+## P2.6 — DONE 2026-10-10 17:28 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/offline/build_arrival_baseline.py` — **new.** Builds both artifacts or neither,
+  with `--check`.
+- `data/rl_gym/example_network/arrival_baseline.csv` — **new.** 14,940 rows + header,
+  `month,t_seconds,window_s,mean,sd`. A plain table: no comments, no metadata.
+- `data/rl_gym/example_network/corpus_manifest.json` — **new.** 101 files with hashes,
+  `corpus_hash`, `baseline_hash`, the two vocabularies, and the window and floor constants.
+- `tests/test_rl_gym_baseline.py` — **new**, 31 tests.
+- `docs/SDPDP_GYM_SPEC_v2.md` — the `c_d` definition, five figure corrections, the
+  manifest/baseline link, and a note on the verification's day choice.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+No existing source file modified. P2.6 is not in §8's gate list and touches no env code — the
+online side is P2.11 — so no P1.10 gate was required; the full suite was run anyway.
+
+Verification — everything passed, nothing failed:
+
+1. **Full suite: 280 tests pass**, 119.4 s, no failures and no skips (249 before; +31). The new
+   file was also run under `-W error::ResourceWarning`.
+2. **`--check` passes on both artifacts**, comparing parsed content: the baseline matches a
+   fresh build, the manifest's `corpus_hash` matches the directory, and its `baseline_hash`
+   matches the committed CSV. P2.5's table still checks out too.
+3. **P2.6's check 1 — `c_d` by hand.** For 3 training days × 3 minutes × 2 windows, the count is
+   recomputed straight from the dataframe with both filters applied inline and compared against
+   `counts_for_day`. All 18 match. A separate test pins the half-open window: an arrival exactly
+   at `t` is excluded, one exactly at `t − W` included.
+4. **P2.6's check 2 — October above the rest.** October's day-mean level is **22.45** arrivals
+   per 30 min, the highest of the ten months (next: June 19.75, September 19.53; lowest August
+   16.76), and October exceeds **every** other month at **412 of 747 minutes (55.2%)**. Reported
+   numerically rather than as a plot: with 9–12 days per month, minute-level noise means no
+   month dominates at every single minute, and the level comparison is the claim that matters.
+5. **P2.6's check 3 — manifest hashes.** `files` equals a fresh directory scan entry for entry,
+   sorted by filename, 101 entries, no evaluation day among them; `corpus_hash` equals the hash
+   of the `<filename>:<sha256>` lines; and it changes if a file is removed, if one file's hash
+   is altered, or if the order is reversed.
+6. **The same-node exclusion, asserted directly.** The five training days are re-derived from
+   the corpus (not hardcoded from P2.4) and match; `kept_arrival_times` returns one fewer
+   arrival than the in-window rows on each, at exactly the right minute; and rebuilding one
+   affected February bucket **both ways** shows the inflation is exactly **0.1** arrivals and
+   that the committed baseline carries the correct value, not the inflated one.
+7. `sd` is pooled, so it is constant across months for each `(minute, window)` — asserted over
+   all 1,494 keys. Sample sd, `ddof = 1`. No NaN anywhere; every mean and sd non-negative; the
+   60-minute mean is never below the 30-minute mean; rows sorted.
+8. **The SD floor is not decoration**: `sd` at `W = 30` runs min 0.000, median 4.678, max
+   10.148, and **6 of 747 minutes fall below the 1.0 floor** — including `t = start_time`, where
+   the trailing window lies entirely before the day and every day's count is 0.
+9. A `.DS_Store` and a `notes.txt` dropped into a copy of the corpus change neither the day list
+   nor `corpus_hash` (§2.9's `*.csv`-only rule).
+10. A stale-manifest scenario is exercised: regenerate the baseline, leave the manifest, and
+    `baseline_hash` no longer matches — which is the failure that field exists to catch.
+
+**The five "Why month" figures Ritun asked me to verify — the conclusion holds.** Ritun's
+instruction was to stop and report if any re-measured figure no longer supported the
+month-over-weekday choice. It still supports it, and slightly more strongly:
+
+| Figure | Spec said | Measured |
+|---|---|---|
+| residual spread, month baseline | 4.9 | **4.75** |
+| residual spread, weekday baseline | 5.3 | **5.20** |
+| residual spread, no baseline | 5.6 | **5.45** |
+| residual spread, weekday shape × month level | 5.07 | **4.91** |
+| October vs a weekday baseline, whole day | ~+0.7 SD | **+0.69** |
+| … at 10:00 | +0.66 | **+0.58** |
+| … at 15:30 | +0.78 | **+0.84** |
+| 15:30 window, Tuesdays | 22.1 | **21.7** |
+| 15:30 window, overall | 27.2 | **27.2** |
+| month share of daily-total variance | 50% | **56.0%** |
+| weekday share | "none" | **0.2%** |
+| weekday daily means | 453–454 | **463.4 / 468.8 / 465.6** |
+
+Same ordering throughout, and the month-over-weekday gap is **wider** than the original figures
+showed (0.45 against 0.40). The five that were off all predate the October days landing in the
+corpus (`6eeb05e`); October runs 507–600 against about 450 earlier (§2.9), which raises both the
+weekday means and month's explanatory share. Recorded in the spec with that explanation.
+
+One figure I added rather than corrected: in the 15:30 window **Wednesdays average 37.3** against
+Tuesdays' 21.7. The spec cited only the Tuesday half, which understates the case for keeping the
+weekday one-hot in the observation — a 15.6-arrival spread between two weekdays at the afternoon
+peak is the strongest evidence in the paragraph for that feature, and §5.2 keeps it.
+
+**A mistake of mine, caught by its own test.** My first version of the by-hand check picked
+2024-05-15 as a "random training day". It is an **evaluation** day, so the test failed with a
+`FileNotFoundError` rather than a wrong number. Fixed by picking from `corpus/` and asserting
+membership in `training_day_files()` first, so the probe days cannot silently drift out of the
+training split. Added the same caution to P2.6's "How Ritun verifies" line, since the next person
+to pick three days by eye will hit the same trap.
+
+VERIFY findings: **P2.6 carries no `VERIFY` markers.** The claims it rests on were checked and
+are recorded above — the two filters, the 747-minute grid, the 101 training days and their
+9–12-per-month distribution, the vocabularies, and all twelve "Why month" figures.
+
+Spec changes made this turn:
+- **`c_d`'s definition now names both of the loader's filters**, with the five affected training
+  days, the measured inflation (150 buckets at W=30, 300 at W=60, up to 0.11 arrivals) and the
+  reason it matters: comparability with what P2.7 observes is the whole point of sharing §5.2's
+  window definition. Marked as corrected in P2.6.
+- **The "Why month, not weekday" paragraph re-measured**, with all figures updated, the
+  in-sample/parameter-count caveat stated, and a note that the stale figures predate October.
+- **The manifest paragraph** now records `baseline_hash`, the both-or-neither rule, that the hash
+  is over parsed rows rather than bytes, and **why it lives in the manifest rather than in the
+  CSV** — a comment or metadata line would break a bare `pd.read_csv`.
+- **P2.6's verification line** now warns to pick the three days from `corpus/`.
+
+Nothing failed. **Stopping here** — not starting P2.7.
+
+## P2.6 — FOLLOW-UP 2026-10-10 17:41 — month-only baseline kept, bias recorded
+
+Ritun: keep the month-only baseline; record the Wednesday peak shift as a known bias of it, and
+add a weekday-by-time adjustment to "After Phase 2" as an option to consider before full
+training. Documentation only — `git diff --name-only` is the two docs files, no code touched.
+
+**The +1 SD figure, measured against the baseline actually in use** rather than taken on trust.
+Against the **month-only** baseline, in the window ending 15:30: Wednesdays **+1.07 SD**
+(worst +1.09 at 15:25), Tuesdays **−0.58**, Thursdays **−0.45**, pooled sd 9.19 at that minute.
+Across the 15:00–16:00 band, Wednesday **+0.62**. Over the whole day the weekday bias is
+**negligible — −0.02, +0.02, +0.01** — which is the useful half of the finding: month-only is
+sound in general, and the defect is confined to about an hour a day.
+
+Spec changes made this turn:
+- **§8 P2.6's "Why month" paragraph** gained a "Known bias of the month-only baseline, accepted
+  deliberately" note with those figures, stating that `arrivals_z_*` is reliably positive on
+  Wednesday afternoons and negative on the other two weekdays for a reason the anomaly feature
+  itself cannot express, that the whole-day bias is negligible, and that the weekday one-hot is
+  what lets the policy discount it.
+- **§8 "After Phase 2" gained a step 4**, the weekday-by-time adjustment, written as an option
+  rather than a decision, with the cost stated: 30 weekday×month cells over 101 training days is
+  3–4 days per cell, too few for a per-minute mean, so any version needs smoothing or a scaled
+  weekday shape — and the scaled shape measured **4.91** residual spread against month-only's
+  **4.75**, i.e. **worse in-sample**, so it is explicitly not a drop-in improvement. Also records
+  that adopting it rebuilds the baseline and the manifest, changes `baseline_hash`, and
+  invalidates anything trained against the old baseline (trap 16), which is why it belongs
+  before full-length training.
+- **Renumbering, which the insertion forced**: the old steps 4–6 became 5–7, and the trailing
+  "Steps 1, 3 and 4 change the simulation" became "Steps 1, 3 and 5", with a new sentence
+  distinguishing step 4 — it changes no simulation output but invalidates trained policies.
+  Checked that nothing else in the spec cites these steps by number; the two other references to
+  "After Phase 2" (lines ~315, ~1040) name the section, not a step.
+
+Re-ran `TestMonthOverWeekday` (4 tests, OK) to confirm the figures written into the spec still
+match what the code measures. **Stopping here** — not starting P2.7.
+
+## P2.6 — FOLLOW-UP 2 2026-10-10 17:45 — step 4 rewritten as the additive weekday term
+
+Ritun corrected my step 4: the option is not per-(weekday, month) cells and not a weekday shape
+scaled by month, it is **additive** —
+
+    expected(m, wd, t, W) = mean(m, t, W) + δ(wd, t, W)
+
+with `δ(wd, t, W)` the mean, over all training days of that weekday (33–35 days, pooled across
+months), of `c_d(t, W) − mean(month(d), t, W)`. No weekday×month cells, no smoothing. He also
+supplied leave-one-training-day-out figures to verify. Documentation only; `git diff
+--name-only` is the two docs files.
+
+**His LOO figures reproduce on training days only**, refitting month means *and* `δ` on the
+other 100 days each time (rms residual, month-only → additive):
+
+| | whole day | 14:00–17:00 |
+|---|---|---|
+| `W = 30` | 5.50 → **5.18** (his: 5.50 → 5.18) | 7.08 → **6.10** (his: 7.09 → 6.11) |
+| `W = 60` | 8.15 → **7.72** (his: 8.15 → 7.72) | 10.69 → **9.32** (his: 10.70 → 9.33) |
+
+Four exact, two off by 0.01 — band-edge or rounding. Better out of sample on both windows and
+both ranges. Weekday counts confirmed: Tue 35, Wed 33, Thu 33, so `δ` is estimated from 33–35
+days rather than the 3–4 a weekday×month cell would hold.
+
+**One instruction I did not follow as given, with the evidence.** Ritun asked me to "keep the
+scaled-shape figure as the variant that does not help". Measured on *his* leave-one-out metric,
+the scaled shape **does** help: 5.26 whole day and 6.38 in the band at `W = 30`, against
+month-only's 5.50 and 7.08. It only looked unhelpful on the in-sample per-minute-SD metric I had
+used earlier in P2.6 (4.91 against month-only's 4.75), where it is indeed worse. The two metrics
+therefore **disagree about the scaled shape** and **agree about the additive term**, which is the
+stronger reason to prefer the additive form than "the other one does not work".
+
+So step 4 now says the scaled shape is the **weaker variant**, gives both metrics' verdicts on
+it, and states plainly that the additive term wins on both. It also warns that the two metrics
+are not comparable — one is an rms over every day-minute residual, the other a per-minute SD
+averaged over the day — so nobody reads 5.18 against 4.75 as a comparison. Writing "does not
+help" would have put a claim in the spec that my own verification contradicts, which §0 forbids
+working around silently.
+
+Spec changes made this turn:
+- **§8 "After Phase 2" step 4 rewritten**: the additive formula, what `δ` is and why pooling
+  across months is what makes it estimable, the verified LOO table, the scaled-shape comparison
+  on both metrics with the non-comparability warning, and the retained cost note — a weekday
+  dimension in `arrival_baseline.csv`, both artifacts rebuilt, `baseline_hash` changed, anything
+  trained against the old baseline invalidated (trap 16). Step numbering 1–7 and "Steps 1, 3 and
+  5 change the simulation" re-checked and still correct.
+- **§10's after-Phase-2 line** now names four items instead of three, adding the weekday term,
+  with "P2.6's baseline stays month-only — do not add the weekday term, and do not add a config
+  key for it."
+
+**Stopping here** — not starting P2.7.
