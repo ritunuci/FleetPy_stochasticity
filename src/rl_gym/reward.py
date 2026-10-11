@@ -67,6 +67,41 @@ OUTCOMES = (
 )
 
 
+def classify_exit(rid, rq, no_candidate_rids: Set[Any], rejected_rids: Set[Any]) -> str:
+    """§6.4's ordered classification. First match wins; no fallback to rider decline.
+
+    **This is the single ladder, shared by `RewardTracker` and `RollingStatsTracker`**
+    (trap 13). Two copies would drift with nothing raising -- the reward would charge as a
+    decline what the statistics count as a cancellation. In practice the two never even call
+    this separately: `RewardTracker.on_exit` returns the outcome it computed here and the env's
+    exit fan-out hands that one string to the statistics tracker (P2.7), so there is one
+    classification per exit, not two agreeing ones.
+
+    :param no_candidate_rids: labelled by `build_assignment_context` on the empty-candidate
+        branch -- membership, not a request attribute, which is why the sets are arguments.
+    :param rejected_rids: labelled by `commit_assignment_choice` when the policy rejects.
+    """
+    if rid in no_candidate_rids:
+        return "no_candidates"
+    if rid in rejected_rids:
+        return "operator_rejected"
+    if getattr(rq, "do_time", None) is not None:
+        return "served"
+    if getattr(rq, "diffusion_cancelled", False):
+        return "diffusion_cancelled"
+    if getattr(rq, "rider_declined", False):
+        return "rider_declined"
+    pu_time = getattr(rq, "pu_time", None)
+    # no_show is a rider attribute read from the demand file, not an outcome, so it must be
+    # gated on pu_time and checked after diffusion_cancelled -- otherwise a no-show-flagged
+    # rider who cancelled while waiting would be reported as a no-show
+    if pu_time is None and getattr(rq, "no_show", False):
+        return "no_show"
+    if pu_time is None and getattr(rq, "chosen_operator_id", None) is not None:
+        return "unserved_at_horizon"
+    return "unclassified"
+
+
 class RewardTracker:
     """Accumulates reward events between gym steps and classifies terminal outcomes."""
 
@@ -146,10 +181,16 @@ class RewardTracker:
         # 1_user-stats.csv without recomputing the weights
         self._add(delta, kind="pickup", rid=rid, detail=pu_time - rq_time)
 
-    def on_exit(self, rid, rq) -> None:
-        """Classify `rid`'s terminal outcome and charge it, once per rid (§6.4)."""
+    def on_exit(self, rid, rq) -> Optional[str]:
+        """Classify `rid`'s terminal outcome and charge it, once per rid (§6.4).
+
+        :return: the §6.4 outcome, or **None** on a repeated call for the same rid. The env's
+            exit fan-out keys off that: `None` means "already handled", so the statistics
+            tracker records each exit at most once too (P2.7). `record_alighting_start` and
+            `record_remaining_users` can both fire for a rider mid-alighting at end of day.
+        """
         if rid in self._exited_rids:
-            return                                 # idempotent: two paths can both fire
+            return None                            # idempotent: two paths can both fire
         self._exited_rids.add(rid)
 
         outcome = self.classify(rid, rq)
@@ -174,28 +215,11 @@ class RewardTracker:
         # the labels the trace exists to check, and a zero amount changes no total. `_add`
         # leaves the accumulators untouched when the amount is zero.
         self._add(-penalty if penalty else 0.0, kind=outcome, rid=rid)
+        return outcome
 
     def classify(self, rid, rq) -> str:
-        """§6.4's ordered classification. First match wins; no fallback to rider decline."""
-        if rid in self._no_candidate_rids:
-            return "no_candidates"
-        if rid in self._rejected_rids:
-            return "operator_rejected"
-        if getattr(rq, "do_time", None) is not None:
-            return "served"
-        if getattr(rq, "diffusion_cancelled", False):
-            return "diffusion_cancelled"
-        if getattr(rq, "rider_declined", False):
-            return "rider_declined"
-        pu_time = getattr(rq, "pu_time", None)
-        # no_show is a rider attribute read from the demand file, not an outcome, so it must be
-        # gated on pu_time and checked after diffusion_cancelled -- otherwise a no-show-flagged
-        # rider who cancelled while waiting would be reported as a no-show
-        if pu_time is None and getattr(rq, "no_show", False):
-            return "no_show"
-        if pu_time is None and getattr(rq, "chosen_operator_id", None) is not None:
-            return "unserved_at_horizon"
-        return "unclassified"
+        """§6.4's ordered classification, via the shared `classify_exit` (trap 13)."""
+        return classify_exit(rid, rq, self._no_candidate_rids, self._rejected_rids)
 
     # ---------------------------------------------------------------- #
     # readout

@@ -2248,3 +2248,184 @@ Spec changes made this turn:
   key for it."
 
 **Stopping here** — not starting P2.7.
+
+---
+
+## P2.7 — STARTED 2026-10-10 18:00
+Files I will touch: src/rl_gym/rolling_stats.py (new), src/rl_gym/reward.py,
+src/rl_gym/fleetctrl_rl.py, src/rl_gym/sim_env_rl.py, src/rl_gym/gym_env.py,
+tests/test_rl_gym_rolling_stats.py (new), docs/SDPDP_GYM_SPEC_v2.md,
+docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.6 committed as e1e61be, tree clean.
+
+VERIFY confirmed before starting: the single entry point every loaded request passes through is
+`build_assignment_context` — `step_generator` calls it unconditionally for every
+`(rid, rq_obj)` (`sim_env_rl.py:90`), before any branch, so it fires for the internally-resolved
+cases too.
+
+Approved before starting:
+1. **The arrival hook lives in `fleetctrl_rl.py`**, right after `self.rq_dict[rid_struct] = prq`
+   and *before* the `o_pos == d_pos` early return — the `PlanRequest` with the origin node is
+   created there, and hooking the operator covers both the gym generator and `user_request`'s
+   greedy fallback. P2.7's Files line stops hedging.
+2. **Trap 13 enforced by construction**: the §6.4 ladder becomes a module-level
+   `classify_exit(...)` in `reward.py`, `RewardTracker.on_exit` **returns** the outcome it
+   already computes, and the exit fan-out passes that one outcome to the stats tracker. One
+   classification per exit, so the two trackers cannot label the same exit differently.
+3. The clock is read only by declines and post-match cancellations, both of which fire inside
+   the step loop; pickups are timed by `rq.pu_time`. The clock is stale during the end-of-day
+   finalisation and that is harmless — asserted in a test rather than left as reasoning.
+4. Pickups are stored **per rid**, replaced not appended, so a repeat `record_boarding` leaves
+   one wait-gap sample at the final `pu_time` (§6.4, §5.2).
+5. The "a few dozen events" figure corrected to the computed values.
+
+Ritun's two conditions:
+1. **The arrival hook must be a no-op when no rolling-stats tracker is attached**, since the
+   P1.3/P1.4 comparisons run the RL operator outside the gym. Test required.
+2. **`RewardTracker.on_exit` is idempotent per rid: a repeated call must return `None`, and the
+   fan-out must skip it**, so the stats tracker records each exit at most once. Test required,
+   with a rider whose exit fires twice.
+
+## P2.7 — DONE 2026-10-10 18:15 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/rolling_stats.py` — **new.** `RollingStatsTracker`: `set_clock`, `on_arrival`,
+  `on_exit`, `on_pickup`, `count`, `zone_count`, `wait_gap_mean`, `episode_summary`.
+- `src/rl_gym/reward.py` — the §6.4 ladder extracted to a module-level `classify_exit`;
+  `RewardTracker.classify` delegates to it; `on_exit` now **returns** the outcome, or `None` on
+  a repeat.
+- `src/rl_gym/fleetctrl_rl.py` — `set_stats_tracker`, and the arrival hook in
+  `build_assignment_context`.
+- `src/rl_gym/sim_env_rl.py` — a class-level `_stats_tracker = None`, `set_stats_tracker`, and
+  the clock at the top of `step_generator`.
+- `src/rl_gym/gym_env.py` — `_zone_table`, `_make_quoted_wait_fn`, `_on_pickup`, `_on_exit`;
+  wiring in `reset()`; the stats totals in `episode_summary()`.
+- `tests/test_rl_gym_rolling_stats.py` — **new**, 36 tests.
+- `docs/SDPDP_GYM_SPEC_v2.md` — the VERIFY findings, the Files line, the event-rate figure.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+Verification — all four of P2.7's checks passed, nothing failed:
+
+1. **The P1.10 gate, byte for byte** — md5 `53879ea79cf211d700f670dee1173dd5`. The arrival hook
+   sits inside `build_assignment_context`, on the live path, so this is the check that matters
+   here. Full suite: **316 tests pass**, 137.3 s, no failures and no skips (280 before; +36).
+2. **End-of-day totals match P1.10 exactly**: 445 arrivals, 118 declines, 28 cancellations, 288
+   distinct pickups, 289 boarding calls, and 0 rids whose origin could not be placed in a cell.
+3. **20 random decision times against an independent recomputation from
+   `1_user-stats.csv`: 0 mismatches** across 20 times × 16 counts × 2 wait-gap means — that is
+   fleet-wide and zone-set counts for all four event kinds at both windows, plus both means.
+   Drawn from the 364 of 436 decisions whose windows cannot contain rid 50's overwritten first
+   boarding, per P2.7's caveat.
+4. **Fleet-wide arrival counts at every decision**, against P2.6's definition recomputed from
+   the demand file with both loader filters: **0 mismatches across 436 decisions × 2 windows**.
+
+Ritun's two conditions, both tested:
+1. **The arrival hook is a no-op when unattached.** Three tests: the operator and the sim env
+   both default to `None`; and a real simulation is built, the tracker detached from both, 25
+   steps driven, and the arrival total asserted unchanged. This is the path P1.3, P1.4 and the
+   P1.10 gate run, so it is load-bearing for three byte-for-byte comparisons.
+2. **A repeated exit returns `None` and the fan-out skips it.** `on_exit` returns the outcome on
+   the first call and `None` on the second and third; a test drives the env's fan-out pattern
+   three times over one rid and asserts the stats tracker recorded exactly one decline. The
+   integration tests additionally assert the two trackers agree on every exit count —
+   `stats_declines == rider_declined`, `stats_cancels == diffusion_cancelled`,
+   `stats_pickups == pickups`, `stats_boarding_calls == boarding_calls`.
+
+Beyond those: the half-open window on both ends; that a request is not counted in its own
+observation (`rq_time == sim_time` at its arrival step); pruning never dropping an event still
+inside the longest window, and bounding memory over 5,000 arrivals while the cumulative total
+stays exact; exits timed by the clock rather than `rq_time`; the per-rid pickup store replacing
+rather than appending on rid 50's double boarding, leaving one sample at the final `pu_time`;
+negative wait gaps (the common case here — the planner assumes 300 s per stop against a realized
+~56 s); an unpriced pickup counting but staying out of the mean; a raising quote lookup not
+killing the simulation; and an unplaceable origin counting fleet-wide but in no zone.
+
+VERIFY findings:
+- **The single entry point every loaded request passes through is `build_assignment_context`:
+  matched the spec.** `step_generator` calls it unconditionally for every `(rid, rq_obj)` at
+  `sim_env_rl.py` ~90, before any branch, so internally-resolved requests are arrivals too;
+  §2.2's always-empty `get_undecided_travelers` makes it exactly once per request. Recorded in
+  §8 P2.7, and the Files line no longer hedges about where the hook goes.
+- **Which column carries each event's time: matched** — declines at `rq_time` (all 118 have an
+  empty `decision_time`), post-match cancellations at `decision_time`, pickups at
+  `pickup_time`, the quoted wait as `t_wait` in `offers`, and `diffusion_decision_time`
+  differing from `decision_time` in 4 of the 28 cancellations.
+- **The quoted wait is `prq.offer.offered_waiting_time` and is not overwritten after
+  acceptance: matched.** `_create_user_offer` builds it as `pu_time - prq.rq_time`, already
+  relative to `rq_time`; the only callers in this scenario are `commit_assignment_choice` and
+  the parent's unused `user_request`, and nothing re-offers. A rejected request carries a
+  `Rejection` with `offered_waiting_time = None`.
+- **The "a few dozen events in a 60-minute window" figure: DIFFERED** — understated by about
+  5×. P2.6's busiest (month, minute) averages **73.7** arrivals in a 60-minute window and
+  reaches about **115** at +3 SD; with the other three kinds a window holds roughly **200**
+  events. The scan design is unaffected and the spec now carries the computed figures, since
+  that number is the stated justification for it.
+
+Two things worth recording:
+- **`_stats_tracker` on the sim env is a class-level default, not an `__init__` assignment.**
+  `RLImmediateDecisionsSimulation` defines no `__init__`, and P1.4 forbids adding a parameter to
+  `FleetSimulationBase.__init__`, so a class attribute is the way to give it a safe default
+  without touching construction.
+- **`ZoneTable` is built once per env and shared across episodes**, while the tracker is rebuilt
+  every reset. The table is static data — `nodes.csv` plus a committed CSV — so §10's
+  no-caching rule, which is about simulation state leaking between episodes, does not reach it.
+
+**A mess of mine, cleaned up.** My scratchpad verification script crashed twice before reaching
+its `shutil.rmtree` — first because it read `env._stats` before `reset()` created it, then
+because it parsed the user-stats `start` column as a bare node when it is a position string like
+`1169;-1;-1`. Each crash left a result directory behind (`…_env0_pid13776_ep1`,
+`…_env0_pid13804_ep1`); both removed, and `example_depot_time_pool_irsonly_rs_42/` confirmed
+still at md5 `53879ea7…`. Neither was a defect in the item, but the cleanup belonged in a
+`finally` and did not start there. The position-string detail is now recorded in P2.7's
+verification line, since the next person writing that recomputation will hit it.
+
+Nothing failed. **Stopping here** — not starting P2.8.
+
+## P2.7 — FOLLOW-UP 2026-10-10 18:25 — the tracker slot is per instance, verified
+
+Ritun asked, before committing, whether the class-level default is only ever *shadowed* by an
+instance attribute and never written on the class — because a class-level write would hand a
+dead tracker to every later simulation built in the same process, including P1.4's driver, which
+constructs `RLImmediateDecisionsSimulation` directly with no gym and no tracker. Nothing would
+raise; the stale tracker would simply keep recording.
+
+**Verified, not reasoned about. It is per instance.**
+
+- `set_stats_tracker` does `self._stats_tracker = tracker` (`sim_env_rl.py:51`), which creates
+  an instance attribute shadowing the class default.
+- Measured on the class: before attaching, `_stats_tracker` is absent from the instance `__dict__`
+  and reads `None` from the class; after attaching it is present in the instance `__dict__`, the
+  instance sees its own tracker, and **the class attribute is still `None`**. A fresh instance in
+  the same process reads `None` with a clean `__dict__`. Detaching leaves the class alone too.
+- A grep over `src/` and `tests/` finds **no assignment to the class attribute anywhere**: the
+  only writes are the two `self._stats_tracker = tracker` setters, and the only call sites are
+  `gym_env.py:438-439`, both on instances (`op`, `self.sim`).
+
+Four new tests pin it, in a class named for the concern —
+`TestTheTrackerSlotIsPerInstanceNotPerClass`: attaching shadows rather than writes; a later
+instance in the same process sees no tracker; detaching also leaves the class alone; and an
+end-to-end version building **two real envs in one process**, asserting each sim points at its
+own tracker, that the two trackers are distinct objects (§10 rebuilds per reset), that the class
+slot is still `None` with two live simulations, and that a third simulation built afterwards
+still starts clean.
+
+**A weak test of mine, found while answering and fixed.**
+`test_operator_defaults_to_no_stats_tracker` read
+
+    self.assertIsNone(RLPoolingIRSOnly._stats_tracker
+                      if hasattr(RLPoolingIRSOnly, "_stats_tracker") else None)
+
+The operator sets the slot in `__init__`, so the class has no such attribute, the `hasattr`
+guard was False, and the assertion was `assertIsNone(None)` — it would have passed no matter
+what the code did. That is precisely the decoration §0 rules out. Replaced with an assertion of
+the actual structure: the name is **absent** from `vars(RLPoolingIRSOnly)` and **present** in
+`__init__`'s code names, so the operator's slot is per instance by construction rather than by
+a vacuous check. The sim env's test now also asserts the class attribute genuinely exists before
+asserting it is `None`.
+
+Full suite after the additions: **320 tests pass**, 137.0 s, no failures and no skips (316
+before; +4). No stray result directories. Tests only — no source file changed, so the P1.10
+gate result from the DONE entry above still stands.
+
+**Stopping here** — not starting P2.8.

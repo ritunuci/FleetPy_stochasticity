@@ -38,6 +38,7 @@ from src.misc import config
 from src.misc.globals import (
     G_DAY_DIR,
     G_DIR_DEMAND,
+    G_NETWORK_NAME,
     G_OP_MODULE,
     G_RANDOM_SEED,
     G_RL_MODE,
@@ -53,6 +54,8 @@ from src.misc.init_modules import load_simulation_environment
 from src.rl_gym.day_rotation import day_for_episode, training_days
 from src.rl_gym.observers import CandidateObserver, GlobalStateObserver
 from src.rl_gym.reward import RewardTracker
+from src.rl_gym.rolling_stats import RollingStatsTracker
+from src.rl_gym.zones import ZoneTable
 from src.rl_gym.spaces import build_action_mask, make_action_space, truncate_candidates
 
 LOG = logging.getLogger(__name__)
@@ -152,6 +155,8 @@ class SDPDPAssignmentEnv(gym.Env):
         self._generator = None
         self._pending = None
         self._tracker: Optional[RewardTracker] = None
+        self._stats: Optional[RollingStatsTracker] = None
+        self._zones: Optional[ZoneTable] = None     # static data, built once, reused
         self._obs = np.zeros(obs_len, dtype=np.float32)
         self._mask = build_action_mask(0, self.k_max)
         self._terminated = True
@@ -334,6 +339,60 @@ class SDPDPAssignmentEnv(gym.Env):
             scenario_parameters[G_DAY_DIR] = self._day_dir_name
             scenario_parameters[G_RQ_FILE] = f"{day}.csv"
 
+    # ---------------------------------------------------------------- #
+    # tracker fan-out (P2.7)
+    # ---------------------------------------------------------------- #
+
+    def _zone_table(self) -> ZoneTable:
+        """P2.5's zone lookup, built once per env and reused across episodes.
+
+        The table is static data -- `nodes.csv` and a committed CSV -- so it is not simulation
+        state and §10's no-caching rule does not apply to it. The *tracker* is rebuilt every
+        reset; only this lookup is shared.
+        """
+        if self._zones is None:
+            self._zones = ZoneTable(network_name=self.scenario_parameters[G_NETWORK_NAME])
+        return self._zones
+
+    @staticmethod
+    def _make_quoted_wait_fn(op):
+        """`rid -> the operator's quoted wait in seconds, or None`.
+
+        The quote lives on the operator's `PlanRequest` as `prq.offer.offered_waiting_time`,
+        set once by `_create_user_offer` as `pu_time - prq.rq_time` — already relative to
+        `rq_time`, so it subtracts directly from the realized wait. Read from
+        `rq_dict_store`, which unlike `rq_dict` keeps its entries for the whole episode.
+        **Nothing from the diffusion model is read** (§5.2): not
+        `rq_obj.expected_pickup_time`, not `ETA_update_time_stamp`, not any
+        `diffusion_state_*` — the operator has no knowledge of the behavioural model.
+        A rejected request carries a `Rejection`, whose `offered_waiting_time` is None; such a
+        rider is never picked up, but the None is handled rather than assumed away.
+        """
+        def quoted_wait(rid):
+            prq = op.rq_dict_store.get(rid) or op.rq_dict.get(rid)
+            offer = getattr(prq, "offer", None) if prq is not None else None
+            return getattr(offer, "offered_waiting_time", None)
+        return quoted_wait
+
+    def _on_pickup(self, rid, rq) -> None:
+        """`Demand.record_boarding` fan-out: reward first, then statistics."""
+        self._tracker.on_pickup(rid, rq)
+        self._stats.on_pickup(rid, rq)
+
+    def _on_exit(self, rid, rq) -> None:
+        """`Demand.record_user` fan-out, with **one** §6.4 classification (trap 13).
+
+        `RewardTracker.on_exit` returns the outcome it computed, and that single string is what
+        the statistics tracker records — the two can therefore never label the same exit
+        differently. It returns `None` for a repeated exit on an already-handled rid, which is
+        also what keeps the statistics idempotent: `record_alighting_start` and
+        `record_remaining_users` can both fire for a rider mid-alighting at end of day.
+        """
+        outcome = self._tracker.on_exit(rid, rq)
+        if outcome is None:
+            return
+        self._stats.on_exit(rid, rq, outcome)
+
     def _episode_pair_seed(self) -> Optional[int]:
         """The seed this episode is pinned to, or None when it is not pinned."""
         if self.eval_pairs is not None:
@@ -371,9 +430,16 @@ class SDPDPAssignmentEnv(gym.Env):
             track_events=self.track_events,
             end_time=scenario_parameters[G_SIM_END_TIME],
         )
-        self.sim.operators[0].set_reward_tracker(self._tracker)
-        self.sim.demand._boarding_callback = self._tracker.on_pickup
-        self.sim.demand._exit_callback = self._tracker.on_exit
+        op = self.sim.operators[0]
+        op.set_reward_tracker(self._tracker)
+
+        self._stats = RollingStatsTracker(
+            self._zone_table(), quoted_wait_fn=self._make_quoted_wait_fn(op))
+        op.set_stats_tracker(self._stats)
+        self.sim.set_stats_tracker(self._stats)
+
+        self.sim.demand._boarding_callback = self._on_pickup
+        self.sim.demand._exit_callback = self._on_exit
 
         self._generator = self.sim.run_generator()
         self._terminated = False
@@ -563,4 +629,7 @@ class SDPDPAssignmentEnv(gym.Env):
         summary["month"] = self._episode_month
         summary["pass"] = self._episode_pass
         summary["pass_position"] = self._episode_position
+        if self._stats is not None:
+            # P2.7's end-of-day totals, for reconciliation against 1_user-stats.csv
+            summary.update(self._stats.episode_summary())
         return summary

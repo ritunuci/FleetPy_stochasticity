@@ -2192,28 +2192,54 @@ manifest hash matches the directory.
 ### P2.7 — `RollingStatsTracker`
 
 **Files:** `src/rl_gym/rolling_stats.py` (new), `src/rl_gym/reward.py` (shared classifier),
-`src/rl_gym/sim_env_rl.py` (tracker clock; arrival hook, unless it belongs in
-`src/rl_gym/fleetctrl_rl.py`), `src/rl_gym/gym_env.py` (wiring),
+`src/rl_gym/fleetctrl_rl.py` (arrival hook), `src/rl_gym/sim_env_rl.py` (tracker clock),
+`src/rl_gym/gym_env.py` (wiring and the exit fan-out),
 `tests/test_rl_gym_rolling_stats.py` (new)
 
 Events:
 - **arrival** — rid, `rq_time`, origin cell — at the single entry point every loaded request
   passes through, including origin = destination, reservation and no-candidate requests.
-  VERIFY that this is `build_assignment_context`.
+  *(VERIFIED in P2.7: it is `build_assignment_context`. `step_generator` calls it
+  unconditionally for every `(rid, rq_obj)` before any branch — `sim_env_rl.py` ~90 — so it
+  fires for the internally-resolved cases too, and §2.2's always-empty
+  `get_undecided_travelers` means exactly once per request.)* **The hook therefore lives in
+  `fleetctrl_rl.py`**, immediately after the `PlanRequest` is stored and *before* the
+  `o_pos == d_pos` early return: the prq carrying the origin node does not exist at the call
+  site, and hooking the operator covers the gym generator and `user_request`'s greedy fallback
+  alike. It is a **no-op when no tracker is attached**, which is the path P1.3, P1.4 and the
+  P1.10 gate all run.
 - **decline** and **post-match cancellation** — from the same exit callback as `RewardTracker`,
-  labelled by one §6.4 classification function shared by both trackers (trap 13); keyed to the
-  rider's origin cell, timed when they fire. The exit callback receives only `(rid, rq)`, so the
-  tracker keeps a clock: `step_generator` sets it to `sim_time` at the start of every step. A
-  decline is therefore timed at its arrival step, and a post-match cancellation at the step its
-  diffusion check fires.
+  keyed to the rider's origin cell, timed when they fire. **One classification per exit, not two
+  agreeing ones** (trap 13): the §6.4 ladder is a module-level `classify_exit` in `reward.py`,
+  `RewardTracker.on_exit` **returns** the outcome it computed, and the env's exit fan-out hands
+  that single string to the statistics tracker — so the two cannot label an exit differently
+  even in principle. `on_exit` returns **`None`** for a repeated exit on an already-handled rid
+  and the fan-out skips it, which is what keeps the statistics idempotent per rid without a
+  second bookkeeping set.
+  The exit callback receives only `(rid, rq)`, so the tracker keeps a clock:
+  `step_generator` sets it to `sim_time` at the start of every step. A decline is therefore
+  timed at its arrival step, and a post-match cancellation at the step its diffusion check
+  fires. The clock is **stale during the end-of-day finalisation**, after the step loop, and
+  harmlessly: only these two kinds read it and neither fires there, pickups carry their own
+  `pu_time`, and the windowed queries are read only at decision epochs inside the loop.
 - **pickup** — from the boarding callback; stores pickup time and realized minus quoted wait,
-  last-write-wins per rid (§6.4). Quoted wait from the operator side (§5.2); nothing from the
-  diffusion model.
+  last-write-wins per rid (§6.4) — the entry is **replaced, not appended**, so a repeat
+  `record_boarding` leaves one sample priced at the final `pu_time`. Quoted wait from the
+  operator side (§5.2); nothing from the diffusion model. *(VERIFIED in P2.7:
+  `prq.offer.offered_waiting_time`, set once by `_create_user_offer` as `pu_time - prq.rq_time`
+  — already relative to `rq_time`, so it subtracts directly from the realized wait — and **not
+  overwritten after acceptance**: `_create_user_offer` runs once per request in this scenario
+  and nothing re-offers. A rejected request carries a `Rejection` whose `offered_waiting_time`
+  is `None`.)*
 
 Queries, all over `[t − W, t)`: counts for a zone set, fleet-wide counts, and the mean wait gap
-(`None` when empty; the observer writes 0.0). Per-kind deques, pruned beyond 60 minutes; a
-60-minute window holds a few dozen events fleet-wide, so zone counts can scan the deque. The
-tracker is rebuilt with the simulation at every reset (§10).
+(`None` when empty; the observer writes 0.0). Per-kind deques, pruned beyond 60 minutes, and
+pickups keyed per rid; zone counts scan rather than maintaining per-zone indices. **The busiest
+(month, minute) in P2.6's baseline averages 73.7 arrivals in a 60-minute window and reaches
+about 115 at +3 SD; with declines, cancellations and pickups on top such a window holds roughly
+200 events fleet-wide** — a few hundred entries scanned a handful of times per decision, which
+is far cheaper than indexing them. The tracker is rebuilt with the simulation at every reset
+(§10); P2.5's `ZoneTable` is static data and is built once and shared.
 
 **How Ritun verifies**, on a greedy reference-day run:
 - end-of-day totals match P1.10: 445 arrivals, 118 declines, 28 cancellations, 288 distinct
@@ -2226,7 +2252,9 @@ tracker is rebuilt with the simulation at every reset (§10).
   and differs in 4 of the 28; pickups are at `pickup_time`; the quoted wait is `t_wait` in
   `offers`. Draw the 20 times from outside [33032.9, 33230): rid 50's first boarding falls there
   and is later overwritten (§6.4), so `1_user-stats.csv` cannot reproduce a window containing
-  it;
+  it. *(All confirmed in P2.7. One more, for whoever writes the recomputation: the `start`
+  column is a **position string** like `1169;-1;-1`, not a bare node index, so the origin node
+  for the zone lookup is the part before the first `;`.)*
 - online fleet-wide arrival counts at every decision equal P2.6's definition recomputed from the
   demand file;
 - the P1.10 gate, byte for byte.

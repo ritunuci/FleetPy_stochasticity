@@ -40,6 +40,16 @@ INPUT_PARAMETERS_RLImmediateDecisionsSimulation = {
 class RLImmediateDecisionsSimulation(ImmediateDecisionsSimulation):
     """ImmediateDecisionsSimulation with the request loop exposed as a generator."""
 
+    #: P2.7's rolling-stats tracker, attached by the env after construction. A **class-level
+    #: default** rather than an `__init__` assignment, deliberately: P1.4 forbids adding a
+    #: parameter to `FleetSimulationBase.__init__`, and this class defines no `__init__` of its
+    #: own. None means the clock is never set and the tracker is never touched.
+    _stats_tracker = None
+
+    def set_stats_tracker(self, tracker) -> None:
+        """Attach the RollingStatsTracker (P2.7). The one call site is None-guarded."""
+        self._stats_tracker = tracker
+
     def _rl_operator(self, op_id):
         """Return operator `op_id`, requiring it to be RL-capable.
 
@@ -69,6 +79,13 @@ class RLImmediateDecisionsSimulation(ImmediateDecisionsSimulation):
 
         :param sim_time: new simulation time
         """
+        # RL-GYM: the rolling-stats clock (P2.7). The exit callback receives only (rid, rq),
+        # with no time, so declines and post-match cancellations are timed by this. Set before
+        # anything else in the step, so an event firing inside update_sim_state_fleets or the
+        # diffusion check is timed at this step rather than the previous one. A no-op when no
+        # tracker is attached, which is the path the byte-for-byte gates run.
+        if self._stats_tracker is not None:
+            self._stats_tracker.set_clock(sim_time)
         # 1)
         self.update_sim_state_fleets(sim_time - self.time_step, sim_time)
         new_travel_times = self.routing_engine.update_network(sim_time)

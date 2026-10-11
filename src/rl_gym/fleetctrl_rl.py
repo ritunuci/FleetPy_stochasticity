@@ -81,12 +81,24 @@ class RLPoolingIRSOnly(PoolingInsertionHeuristicOnly):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # optional; stays None for non-RL scenarios so nothing changes for them
+        # optional; both stay None for non-RL scenarios so nothing changes for them
         self._reward_tracker = None
+        self._stats_tracker = None
 
     def set_reward_tracker(self, tracker) -> None:
         """Attach the RewardTracker (P1.7). Both call sites are None-guarded."""
         self._reward_tracker = tracker
+
+    def set_stats_tracker(self, tracker) -> None:
+        """Attach the RollingStatsTracker (P2.7).
+
+        Defaults to `None` and the one call site is None-guarded, so the arrival hook is a
+        **no-op when nothing is attached**. That matters beyond tidiness: P1.3 and P1.4 run this
+        operator with no gym at all, and the P1.10 gate drives it with a reward tracker but no
+        statistics tracker, so the unattached path is the one three byte-for-byte comparisons
+        depend on.
+        """
+        self._stats_tracker = tracker
 
     # ---------------------------------------------------------------- #
     # user_request, split in two
@@ -117,6 +129,17 @@ class RLPoolingIRSOnly(PoolingInsertionHeuristicOnly):
         rid_struct = rq.get_rid_struct()
         self.rq_dict[rid_struct] = prq
         self.rq_dict_store[rid_struct] = prq  # Ritun added: planrequest object is not deleted from this dict
+
+        if self._stats_tracker is not None:
+            # RL-GYM: arrival for the rolling statistics (P2.7). This is the one point every
+            # loaded request passes through, so it sits BEFORE the three internal-resolution
+            # returns below -- an auto-declined, reserved or no-candidate request is still an
+            # arrival. A no-op when nothing is attached, which is the path P1.3, P1.4 and the
+            # P1.10 gate run. Pure bookkeeping: it must not perturb the simulation.
+            try:
+                self._stats_tracker.on_arrival(rid_struct, prq.rq_time, prq.o_pos[0])
+            except Exception:
+                LOG.warning(f"stats on_arrival({rid_struct}) raised", exc_info=True)
 
         if prq.o_pos == prq.d_pos:
             LOG.debug(f"automatic decline for rid {rid_struct}!")
