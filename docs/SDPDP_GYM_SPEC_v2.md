@@ -64,7 +64,11 @@ differences are what all four of these look like. Ritun decides what happens nex
   `git status`, `git log`, `git diff`.
 - You may run unit tests and short Python snippets freely. You may also run full
   simulations — use a truncated `end_time` while iterating, and a full run only for the
-  final verification of a work item. **Never overwrite `baseline_user_stats.csv`.**
+  final verification of a work item. **Never overwrite `baseline_user_stats.csv` or
+  `baseline_op_stats.csv`** (the second added in P2.14; both live in `docs/` and both come from
+  the stock reference run). **And never delete anything from the reference run's own output
+  directory,** `studies/example_study/results/example_depot_time_pool_irsonly_rs_42/` — see
+  trap 1, which records how that happened once and what makes it unrepeatable.
 - One work item at a time. Never bundle two, even if the second is trivial.
 - Sections marked **DECIDED** are settled. If you believe one is wrong, say so and stop.
   Do not substitute your own design.
@@ -385,6 +389,19 @@ per episode and roughly double wall-clock, while leaving the gym step count unch
 active — the rest are disabled by a `#` prefix on `op_module`. `baseline_user_stats.csv` 
 was generated from that row; the run's own output directory is
 `studies/example_study/results/example_depot_time_pool_irsonly_rs_42/`.
+
+**`docs/baseline_op_stats.csv` is the second half of the byte gate**, added in P2.14 from the
+same run's `2-0_op-stats.csv` (md5 `ded74ef39a274397c921c29f128f6950`, against the user-stats
+file's `53879ea79cf211d700f670dee1173dd5`). P2.14's VKT KPI is the first figure to read that
+file, and it is the stronger check that observation code never perturbs the simulation
+(trap 14): what a leaked routing-cache entry or a mutated stored plan moves is where the
+vehicles drive, which this file records leg by leg.
+
+**The reference run is exactly reproducible from the scenario files.** Measured in P2.14:
+`run_scenarios(cc, sc, log_level="info", n_cpu_per_sim=1, n_parallel_sim=1)` — the call
+`run_examples.py` itself makes — rebuilt the directory with both CSVs byte-identical to the two
+committed baselines. So the committed `docs/baseline_*.csv` are the artifacts that matter and
+the output directory is recoverable; it is still not a licence to delete it (trap 1).
 
 ### 2.9 The demand corpus — frozen
 
@@ -1840,7 +1857,12 @@ through a tested helper rather than an inline `np.argmin`**, and that helper mus
 test that fails if the `is_valid` restriction is dropped. A guard with no test that fails when it
 is removed is decoration.
 
-The resulting `1_user-stats.csv` must match `baseline_user_stats.csv` **byte for byte**.
+The resulting `1_user-stats.csv` must match `baseline_user_stats.csv` **byte for byte**, and
+**from P2.14 the run's `2-0_op-stats.csv` must match `baseline_op_stats.csv` the same way** —
+both baselines from the stock reference run, neither ever overwritten (§2.8). The second file is
+the stronger check that observation code leaves the simulation alone (trap 14): what a leaked
+routing-cache entry or a mutated stored plan moves is where the vehicles drive, and that is what
+`2-0_op-stats.csv` records leg by leg.
 
 If it passes, the generator, observation extraction, ranking, masking, action translation,
 reward wiring, seeding, and episode termination are all correct simultaneously — with no RL
@@ -1927,7 +1949,9 @@ section).
 
 **Every item that touches the env, the trackers or the observation (P2.0b, P2.3, P2.7–P2.14)
 re-runs the P1.10 gate as part of its verification.** Reading a feature must never change the simulation (trap 14), and
-the gate is the only check that would notice. *(P2.13 was added to this list in P2.4: it now
+the gate is the only check that would notice. **From P2.14 the gate compares two files**, the
+run's `1_user-stats.csv` against `docs/baseline_user_stats.csv` and its `2-0_op-stats.csv`
+against `docs/baseline_op_stats.csv` (§2.8). *(P2.13 was added to this list in P2.4: it now
 edits `sim_env_rl.py` and `gym_env.py` for the `tail_seconds` field, so it touches the env like
 the rest.)*
 
@@ -2724,7 +2748,11 @@ first version of the check report "no train/loss recorded". It runs three rollou
 
 **Files:** `src/rl_gym/evaluate.py` (new), `src/rl_gym/kpis.py` (new),
 `src/rl_gym/gym_env.py` (episode-summary file), `docs/RL_GYM_EVAL_SEEDS.csv` (new),
-`tests/test_rl_gym_kpis.py` (new)
+`docs/baseline_op_stats.csv` (new), `tests/test_rl_gym_kpis.py` (new),
+`tests/test_rl_gym.py` and `tests/test_rl_gym_env.py`. *(The last three were added to this
+line in P2.14, on Ritun's decision: `2-0_op-stats.csv` joins the byte gate with its own
+committed baseline, and the `rl_episode_summary.json` test sits with the other env tests since
+it needs no `torch`.)*
 
 **The RL result is meaningless without the greedy baseline on the same held-out days.**
 
@@ -2736,6 +2764,20 @@ first version of the check report "no train/loss recorded". It runs three rollou
   **unpaired**: rider decline, the diffusion random term and stochastic travel time all draw from
   one global stream (§2.5, P1.9), so two policies on the same seed share a sample path only until
   their first different decision. The seed list buys reproducibility, not common random numbers.
+
+  **The draw order is part of the artifact** (fixed in P2.14): one `integers` call for
+  `len(days) × seeds_per_day` values, consumed **row-major** — day 0's ten, then day 1's ten.
+  Per-day `rng.integers` calls from the same root give a different sequence, and because the
+  file is never regenerated there would be no way to tell afterwards which had been used. A test
+  pins it against a hand-written draw. The file is 26 × 10 = 260 rows of
+  `day,seed_index,seed`; `seed_index` is what makes P2.15's "first 2 seeds of each day" a column
+  filter rather than a positional convention.
+
+  **The generator refuses to overwrite, with no `--force`.** `write_seed_file` checks for the
+  file for the sake of a message that explains itself and then opens with mode `"x"`, so there
+  is no window between the two and no way for a later refactor to leave only the check.
+  `--check-seeds` re-derives in memory and compares, writing nothing, which is how
+  reproducibility is confirmed without the write path ever being taken twice.
 - **Greedy baseline (D9).** Stock FleetPy through `run_examples.run_single_simulation(
   scenario_parameters)` — the function `run_scenarios` calls once per row; `run_scenarios` itself
   takes only file paths and cannot accept overrides. Build `scenario_parameters` exactly as
@@ -2748,11 +2790,51 @@ first version of the check report "no train/loss recorded". It runs three rollou
   wipe each run's output, and the reference run's (trap 1). Output on; one process per run.
   VERIFY that these overrides reach the simulation unchanged and that no scenario file is
   edited.
+
+  *(Done in P2.14. `evaluate.guard_output_dir` enforces the unique name **before** construction,
+  by name and by resolved path — a test drives both branches. The four `run_scenarios` settings
+  are `n_cpu_per_sim = 1`, `evaluate = 1`, `log_level = "info"`, `keep_old = False`, matching
+  `run_examples`' own call for this scenario, so the reference pair reproduces the run both
+  baselines came from; the overrides land on an in-memory config object and no scenario file is
+  touched. The operator and `sim_env` are additionally asserted to be the **stock**
+  `PoolingIRSOnly` / `ImmediateDecisionsSimulation`, since a baseline that quietly ran the RL
+  subclasses would make D9 compare the RL path with itself. `Pool(maxtasksperchild=1)` gives each
+  run a fresh interpreter, which is what "one process per run" is for: `__init__` seeds the
+  global RNG and reconfigures process-global logging.)*
+
+  **Where the output goes, and git:** `studies/<study>/results/<scenario_name>/` for both
+  policies. `.gitignore` line 1 is already `studies/example_study/results/` and nothing under it
+  is tracked, so **no `.gitignore` entry is needed** — verified in P2.14 with
+  `git check-ignore -v` and `git ls-files`. Sizing, since it is not free: the reference
+  directory is about 1.2 MB, so a full 26-day × 10-seed sweep of both policies is roughly
+  600 MB inside a OneDrive-synced folder. Ignored by git, but it will sync — which is why the
+  CLI takes an explicit `--days` / `--seeds` pair list rather than defaulting to all 260.
 - **RL policy.** The env with `day_dir = "corpus_eval"`, `day` and `episode_seed` (P2.3) set to
   the pair, `skip_output = False`, the checkpoint and its `VecNormalize` statistics
   (`training = False`), deterministic actions. Keep the log level at `warning` (the P1.11
   logging caveat). When output is on, the env also writes `rl_episode_summary.json` — the
   `episode_summary()` dict — into its output directory; this item adds that to `gym_env.py`.
+
+  *(Three implementation facts from P2.14. **`episode_summary()` gained `scenario_name`**,
+  because it was the only field missing to get from a summary back to the CSVs beside it, and
+  the harness resolves `studies/<study>/results/<scenario_name>` from it; an absolute path there
+  would not be portable. **The venv is built raw and then wrapped by `load_vecnormalize`**,
+  rather than by `build_eval_venv`, so the statistics are the ones saved beside the checkpoint:
+  a freshly constructed `VecNormalize` starts at `count = 1e-4, mean = 0, var = 1` (P2.12) and
+  would feed the policy observations on a scale it never trained on. And `SubprocVecEnv` resets
+  unconditionally on `done`, so **each worker leaves one stray output directory per invocation**
+  — the abandoned auto-reset episode. Measured: it holds only `00_config.json`,
+  `2_vehicle_types.csv` and `3-0_op-dyn_atts.csv`, and **no `1_user-stats.csv`**, so it cannot
+  be read as a finished run; nothing globs for runs, the table is built from the explicit
+  directories the harness returns. It is deliberately not deleted — identifying it would mean
+  reconstructing P1.9's name by string surgery to then `rmtree` a results directory, which is
+  the one thing trap 1 says not to write.)*
+
+  **The env-driven greedy driver is separate from both**, `evaluate.run_env_greedy_pair`: it
+  exists to test D9's premise and is never the baseline (D9). It drives the **raw** env
+  observation, never a normalised one — after `VecNormalize` each `delta_cfv` slot is scaled by
+  its own running statistics, so an argmin across slots would compare z-scores from different
+  distributions, and `greedy_action`'s `is_valid` check refuses such a vector outright (P2.8).
 - **KPI script** reads only the output directory, identically for both policies:
   - served count;
   - mean wait (`pickup_time − rq_time`) over served;
@@ -2770,12 +2852,46 @@ first version of the check report "no train/loss recorded". It runs three rollou
 
   Tabulated per day, per month and overall, as mean ± standard error over seeds.
 
+  *(Three decisions from P2.14, all about keeping the two policies measured identically.*
+  ***The outcome counts come from `reward.classify_exit`, not a second ladder**: `kpis._RowRequest`
+  adapts a `1_user-stats.csv` row to the six attributes that function reads, so §6.4's order —
+  `no_show` after `diffusion_cancelled` and gated on `pu_time is None`, no fallback to decline —
+  is reused rather than copied (trap 13). **The no-offer split is cross-checked**: the summary's
+  `operator_rejected + no_candidates` must equal the number of rows carrying `offers = "0:"`, or
+  `kpi_row` raises — otherwise a plausible KPI table could be built from a summary and CSVs
+  belonging to different runs. And **two files in the same directory are deliberately not read**:
+  `3-0_op-dyn_atts.csv`, whose only two varying columns are CPU-time accumulators (below), and
+  `standard_eval.csv`, which exists for stock greedy (`evaluate = 1`) and not for an env run
+  (`evaluate = 0`) — reading it would give the two policies different treatment, the one thing
+  this script exists to prevent. The standard error is `sd/√n` with `ddof = 1`, so a single seed
+  prints the mean alone rather than `± 0.00`.)*
+
 **How Ritun verifies:** the P1.10 gate, byte for byte (this item edits `gym_env.py`); the greedy
 baseline on (2024-06-20, seed 42) writes a `1_user-stats.csv` byte-identical to
 `baseline_user_stats.csv`, and two baseline runs on different pairs leave both output
 directories intact; the KPI script's counts on that run reconcile with
 P1.10's `episode_summary()`; the env-driven greedy on the same pair gives an identical KPI row,
 which is D9's premise.
+
+**`python -m src.rl_gym.evaluate --verify` is that verification, committed and re-runnable**,
+printing a `PASS`/`FAIL` line per check and exiting non-zero if any failed — the same
+arrangement Ritun asked for in P2.13, and for the same reason: he re-runs every verification
+himself (§0). Measured: **13/13**, about 3 minutes. It records the reference directory's
+`1_user-stats.csv` **and** `2-0_op-stats.csv` md5 before and after every run it makes and fails
+if either moved.
+
+**D9's premise holds, and the one differing column is outside the KPI set.** Measured in P2.14
+on (2024-06-20, 42) out of `corpus_eval/`: env-driven greedy and stock greedy agree on **every**
+KPI and count — served 288, mean wait 588.70 s, detour ratio 1.3701, decline rate 0.2706,
+cancellation rate 0.0881, no-show rate 0.0063, 0 rejections, 9 no-candidate requests, VKT
+2568.96 km — and their `1_user-stats.csv` and `2-0_op-stats.csv` are byte-identical to the two
+committed baselines. The only difference between a stock and an env-driven run anywhere in the
+output directory is **two columns of `3-0_op-dyn_atts.csv`**: `user_requests` and
+`dyn_fleetsizing_strategy`, i.e. `G_FCTRL_CT_RQU` and `G_FCTRL_CT_DFS` (`globals.py:679,684`).
+Both are `perf_counter` durations, so they differ between *any* two runs of the same scenario,
+and P1.3's build/commit split deliberately recomposed the first so that policy-inference time
+stays out of fleet-control CPU time. **No KPI reads that file**, which is the resolution rather
+than a caveat.
 
 **Commit:** `RL-GYM: add evaluation harness and KPI table`
 
@@ -2822,7 +2938,8 @@ used to size the weight sweep.
 In this order:
 
 1. **Stochastic travel-time routing fix** (§2.5): keep realized draws out of operator routing,
-   regenerate the byte-gate baseline and the stock-greedy KPI baselines, re-run the gates and
+   regenerate **both** byte-gate baselines (`docs/baseline_user_stats.csv` and
+   `docs/baseline_op_stats.csv`, §2.8) and the stock-greedy KPI baselines, re-run the gates and
    P2.4's sweep, and run a short training on the corrected simulator to size the weight sweep.
 2. **Reward weight sweep** over `w_pickup`, `w_wait`, `w_reject`, `w_cancel` and `w_decline`,
    with repositioning off, to set the weights for full-length training. Its design — the rule
@@ -2870,7 +2987,7 @@ In this order:
    old baseline is invalidated (trap 16) — which is why this belongs before full-length training
    rather than during it.
 5. **Turn on stock repositioning.** It needs a FleetPy zone system and forecast inputs.
-6. **Regenerate both baselines**: the byte-gate file — keeping the current one under a new name,
+6. **Regenerate both baselines**: the two byte-gate files — keeping the current ones under new names,
    so the repositioning-off configuration stays testable — and the stock-greedy KPI runs. A
    single training run at the swept weights then checks that they carry over.
 7. **Full-length training** (~7,000 episodes).
@@ -2961,6 +3078,25 @@ carries a comment saying so; keep it.
 
 1. **`create_or_empty_dir` deletes results.** Two workers sharing a `scenario_name` silently
    erase each other. Covered by P1.9.
+
+   **With `skip_output` on, the env's output directory *is* the reference run's.** P1.9's
+   `_apply_episode_scenario_name` returns early when output is skipped, so
+   `sim.dir_names["output"]` then points at
+   `studies/example_study/results/example_depot_time_pool_irsonly_rs_42/` — the directory the
+   two committed baselines came from. Nothing is *written* there in that mode, which is the
+   whole point of the flag, and that is exactly what makes it easy to miss: any tool or test
+   that tidies up after itself by removing `sim.dir_names["output"]` deletes the reference run
+   whenever `skip_output` is on. **This happened once, in P2.14**, in a new test's
+   `addCleanup`. Both baselines survived — being committed in `docs/` is why they exist — and
+   §2.8's rerun restored the directory byte for byte, but the lesson is cheap to keep: clean up
+   an episode's directory **only when `sim.scenario_name != scenario_parameters[G_SCENARIO_NAME]`**,
+   which is true exactly when P1.9 made the name unique, and assert the equality case implies
+   `skip_output` so a future variant fails loudly instead of deleting results.
+
+   **P2.14 guards the other direction in code**: `evaluate.guard_output_dir` raises before a
+   simulation is constructed if a run's `scenario_name`, or its resolved output directory, is
+   the scenario row's own. The row's name *is* the reference run's, so a baseline run that
+   forgot its override would otherwise hand that directory to `create_or_empty_dir`.
 2. **Global RNG.** `random.seed` / `np.random.seed` in `__init__` are process-global. This is
    why `DummyVecEnv` is forbidden.
 3. **Logging handler accumulation.** Covered by P1.2.

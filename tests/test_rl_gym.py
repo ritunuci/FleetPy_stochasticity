@@ -6,6 +6,13 @@ step until `terminated` — and requires the resulting `1_user-stats.csv` to mat
 extraction, ranking, masking, action translation, reward wiring, seeding and episode
 termination are all correct simultaneously, with no RL library involved.
 
+**`2-0_op-stats.csv` is compared too, against `docs/baseline_op_stats.csv`** (added in P2.14,
+both baselines taken from the stock reference run and neither ever overwritten). P2.14's VKT KPI
+is the first figure to depend on that file, so it needs the same protection as the rider rows —
+and it is the stronger check that the observation code never perturbs the simulation (trap 14):
+the candidate block re-times plan copies and queries the router, and what that could move is
+where the vehicles drive, which is what this file records leg by leg.
+
 `base_seed` is deliberately absent, so `G_RANDOM_SEED` stays at the row's 42 and the comparison
 is against a baseline generated under the same seed (D7). P1.9 appends
 `_env0_pid<pid>_ep1` to the scenario name when output is on, so the run writes to its own
@@ -39,6 +46,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCS = os.path.join(ROOT, "studies", "example_study", "scenarios")
 RESULTS = os.path.join(ROOT, "studies", "example_study", "results")
 BASELINE = os.path.join(ROOT, "docs", "baseline_user_stats.csv")
+#: the op-stats half of the gate (P2.14), from the same stock reference run
+BASELINE_OP = os.path.join(ROOT, "docs", "baseline_op_stats.csv")
 RESULTS_DOC = os.path.join(ROOT, "docs", "RL_GYM_PHASE1_RESULTS.md")
 K = 8
 TOTAL_REQUESTS = 445
@@ -153,6 +162,7 @@ def run_scripted_greedy_episode():
     return {
         "scenario_name": scenario_name,
         "user_stats": os.path.join(RESULTS, scenario_name, "1_user-stats.csv"),
+        "op_stats": os.path.join(RESULTS, scenario_name, "2-0_op-stats.csv"),
         "buckets": buckets,
         "summary": summary,
         "rewards": rewards,
@@ -177,10 +187,10 @@ class TestPhase1ExitGate(unittest.TestCase):
         if os.path.isdir(d):
             shutil.rmtree(d)
 
-    def test_user_stats_matches_baseline_byte_for_byte(self):
-        produced = self.r["user_stats"]
-        self.assertTrue(os.path.isfile(produced), f"no user-stats written at {produced}")
-        with open(BASELINE, "rb") as a, open(produced, "rb") as b:
+    def assert_byte_identical(self, produced, baseline, label):
+        """Byte comparison, reporting the shape of any difference. Never a tolerance."""
+        self.assertTrue(os.path.isfile(produced), f"no {label} written at {produced}")
+        with open(baseline, "rb") as a, open(produced, "rb") as b:
             base_bytes, run_bytes = a.read(), b.read()
         if base_bytes != run_bytes:
             # do not relax to a tolerance; report the shape of the difference and fail
@@ -188,11 +198,25 @@ class TestPhase1ExitGate(unittest.TestCase):
             run_lines = run_bytes.decode().splitlines()
             differing = [i for i, (x, y) in enumerate(zip(base_lines, run_lines)) if x != y]
             self.fail(
-                f"user-stats differs from the baseline: {len(differing)} differing row(s) "
+                f"{label} differs from the baseline: {len(differing)} differing row(s) "
                 f"out of {len(base_lines)}; first at line {differing[0] if differing else 'n/a'}; "
                 f"length {len(run_lines)} vs {len(base_lines)}. "
-                f"md5 {md5(produced)} vs {md5(BASELINE)}")
-        self.assertEqual(md5(produced), md5(BASELINE))
+                f"md5 {md5(produced)} vs {md5(baseline)}")
+        self.assertEqual(md5(produced), md5(baseline))
+
+    def test_user_stats_matches_baseline_byte_for_byte(self):
+        self.assert_byte_identical(self.r["user_stats"], BASELINE, "1_user-stats.csv")
+
+    def test_op_stats_matches_baseline_byte_for_byte(self):
+        """The vehicle legs, added to the gate in P2.14.
+
+        This is what would move if observation code ever perturbed the simulation (trap 14):
+        the candidate block re-times plan copies and queries the router, and a leaked cache
+        entry or a mutated stored plan changes where the vehicles drive. `1_user-stats.csv`
+        could in principle survive such a change; the per-leg distances and trajectories here
+        could not. It is also what P2.14's VKT KPI is computed from.
+        """
+        self.assert_byte_identical(self.r["op_stats"], BASELINE_OP, "2-0_op-stats.csv")
 
     def test_every_request_accounted_for_in_exactly_one_bucket(self):
         b = self.r["buckets"]

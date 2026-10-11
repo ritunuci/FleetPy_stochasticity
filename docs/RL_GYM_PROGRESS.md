@@ -3353,3 +3353,171 @@ which SB3 never inspects. Three regression tests in `tests/test_rl_gym_env.py`.
   source, which flagged its own fixture; it parses the AST for module-level calls instead.
 
 Nothing failed. **Stopping here** — not starting P2.14.
+
+## P2.14 — STARTED 2026-10-11 09:40
+Files I will touch: src/rl_gym/kpis.py (new), src/rl_gym/evaluate.py (new),
+src/rl_gym/gym_env.py, docs/RL_GYM_EVAL_SEEDS.csv (new), docs/baseline_op_stats.csv (new),
+tests/test_rl_gym_kpis.py (new), tests/test_rl_gym_env.py, tests/test_rl_gym.py,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.13 committed (4900bc4), tree clean. K stays at 8.
+
+Checked before starting:
+- **The reference output directory's checksums, recorded before any run.**
+  `studies/example_study/results/example_depot_time_pool_irsonly_rs_42/1_user-stats.csv` is
+  md5 `53879ea79cf211d700f670dee1173dd5`, **identical to `docs/baseline_user_stats.csv`**, and
+  `2-0_op-stats.csv` is md5 `ded74ef39a274397c921c29f128f6950`.
+- **`studies/example_study/results/` is already git-ignored** (`.gitignore:1`, confirmed with
+  `git check-ignore -v`) and `git ls-files` shows nothing tracked under it. Both policies' runs
+  land there, so **no `.gitignore` entry is needed.**
+- **D9's premise, checked against the four committed runs of the reference day at seed 42**
+  (stock, P1.3's RL operator, P1.7's tracker, P1.4's generator): `1_user-stats.csv` identical
+  in all four (`53879ea7…`) and **`2-0_op-stats.csv` identical in all four** (`ded74ef3…`).
+  `3-0_op-dyn_atts.csv` **differs** (`b780aa53…` vs `887beb57…`); diffed column by column, the
+  only two differing columns are `user_requests` and `dyn_fleetsizing_strategy`, i.e.
+  `G_FCTRL_CT_RQU` and `G_FCTRL_CT_DFS` (`globals.py:679,684`) — `perf_counter` durations,
+  nondeterministic between any two runs and deliberately recomposed by P1.3's split. No KPI
+  reads that file.
+- **`offers == "0:"` is exactly the 9 no-candidate rows** of the reference day (set equality
+  against P1.7's definition), and `offers != "0:"` is 436 = the gym-step count. So the file
+  alone identifies the no-offer group and only its *split* needs the summary JSON.
+- **`direct_route_travel_time` is safe as a denominator**: over the 288 served riders, no NaN
+  and no zero (min 54.80 s); detour ratio runs 0.709–3.253, median 1.320.
+- **`op_total_km` is `op_vehicle_df["driven_distance"].sum()/1000.0`**
+  (`evaluation/standard.py:477`, `G_VR_LEG_DISTANCE = "driven_distance"`), unfiltered over the
+  op-stats rows, which is what the VKT KPI reproduces.
+- `docs/RL_GYM_EVAL_SEEDS.csv` does not exist, so this generation is the one that counts.
+
+Approved before starting (Ritun's answers to the three questions in the proposal):
+- **`2-0_op-stats.csv` joins the byte gate**, with `docs/baseline_op_stats.csv` committed from
+  the stock reference run and never overwritten, same rule as `baseline_user_stats.csv`. It is
+  the stronger check that the observers never perturb routing.
+- The `rl_episode_summary.json` test goes in `tests/test_rl_gym_env.py` (no torch import).
+- Generate all 260 seed rows now; the *runs* keep defaulting to an explicit pair list.
+
+## P2.14 — DONE 2026-10-11 11:20 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/kpis.py` — **new.** KPIs from one output directory, identically for both
+  policies. Reads `1_user-stats.csv`, `2-0_op-stats.csv` and `rl_episode_summary.json` and
+  nothing else. `_RowRequest` adapts a CSV row to the attributes `reward.classify_exit` reads,
+  so §6.4's ladder is **reused, not copied** (trap 13); `classify_user_stats`, `kpi_row`,
+  `fleet_vkt_km`, `aggregate` / `mean_se` (per day, per month, overall; `sd/√n`, `ddof = 1`),
+  `format_table` / `format_per_run_table`.
+- `src/rl_gym/evaluate.py` — **new.** `evaluation_days`, `derive_eval_seeds`,
+  `write_seed_file` (refuses to overwrite), `read_seed_file`, `check_seed_file`,
+  `pairs_from_seed_file`; `_base_scenario_parameters`, `output_dir_for`, `guard_output_dir`,
+  `build_greedy_scenario_parameters`, `run_greedy_pair(s)`; `run_env_greedy_pair`;
+  `run_rl_pairs`; `kpi_rows`, `format_report`; `verify()`; the CLI.
+- `src/rl_gym/gym_env.py` — `EPISODE_SUMMARY_FILE`, `_json_default`,
+  `_write_episode_summary` (called at both terminal paths, while `self.sim` is still alive),
+  and **`scenario_name` added to `episode_summary()`**.
+- `docs/RL_GYM_EVAL_SEEDS.csv` — **new**, 260 rows, md5 `559b836e7c61fb7dadd2e7bd9bc8891d`.
+- `docs/baseline_op_stats.csv` — **new**, copied from the stock reference run's
+  `2-0_op-stats.csv`, md5 `ded74ef39a274397c921c29f128f6950`.
+- `tests/test_rl_gym_kpis.py` — **new**, 38 tests. No torch.
+- `tests/test_rl_gym.py` — `assert_byte_identical` helper and
+  `test_op_stats_matches_baseline_byte_for_byte`; the gate is now 8 tests.
+- `tests/test_rl_gym_env.py` — `TestEpisodeSummaryFile` (5), on a truncated `end_time`.
+- `docs/SDPDP_GYM_SPEC_v2.md`, `docs/RL_GYM_PROGRESS.md`.
+
+Verification — `python -m src.rl_gym.evaluate --verify`: **13/13 in about 3 minutes**, exit 0.
+The committed re-runnable command, printing a line per check:
+
+1. **The P1.10 gate, byte for byte, now on both files** — 8 gate tests `ok`. Full suite
+   **585 tests pass**, 205.8 s, no failures and no skips (541 before; +44).
+2. **The reference directory's md5s, before and after every run the command makes**:
+   `1_user-stats.csv` `53879ea79cf211d700f670dee1173dd5` and `2-0_op-stats.csv`
+   `ded74ef39a274397c921c29f128f6950`, unchanged, and the command fails if either moves.
+3. **Stock greedy on (2024-06-20, 42)** writes a `1_user-stats.csv` byte-identical to
+   `docs/baseline_user_stats.csv` **and** a `2-0_op-stats.csv` byte-identical to
+   `docs/baseline_op_stats.csv`. A second baseline run on (2024-08-13, its first seed) leaves
+   both output directories intact.
+4. **The KPI counts reconcile with P1.10** exactly: 445 requests, 436 offers made, 318
+   accepted, 288 served, 118 declines, 28 cancellations, 2 no-shows, 0 operator rejections, 9
+   no-candidate requests, 0 unserved-at-horizon, 0 unclassified.
+5. **D9's premise holds — no KPI column differs.** Env-driven greedy and stock greedy on
+   (2024-06-20, 42) out of `corpus_eval/`: served 288, mean wait 588.70 s, detour ratio
+   1.3701, decline rate 0.2706, cancellation rate 0.0881, no-show rate 0.0063, 0 rejections, 9
+   no-candidate requests, VKT 2568.96 km — identical on every metric and every count, and both
+   output CSVs byte-identical to the two baselines. **The only difference anywhere in the
+   output directory is two columns of `3-0_op-dyn_atts.csv`**: `user_requests` and
+   `dyn_fleetsizing_strategy` = `G_FCTRL_CT_RQU` and `G_FCTRL_CT_DFS`
+   (`globals.py:679,684`). Diagnosis: `perf_counter` durations, so they differ between *any*
+   two runs of the same scenario, and P1.3's split deliberately recomposed the first to keep
+   policy-inference time out of fleet-control CPU time. No KPI reads that file.
+6. **The seed file.** 26 evaluation days — re-derived and confirmed **identical to §2.9's
+   list** — × 10 seeds = 260 rows, all in `[0, 2508742]`, 260 distinct overall and no duplicate
+   within any day. `--check-seeds` matches its derivation; `--derive-seeds` a second time
+   refuses and exits 1. A test writes a sentinel at the target path, asserts `FileExistsError`,
+   **and asserts the sentinel's bytes are unchanged** — so it fails if the refusal ever moves
+   to after the open.
+7. **The RL path exercised end to end**, since `run_rl_pairs` would otherwise be unverified
+   code: a 64-step `MaskablePPO` checkpoint with its `vecnormalize.pkl`, then
+   `run_rl_pairs([('2024-06-20', 2071786)], ckpt)` produced a real KPI row (served 209, mean
+   wait 824.59 s, VKT 2185.60 km) — and **36 operator rejections against 0 no-candidate
+   requests**, which is the first real exercise of the split the summary JSON exists for. The
+   file↔JSON cross-check passed (36 + 0 = the 36 rows carrying `offers = "0:"`), and the output
+   directory resolved correctly through `episode_summary()["scenario_name"]`.
+8. **`mean_wait_s` and `mean_detour_ratio` pinned against an independent computation** —
+   plain `csv`, no pandas, no `kpis.py` — over the 288 served baseline rows: 588.7043870907 and
+   1.3701307813.
+
+VERIFY findings:
+- **The four overrides reach the simulation unchanged and no scenario file is edited: matched.**
+  `day_dir_name`, `rq_file`, `random_seed` and `scenario_name` land on an in-memory
+  `ConstantConfig + ScenarioConfig` object; the files are untouched (`git status` clean for
+  `studies/`). The run also resolves to the **stock** `PoolingIRSOnly` /
+  `ImmediateDecisionsSimulation`, now asserted — a baseline quietly running the RL subclasses
+  would make D9 compare the RL path with itself.
+- **`op_total_km` is `op_vehicle_df["driven_distance"].sum()/1000.0`
+  (`evaluation/standard.py:477`): matched**, unfiltered, and the KPI reproduces it to 9 places.
+- **`offers == "0:"` identifies the no-offer group and nothing else: matched.** Set equality
+  with P1.7's no-candidate definition on the reference day, 9 rows; `offers != "0:"` is 436 =
+  the gym-step count.
+- **`direct_route_travel_time` is safe as a denominator: matched.** No NaN, no zero over the
+  288 served rows (min 54.80 s).
+- **`studies/example_study/results/` is already git-ignored: matched.** `.gitignore:1`,
+  confirmed with `git check-ignore -v`; `git ls-files` lists nothing under it. **No `.gitignore`
+  entry needed.** Sizing recorded in §8: ~1.2 MB per run, so a full 26×10 sweep of both
+  policies is ~600 MB in a OneDrive-synced folder, which is why the CLI takes an explicit pair
+  list rather than defaulting to all 260.
+
+**One defect of my own, and it is the trap-1 failure mode.** `TestEpisodeSummaryFile`'s first
+version registered `addCleanup(shutil.rmtree, sim.dir_names["output"])` unconditionally. With
+`skip_output` on, P1.9 leaves `scenario_name` exactly as the row has it, so that path **is**
+`studies/example_study/results/example_depot_time_pool_irsonly_rs_42/` — and the test deleted
+the reference run's output directory. Nothing is *written* there in that mode, which is what
+made it easy to miss.
+
+What it cost and what it did not: both committed baselines were intact (`docs/` is tracked and
+the copy of `baseline_op_stats.csv` was made before the test ran), the directory was never in
+git, and rerunning `run_scenarios(cc, sc, log_level="info", n_cpu_per_sim=1, n_parallel_sim=1)`
+— `run_examples.py`' own call — **restored it with both CSVs byte-identical to the two
+baselines**, which is also a useful datum: the reference run is exactly reproducible.
+
+The fix is a condition, not care: cleanup is registered only when
+`sim.scenario_name != scenario_parameters[G_SCENARIO_NAME]`, true exactly when P1.9 made the
+name unique, and the equality branch **asserts `skip_output`** so a future variant fails loudly
+instead of removing results. Recorded in trap 1 and in §0's never-overwrite rule, since anyone
+writing a cleanup in a test or tool will meet the same thing.
+
+Two further things worth carrying:
+- **`SubprocVecEnv` resets unconditionally on `done`**, so each `run_rl_pairs` worker leaves one
+  stray output directory per invocation — the abandoned auto-reset episode. Measured: it holds
+  only `00_config.json`, `2_vehicle_types.csv` and `3-0_op-dyn_atts.csv` and **no
+  `1_user-stats.csv`**, so it cannot be read as a finished run. Deliberately not deleted:
+  identifying it means reconstructing P1.9's name by string surgery to then `rmtree` a results
+  directory, which is exactly what trap 1 says not to write. Nothing globs for runs.
+- **The env keeps tqdm when output is on** (P1.4's deliberate choice), so `--verify`'s console
+  output is ~1.3 MB of progress bar. Harmless, and unchanged — but it is why the verification
+  is worth redirecting to a file and grepping for `PASS`/`FAIL`.
+
+Spec corrections proposed and applied in this turn: §0 (never delete from the reference output
+directory either), §2.8 (`baseline_op_stats.csv`, its md5, and the reference run's
+reproducibility), §7 P1.10 and §8's preamble (the gate compares two files), §8 P2.14 (the Files
+line, the draw order, the overwrite refusal, the greedy-parameter findings, where output goes
+and git, the KPI reading decisions, `--verify`, and D9's result), §8 After Phase 2 steps 1 and 6
+(both baselines), trap 1 (the `skip_output` output-directory hazard and P2.14's guard).
+
+**Stopping here** — not starting P2.15.

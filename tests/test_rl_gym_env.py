@@ -6,6 +6,7 @@ full rollout is P1.10.
 """
 
 import gc
+import json
 import os
 import shutil
 import sys
@@ -1252,6 +1253,125 @@ class TestInfoKeysDoNotCollideWithSB3(unittest.TestCase):
             self.assertEqual(env.episode_summary()["episode"], env.episode_counter)
         finally:
             env.close()
+
+
+class TestEpisodeSummaryFile(unittest.TestCase):
+    """`rl_episode_summary.json` in the run's output directory (P2.14).
+
+    The evaluation KPI script reads only the output directory, and one figure is not in
+    `1_user-stats.csv` at all: an operator rejection and a no-candidate request both leave
+    `offers = "0:"`, so the file identifies the group but not the split. This JSON is where the
+    split comes from, which is why its absence must be a loud failure rather than a zero.
+
+    The episode is cut short with a truncated `end_time` -- the terminal path is what writes the
+    file, and reaching it over the full 12.4-hour day would cost 40 seconds for nothing. The
+    construction-time baseline guard (P2.11) has already passed on the full window, and a
+    narrower window sits inside the baseline's minute grid.
+    """
+
+    # 08:00, about an hour into the day. An **int**: `run_generator` ranges over
+    # `range(start_time, end_time, time_step)`, which rejects a float.
+    SHORT_END_TIME = 28800
+
+    def run_short_episode(self, **cfg_overrides):
+        """One truncated episode; returns `(env, summary, output_dir, steps)`."""
+        env = SDPDPAssignmentEnv(make_cfg(**cfg_overrides))
+        # mutate before reset(), which copies scenario_parameters for the episode
+        env.scenario_parameters["end_time"] = self.SHORT_END_TIME
+        obs, _info = env.reset()
+        steps = 0
+        terminated = env._terminated
+        while not terminated:
+            obs, _r, terminated, _t, _info = env.step(greedy_action(env, obs))
+            steps += 1
+        summary = env.episode_summary()
+        out_dir = env.sim.dir_names["output"] if env.sim is not None else None
+        self.register_cleanup(env, out_dir)
+        return env, summary, out_dir, steps
+
+    def register_cleanup(self, env, out_dir):
+        """Delete this episode's output directory afterwards -- **only if it is its own.**
+
+        With `skip_output` on, P1.9 leaves `scenario_name` exactly as the scenario row has it,
+        so `dir_names["output"]` is the **reference run's** directory -- the one
+        `docs/baseline_user_stats.csv` and `docs/baseline_op_stats.csv` came from. Nothing is
+        written there in that mode, and nothing may be removed from it either.
+
+        An earlier version of this helper cleaned up unconditionally and deleted that
+        directory. The committed baselines survived, being the point of committing them, and a
+        fresh stock run reproduced it byte for byte -- but the condition below is what makes the
+        mistake unrepeatable, and the assertion is what makes a future variant of it fail
+        loudly instead of silently removing results (trap 1).
+        """
+        if out_dir is None:
+            return
+        episode_own = env.sim.scenario_name != env.scenario_parameters["scenario_name"]
+        if not episode_own:
+            self.assertTrue(env.skip_output,
+                            "an output-on episode must have a renamed scenario_name (P1.9); "
+                            "without one it would share the reference run's directory")
+            return
+        self.addCleanup(shutil.rmtree, out_dir, ignore_errors=True)
+
+    def test_written_when_output_is_on_and_matches_episode_summary(self):
+        env, summary, out_dir, steps = self.run_short_episode(skip_output=False)
+        try:
+            path = os.path.join(out_dir, "rl_episode_summary.json")
+            self.assertTrue(os.path.isfile(path), f"no summary written at {path}")
+            with open(path) as fh:
+                written = json.load(fh)
+            # every key of the live summary is in the file with the same value; the live one is
+            # read after the terminal step, so `tail_seconds` is the only field that can move
+            for key, value in summary.items():
+                if key == "tail_seconds":
+                    continue
+                with self.subTest(key):
+                    self.assertEqual(written[key], value)
+            self.assertGreater(steps, 0, "the truncated window produced no gym step")
+        finally:
+            env.close()
+
+    def test_it_carries_the_keys_the_kpi_script_reads(self):
+        env, _summary, out_dir, _steps = self.run_short_episode(skip_output=False)
+        try:
+            with open(os.path.join(out_dir, "rl_episode_summary.json")) as fh:
+                written = json.load(fh)
+            for key in ("operator_rejected", "no_candidates", "random_seed", "day",
+                        "scenario_name", "unclassified"):
+                with self.subTest(key):
+                    self.assertIn(key, written)
+        finally:
+            env.close()
+
+    def test_scenario_name_locates_the_directory_the_file_is_in(self):
+        """The only link from a summary back to the CSVs beside it."""
+        env, _summary, out_dir, _steps = self.run_short_episode(skip_output=False)
+        try:
+            with open(os.path.join(out_dir, "rl_episode_summary.json")) as fh:
+                written = json.load(fh)
+            self.assertEqual(os.path.basename(os.path.normpath(out_dir)),
+                             written["scenario_name"])
+        finally:
+            env.close()
+
+    def test_not_written_when_output_is_skipped(self):
+        """Training runs with `skip_output` on and must not pay for this file."""
+        env, _summary, out_dir, _steps = self.run_short_episode(skip_output=True)
+        try:
+            self.assertIsNone(env._write_episode_summary({"a": 1}))
+            if out_dir is not None and os.path.isdir(out_dir):
+                self.assertFalse(
+                    os.path.isfile(os.path.join(out_dir, "rl_episode_summary.json")))
+        finally:
+            env.close()
+
+    def test_numpy_scalars_serialise_and_other_objects_raise(self):
+        """A silent `str(value)` fallback would put something unparseable in a data file."""
+        from src.rl_gym.gym_env import _json_default
+        self.assertEqual(_json_default(np.int64(3)), 3)
+        self.assertAlmostEqual(_json_default(np.float32(1.5)), 1.5)
+        with self.assertRaises(TypeError):
+            _json_default(object())
 
 
 class TestNonFiniteObservationGuard(unittest.TestCase):

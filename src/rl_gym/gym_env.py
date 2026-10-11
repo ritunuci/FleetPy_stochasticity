@@ -27,6 +27,7 @@ contract holds either way.
 """
 
 import datetime as dt
+import json
 import logging
 import os
 from typing import Any, Dict, Optional, Tuple
@@ -39,6 +40,7 @@ from src.misc.globals import (
     G_DAY_DIR,
     G_DIR_DEMAND,
     G_DIR_FCTRL,
+    G_DIR_OUTPUT,
     G_NETWORK_NAME,
     G_OP_ACT_FLEET_SIZE,
     G_OP_MODULE,
@@ -82,6 +84,23 @@ RL_OP_MODULE = "RLPoolingIRSOnly"
 #: (2**32 - 1) // 1712. Drawing from the full 32-bit range raises ValueError partway through
 #: simulation construction, not at reset, which makes it look like a demand-loading fault.
 MAX_EPISODE_SEED = (2 ** 32 - 1) // 1712  # 2_508_742
+
+#: `episode_summary()`, written into the run's own output directory whenever output is on
+#: (P2.14). The evaluation KPI script reads only the output directory, and two of its figures --
+#: operator rejections and no-candidate requests -- cannot be separated from `1_user-stats.csv`
+#: alone: both leave `offers = "0:"`. This file is where that split comes from.
+EPISODE_SUMMARY_FILE = "rl_episode_summary.json"
+
+
+def _json_default(value):
+    """Render numpy scalars as plain numbers; refuse anything else.
+
+    Deliberately not a catch-all `str(value)`: a type that silently stringifies would put
+    something unparseable into a file the KPI script reads as data.
+    """
+    if isinstance(value, np.generic):
+        return value.item()
+    raise TypeError(f"{type(value).__name__} is not JSON-serialisable: {value!r}")
 
 
 #: weekday vocabulary of the corpus (§2.9); the index is `date.weekday()`
@@ -545,8 +564,10 @@ class SDPDPAssignmentEnv(gym.Env):
             # a day with no actionable request; degenerate but not an error
             self._pending = None
             self._terminated = True
+            info = self._episode_info()
+            self._write_episode_summary(info.get("episode_summary"))
             self._set_terminal_observation()
-            return self._obs, self._episode_info()
+            return self._obs, info
 
         self._observe(self._pending)
         return self._obs, {"rid": self._pending.rid_struct,
@@ -574,6 +595,9 @@ class SDPDPAssignmentEnv(gym.Env):
             reward = self._tracker.flush()      # captures the post-end_time tail (D6)
             info = self._episode_info()
             info["reward_events"] = self._tracker.flush_events()
+            # written before close() drops the simulation: the output directory and
+            # `tail_seconds` are both read off it (P2.14)
+            self._write_episode_summary(info.get("episode_summary"))
             self._set_terminal_observation()
             return self._obs, reward, True, False, info
 
@@ -752,6 +776,30 @@ class SDPDPAssignmentEnv(gym.Env):
             info["episode_summary"] = self.episode_summary()
         return info
 
+    def _write_episode_summary(self, summary: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Write `episode_summary()` into the run's own output directory (P2.14).
+
+        A no-op when `skip_output` is set, which is every training episode: the file exists for
+        the evaluation harness, whose KPI script reads only the output directory and cannot
+        otherwise tell an operator rejection from a no-candidate request -- both leave
+        `offers = "0:"` in `1_user-stats.csv`.
+
+        The output directory comes from the simulation's own `dir_names`, not a reassembled
+        path, so it cannot drift from where FleetPy actually wrote. Called at both terminal
+        paths while `self.sim` is still alive, since `close()` drops it.
+
+        **Deliberately not wrapped in `try/except`.** The two `demand.py` reward callbacks are,
+        because a reward bug must never kill a simulation -- but this file is read as data
+        afterwards, and a silently missing one would make a KPI table quietly wrong rather than
+        absent.
+        """
+        if self.skip_output or self.sim is None or summary is None:
+            return None
+        path = os.path.join(self.sim.dir_names[G_DIR_OUTPUT], EPISODE_SUMMARY_FILE)
+        with open(path, "w") as fh:
+            json.dump(summary, fh, indent=2, sort_keys=True, default=_json_default)
+        return path
+
     def episode_summary(self) -> Dict[str, Any]:
         """The tracker's event breakdown for the current or just-finished episode.
 
@@ -771,6 +819,12 @@ class SDPDPAssignmentEnv(gym.Env):
         summary["month"] = self._episode_month
         summary["pass"] = self._episode_pass
         summary["pass_position"] = self._episode_position
+        # the scenario name this episode ran under, which is the name of its output directory
+        # (P2.14). Portable where an absolute path would not be, and it is the only link from a
+        # summary back to the CSVs beside it -- the evaluation harness resolves
+        # `studies/<study>/results/<scenario_name>` from this.
+        summary["scenario_name"] = (
+            self.sim.scenario_name if self.sim is not None else None)
         if self._stats is not None:
             # P2.7's end-of-day totals, for reconciliation against 1_user-stats.csv
             summary.update(self._stats.episode_summary())
