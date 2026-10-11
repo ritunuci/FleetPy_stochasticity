@@ -132,7 +132,7 @@ def run_scripted_greedy_episode():
     t_prev = t_start
     terminated = False
     while not terminated:
-        action = greedy_action(obs, env.action_masks(), K)
+        action = greedy_action(obs, env.action_masks(), env.observation_layout)
         obs, reward, terminated, truncated, info = env.step(action)
         now = time.perf_counter()
         wall_gaps.append(now - t_prev)

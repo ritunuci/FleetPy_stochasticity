@@ -209,7 +209,7 @@ def run_day(task: Tuple[str, str]) -> Dict[str, Any]:
     terminated = False
     while not terminated:
         obs, _reward, terminated, truncated, info = env.step(
-            greedy_action(obs, env.action_masks(), K))
+            greedy_action(obs, env.action_masks(), env.observation_layout))
         if truncated:
             raise AssertionError(f"{day}: episode truncated; D6 requires terminated")
         if not terminated:

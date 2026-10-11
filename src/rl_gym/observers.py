@@ -13,16 +13,25 @@ Design rules this module is bound by:
 - **`is_valid` comes from `spaces.candidate_slot_validity`**, never a fresh
   `k < len(candidates)`. That function is the one source of truth shared with the action
   mask, and two independent computations can drift with nothing raising (trap 12).
-- **Padded slots are all-zero.** A padded `delta_cfv` of 0.0 wins a naive `argmin` over
-  positive real costs, which is exactly why P1.10's scripted driver must restrict to
-  `is_valid`; and a large sentinel would distort `VecNormalize`'s running statistics in
-  Phase 2.
+- **Padded slots are all-zero, and `VecNormalize` is the whole reason** (§5.1). A large
+  sentinel would distort its per-feature running mean and variance in Phase 2 (§5.3); 0.0 is
+  neutral there. It is *not* justified by what a naive `argmin` would pick: measured under
+  P1.6, real `delta_cfv` on this scenario is **negative** — transformed range
+  [−14.508, 0.000] over 436 decisions — so 0.0 padding is the **largest** value in the slot,
+  not the smallest, and an unrestricted `argmin` would land on slot 0 anyway. P1.10's
+  `is_valid` restriction is required regardless of that sign, because a padded slot holds
+  padding rather than a cost; the sign is a property of this objective function and can change.
 - **No implied-decline-probability feature**, in either phase. It is derivable from the
   offered wait and `scenario_parameters`, and is excluded from the state design by decision.
+- **Every observer declares its features statically** via `feature_spec()`, and
+  `output_length` is derived from that declaration rather than written out separately, so the
+  two cannot disagree. `build_observation_layout` turns the specs into the name → slice map the
+  env publishes and `policies.greedy_action` reads by name (P2.8). The specs are fixed at
+  construction; the `observe()` dicts exist only after a decision, so they cannot be the source.
 """
 
 import math
-from typing import Any, Dict
+from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
 
@@ -45,8 +54,20 @@ class AbstractObserver:
     summing lengths rather than asserting a total.
     """
 
+    def feature_spec(self) -> List[Tuple[str, int]]:
+        """This observer's features as an ordered `[(name, length)]`, fixed at construction.
+
+        The declaration, not the `observe()` dict, is the source of the layout map (P2.8): the
+        dict only exists once a decision has happened, and the env needs the layout to build
+        `observation_space`.
+        """
+        raise NotImplementedError
+
     def observe(self, fleetpy_module, ctx) -> Dict[str, np.ndarray]:
         """Return this observer's named feature arrays.
+
+        Must return exactly the names `feature_spec()` declares, in that order, with those
+        lengths -- asserted by `observe_vector` and pinned by a test.
 
         :param fleetpy_module: the fleet control instance (`RLPoolingIRSOnly`)
         :param ctx: the `PendingDecision` for the current decision epoch
@@ -56,16 +77,65 @@ class AbstractObserver:
 
     @property
     def output_length(self) -> int:
-        """Number of scalars this observer contributes to the observation vector."""
-        raise NotImplementedError
+        """Scalars this observer contributes, summed from `feature_spec()`.
+
+        Derived rather than written out separately, so a feature added to the spec without a
+        matching length change cannot slip through (P2.8).
+        """
+        return sum(length for _name, length in self.feature_spec())
 
     def observe_vector(self, fleetpy_module, ctx) -> np.ndarray:
-        """`observe` flattened into one float32 vector, in insertion order."""
+        """`observe` flattened into one float32 vector, in the declared order."""
         parts = self.observe(fleetpy_module, ctx)
+        spec = self.feature_spec()
+        declared = [name for name, _ in spec]
+        if list(parts.keys()) != declared:
+            raise ValueError(
+                f"{type(self).__name__}.observe returned {list(parts.keys())}, "
+                f"feature_spec declares {declared} -- the layout map is built from the spec, "
+                f"so the two must agree exactly, in order"
+            )
+        for name, length in spec:
+            got = np.size(parts[name])
+            if got != length:
+                raise ValueError(
+                    f"{type(self).__name__}.observe gave {name!r} length {got}, "
+                    f"feature_spec declares {length}"
+                )
         vec = np.concatenate([np.ravel(v) for v in parts.values()]).astype(np.float32)
         assert vec.shape == (self.output_length,), \
             f"{type(self).__name__} produced {vec.shape}, declared {self.output_length}"
         return vec
+
+
+def build_observation_layout(observers: Sequence[AbstractObserver]) -> Dict[str, slice]:
+    """Name -> slice over the concatenated observation, in the order the env concatenates.
+
+    Built from `feature_spec()` at construction, so it is available before any decision has
+    happened and `observation_space` can be derived from it. `policies.greedy_action` reads
+    `delta_cfv` and `is_valid` through this rather than assuming `obs[K:2K]` (P2.8).
+
+    Raises on a **duplicate feature name**: P2.9's request block and P2.10's candidate block
+    both add features, and a collision would leave one of them unreachable by name while the
+    vector still had exactly the right length -- a silent hole in the one mechanism this map
+    exists to provide.
+    """
+    layout: Dict[str, slice] = {}
+    offset = 0
+    for observer in observers:
+        for name, length in observer.feature_spec():
+            if name in layout:
+                raise ValueError(
+                    f"duplicate observation feature {name!r}: already at "
+                    f"{layout[name]}, declared again by {type(observer).__name__}. "
+                    f"Feature names are the only way consumers address the vector (P2.8), "
+                    f"so they must be unique across observers."
+                )
+            if length <= 0:
+                raise ValueError(f"feature {name!r} declares length {length}; must be positive")
+            layout[name] = slice(offset, offset + length)
+            offset += length
+    return layout
 
 
 def signed_log1p(x) -> np.ndarray:
@@ -102,9 +172,12 @@ class CandidateObserver(AbstractObserver):
         if self.max_wait_time <= 0:
             raise ValueError(f"{G_OP_MAX_WT} must be positive, got {self.max_wait_time}")
 
-    @property
-    def output_length(self) -> int:
-        return 3 * self.k_max
+    def feature_spec(self) -> List[Tuple[str, int]]:
+        # feature-major, as §5.2 keeps it: each feature is a length-K vector. Phase 2 appends
+        # features 4-12 here (P2.10) without disturbing these three.
+        return [("is_valid", self.k_max),
+                ("delta_cfv", self.k_max),
+                ("offered_wait", self.k_max)]
 
     def observe(self, fleetpy_module, ctx) -> Dict[str, np.ndarray]:
         candidates = truncate_candidates(ctx.candidates, self.k_max)
@@ -158,9 +231,8 @@ class GlobalStateObserver(AbstractObserver):
             )
         self._span = span
 
-    @property
-    def output_length(self) -> int:
-        return 4
+    def feature_spec(self) -> List[Tuple[str, int]]:
+        return [("time_sin", 1), ("time_cos", 1), ("day_progress", 1), ("idle_fraction", 1)]
 
     def observe(self, fleetpy_module, ctx) -> Dict[str, np.ndarray]:
         sim_time = float(ctx.sim_time)

@@ -60,7 +60,7 @@ def run_trace(skip_output=True):
     t0 = time.perf_counter()
     terminated = False
     while not terminated:
-        action = greedy_action(obs, env.action_masks(), K)
+        action = greedy_action(obs, env.action_masks(), env.observation_layout)
         obs, reward, terminated, truncated, info = env.step(action)
         assert not truncated, "episode must end terminated, not truncated (D6)"
         steps.append({

@@ -52,7 +52,11 @@ from src.misc.globals import (
 )
 from src.misc.init_modules import load_simulation_environment
 from src.rl_gym.day_rotation import day_for_episode, training_days
-from src.rl_gym.observers import CandidateObserver, GlobalStateObserver
+from src.rl_gym.observers import (
+    CandidateObserver,
+    GlobalStateObserver,
+    build_observation_layout,
+)
 from src.rl_gym.reward import RewardTracker
 from src.rl_gym.rolling_stats import RollingStatsTracker
 from src.rl_gym.zones import ZoneTable
@@ -141,7 +145,15 @@ class SDPDPAssignmentEnv(gym.Env):
 
         self._candidate_observer = CandidateObserver(self.k_max, self.scenario_parameters)
         self._global_observer = GlobalStateObserver(self.scenario_parameters)
-        obs_len = self._candidate_observer.output_length + self._global_observer.output_length
+        #: the order the observers are concatenated in, and so the order of the layout map
+        self._observers = (self._candidate_observer, self._global_observer)
+        #: name -> slice over the observation vector, built from the observers' static
+        #: `feature_spec()` declarations at construction (P2.8). Published so consumers address
+        #: features by name instead of assuming a block ordering: `policies.greedy_action`
+        #: reads `delta_cfv` and `is_valid` through it, and P2.9-P2.11 widen the vector without
+        #: any consumer changing. Raises on a duplicate name.
+        self.observation_layout = build_observation_layout(self._observers)
+        obs_len = sum(o.output_length for o in self._observers)
 
         self.action_space = make_action_space(self.k_max)
         # unbounded: delta_cfv has no a priori bound even after sign*log1p, and VecNormalize

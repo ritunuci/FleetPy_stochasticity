@@ -2266,18 +2266,39 @@ is far cheaper than indexing them. The tracker is rebuilt with the simulation at
 ### P2.8 — Observation layout map; greedy by name
 
 **Files:** `src/rl_gym/observers.py`, `src/rl_gym/gym_env.py`, `src/rl_gym/policies.py`,
-`src/rl_gym/spaces.py` (docstring), `src/rl_gym/tools/corpus_sweep.py` (P2.4's driver calls
-`greedy_action`), `tests/test_rl_gym.py`, `tests/test_rl_gym_observers.py`
+`src/rl_gym/spaces.py` (docstring), `src/rl_gym/tools/corpus_sweep.py` and
+`src/rl_gym/tools/reward_trace.py` (both drivers call `greedy_action`),
+`tests/test_rl_gym.py`, `tests/test_rl_gym_observers.py`,
+`tests/test_rl_gym_rolling_stats.py` (it drives greedy too). *(The last two tool/test files
+were added to this line in P2.8: `reward_trace.py` arrived in P2.0b and
+`test_rl_gym_rolling_stats.py` in P2.7, both after this item was first written, and the
+signature change does not compile without them.)*
 
 No feature changes in this item — the vector stays identical to Phase 1.
 
 - Each observer declares its features statically: `feature_spec()` returns an ordered list of
-  `(name, length)`, fixed at construction. The env publishes `observation_layout` — an ordered
-  mapping from feature name to slice — built from those specs at construction. The observers'
+  `(name, length)`, fixed at construction, and `output_length` is **derived from it** rather
+  than written out separately, so the two cannot disagree. The env publishes
+  `observation_layout` — an ordered mapping from feature name to slice — built from those specs
+  at construction by `observers.build_observation_layout`. The observers'
   dicts exist only after `observe()` runs, so they cannot be the source. A test asserts that
-  every `observe()` returns exactly the declared names, in the declared order and lengths.
-- `greedy_action(obs, mask, layout)` finds `delta_cfv` by name and keeps the `is_valid`
-  restriction (P1.10). The hardcoded `(3K + 4,)` shape check goes.
+  every `observe()` returns exactly the declared names, in the declared order and lengths —
+  and `observe_vector` raises on a disagreement rather than leaving it to the test.
+  **A duplicate feature name raises**: P2.9's request block and P2.10's candidate block both add
+  features, and a collision would leave one unreachable by name while the vector still had
+  exactly the right length.
+- `greedy_action(obs, mask, layout)` finds `delta_cfv` by name, takes `K` from that slice's
+  width, and keeps the `is_valid` restriction (P1.10). The hardcoded `(3K + 4,)` shape check
+  goes — the layout's slices are the contract now, not the total length, which is what lets
+  P2.9–P2.11 widen the vector without touching any consumer.
+- **It also reads `is_valid` by name and raises unless it equals the mask exactly.** That
+  enforces trap 12 on **every gate run** rather than only in unit tests, and it **refuses a
+  `VecNormalize`'d observation** (P2.12). The second is the dangerous one: after normalization
+  each `delta_cfv` slot is scaled by its *own* running mean and variance, so an argmin across
+  slots compares z-scores drawn from different distributions instead of costs — plausible
+  actions that are quietly not greedy, which no byte gate would catch. A normalized `is_valid`
+  cannot be exactly 0/1, so the check catches it. **Drive greedy with the raw env observation,
+  never a normalized one.**
 - Fix two stale docstrings: `spaces.py`'s "k-th cheapest candidate" becomes "k-th candidate in
   ascending `delta_cfv` order" (D3); `observers.py`'s padding rationale is replaced by §5.1's
   (`VecNormalize` is the whole reason).

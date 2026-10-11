@@ -23,6 +23,7 @@ from src.misc.globals import (  # noqa: E402
 from src.rl_gym.observers import (  # noqa: E402
     CandidateObserver,
     GlobalStateObserver,
+    build_observation_layout,
     signed_log1p,
 )
 from src.rl_gym.policies import greedy_action, greedy_choice  # noqa: E402
@@ -386,6 +387,8 @@ class TestGreedyActionHelper(unittest.TestCase):
     def setUp(self):
         self.obs_builder = CandidateObserver(K, SCENARIO)
         self.glob = GlobalStateObserver(SCENARIO)
+        # the same map the env publishes, built from the same specs in the same order (P2.8)
+        self.layout = build_observation_layout([self.obs_builder, self.glob])
 
     def _full_obs(self, ctx):
         fc = StubFleetCtrl([VRL_STATES.IDLE])
@@ -396,22 +399,22 @@ class TestGreedyActionHelper(unittest.TestCase):
         ctx = StubCtx(make_candidates([100.0] * 4, [-500.0, -200.0, -50.0, -1.0]))
         obs = self._full_obs(ctx)
         mask = build_action_mask(4, K)
-        self.assertEqual(greedy_action(obs, mask, K), 0)
+        self.assertEqual(greedy_action(obs, mask, self.layout), 0)
 
     def test_picks_slot_zero_on_a_sorted_positive_list(self):
         # the case that separates restricted from unrestricted
         ctx = StubCtx(make_candidates([100.0] * 3, [3.0, 7.0, 11.0]))
         obs = self._full_obs(ctx)
         mask = build_action_mask(3, K)
-        self.assertEqual(greedy_action(obs, mask, K), 0)
+        self.assertEqual(greedy_action(obs, mask, self.layout), 0)
 
     def test_unrestricted_argmin_would_disagree_under_positive_costs(self):
         # documents precisely what a dropped restriction would do
         ctx = StubCtx(make_candidates([100.0] * 3, [3.0, 7.0, 11.0]))
         obs = self._full_obs(ctx)
         mask = build_action_mask(3, K)
-        naive = int(np.argmin(obs[K:2 * K]))          # no is_valid restriction
-        self.assertNotEqual(naive, greedy_action(obs, mask, K))
+        naive = int(np.argmin(obs[self.layout["delta_cfv"]]))   # no is_valid restriction
+        self.assertNotEqual(naive, greedy_action(obs, mask, self.layout))
         self.assertFalse(mask[naive], "the naive pick lands on a padded slot")
 
     def test_selects_by_value_not_by_assuming_index_zero(self):
@@ -420,13 +423,13 @@ class TestGreedyActionHelper(unittest.TestCase):
         ctx = StubCtx(make_candidates([100.0] * 4, [9.0, 2.0, 40.0, 5.0]))
         obs = self._full_obs(ctx)
         mask = build_action_mask(4, K)
-        self.assertEqual(greedy_action(obs, mask, K), 1)
+        self.assertEqual(greedy_action(obs, mask, self.layout), 1)
 
     def test_rejects_when_no_candidate_is_valid(self):
         ctx = StubCtx([])
         obs = self._full_obs(ctx)
         mask = build_action_mask(0, K)
-        self.assertEqual(greedy_action(obs, mask, K), K)
+        self.assertEqual(greedy_action(obs, mask, self.layout), K)
 
     def test_returned_action_is_always_legal_under_the_mask(self):
         for n in range(0, 12):
@@ -434,33 +437,51 @@ class TestGreedyActionHelper(unittest.TestCase):
                 ctx = StubCtx(make_candidates([100.0] * n, [float(i) for i in range(n)]))
                 obs = self._full_obs(ctx)
                 mask = build_action_mask(n, K)
-                a = greedy_action(obs, mask, K)
+                a = greedy_action(obs, mask, self.layout)
                 self.assertTrue(mask[a], f"greedy returned masked action {a}")
 
     def test_greedy_choice_maps_reject_to_none(self):
         ctx = StubCtx([])
         obs = self._full_obs(ctx)
-        self.assertIsNone(greedy_choice(obs, build_action_mask(0, K), K))
+        self.assertIsNone(greedy_choice(obs, build_action_mask(0, K), self.layout))
         ctx = StubCtx(make_candidates([100.0], [1.0]))
         obs = self._full_obs(ctx)
-        self.assertEqual(greedy_choice(obs, build_action_mask(1, K), K), 0)
+        self.assertEqual(greedy_choice(obs, build_action_mask(1, K), self.layout), 0)
 
-    def test_shape_mismatches_raise(self):
+    def test_a_wrong_length_mask_raises(self):
         ctx = StubCtx(make_candidates([100.0], [1.0]))
         obs = self._full_obs(ctx)
         with self.assertRaises(ValueError):
-            greedy_action(obs[:-1], build_action_mask(1, K), K)
+            greedy_action(obs, build_action_mask(1, K)[:-1], self.layout)
         with self.assertRaises(ValueError):
-            greedy_action(obs, build_action_mask(1, K)[:-1], K)
+            greedy_action(obs, np.ones(K + 2, dtype=bool), self.layout)
 
-    def test_reads_delta_cfv_from_the_documented_slice(self):
-        # pins obs[K:2K]; if CandidateObserver reorders its dict, this fails here rather than
-        # silently selecting on is_valid or offered_wait
+    def test_an_observation_that_does_not_cover_the_layout_raises(self):
+        ctx = StubCtx(make_candidates([100.0], [1.0]))
+        obs = self._full_obs(ctx)
+        with self.assertRaises(ValueError):
+            greedy_action(obs[:K], build_action_mask(1, K), self.layout)
+
+    def test_the_total_length_is_deliberately_no_longer_the_contract(self):
+        # P2.8 removes the hardcoded (3K + 4,) check: the layout's slices are what must be
+        # covered, so trailing features greedy does not read may be absent. This is the point
+        # of the item -- P2.9-P2.11 widen the vector and greedy keeps working untouched.
+        ctx = StubCtx(make_candidates([100.0], [1.0]))
+        obs = self._full_obs(ctx)
+        trailing_dropped = obs[:self.layout["offered_wait"].stop]
+        self.assertEqual(greedy_action(trailing_dropped, build_action_mask(1, K), self.layout),
+                         greedy_action(obs, build_action_mask(1, K), self.layout))
+
+    def test_reads_delta_cfv_through_the_layout_not_a_hardcoded_slice(self):
+        # the layout is now the contract; if CandidateObserver reorders its features the map
+        # follows, and greedy still selects on delta_cfv rather than on is_valid or
+        # offered_wait
         ctx = StubCtx(make_candidates([100.0] * 3, [5.0, 1.0, 9.0]))
         parts = self.obs_builder.observe(None, ctx)
         obs = self._full_obs(ctx)
-        np.testing.assert_allclose(obs[K:2 * K], parts["delta_cfv"], atol=0)
-        self.assertEqual(greedy_action(obs, build_action_mask(3, K), K), 1)
+        np.testing.assert_allclose(obs[self.layout["delta_cfv"]], parts["delta_cfv"], atol=0)
+        np.testing.assert_allclose(obs[self.layout["is_valid"]], parts["is_valid"], atol=0)
+        self.assertEqual(greedy_action(obs, build_action_mask(3, K), self.layout), 1)
 
 
 class TestCombinedLength(unittest.TestCase):
@@ -487,6 +508,173 @@ class TestCombinedLength(unittest.TestCase):
         self.assertEqual(vec.shape, (3 * K + 4,))
         self.assertEqual(vec.dtype, np.float32)
         self.assertTrue(np.all(np.isfinite(vec)))
+
+
+class TestObservationLayout(unittest.TestCase):
+    """The name -> slice map (P2.8), built from the static specs."""
+
+    def setUp(self):
+        self.cand = CandidateObserver(K, SCENARIO)
+        self.glob = GlobalStateObserver(SCENARIO)
+        self.observers = [self.cand, self.glob]
+        self.layout = build_observation_layout(self.observers)
+        self.obs_len = sum(o.output_length for o in self.observers)
+
+    def test_slices_tile_the_vector_with_no_gap_or_overlap(self):
+        slices = list(self.layout.values())
+        self.assertEqual(slices[0].start, 0)
+        self.assertEqual(slices[-1].stop, self.obs_len)
+        for a, b in zip(slices, slices[1:]):
+            self.assertEqual(a.stop, b.start, f"{a} then {b} leaves a gap or overlaps")
+        covered = sum(sl.stop - sl.start for sl in slices)
+        self.assertEqual(covered, self.obs_len)
+
+    def test_every_index_is_covered_exactly_once(self):
+        seen = [0] * self.obs_len
+        for sl in self.layout.values():
+            for i in range(sl.start, sl.stop):
+                seen[i] += 1
+        self.assertEqual(seen, [1] * self.obs_len)
+
+    def test_names_and_order_match_the_declarations(self):
+        declared = [n for o in self.observers for n, _ in o.feature_spec()]
+        self.assertEqual(list(self.layout), declared)
+
+    def test_phase_one_feature_positions(self):
+        self.assertEqual(self.layout["is_valid"], slice(0, K))
+        self.assertEqual(self.layout["delta_cfv"], slice(K, 2 * K))
+        self.assertEqual(self.layout["offered_wait"], slice(2 * K, 3 * K))
+        self.assertEqual(self.layout["idle_fraction"], slice(3 * K + 3, 3 * K + 4))
+
+    def test_output_length_is_derived_from_the_spec(self):
+        for o in self.observers:
+            self.assertEqual(o.output_length,
+                             sum(length for _n, length in o.feature_spec()))
+
+    def test_observe_returns_exactly_the_declared_names_in_order(self):
+        ctx = StubCtx(make_candidates([100.0, 200.0], [1.0, 2.0]))
+        fc = StubFleetCtrl([VRL_STATES.IDLE])
+        for o in self.observers:
+            parts = o.observe(fc, ctx)
+            self.assertEqual(list(parts.keys()), [n for n, _ in o.feature_spec()],
+                             type(o).__name__)
+            for name, length in o.feature_spec():
+                self.assertEqual(np.size(parts[name]), length, f"{type(o).__name__}.{name}")
+
+    def test_the_layout_addresses_the_right_values_in_a_real_vector(self):
+        ctx = StubCtx(make_candidates([100.0, 200.0, 300.0], [5.0, 1.0, 9.0]))
+        fc = StubFleetCtrl([VRL_STATES.IDLE])
+        vec = np.concatenate([o.observe_vector(fc, ctx) for o in self.observers])
+        parts = {**self.cand.observe(fc, ctx), **self.glob.observe(fc, ctx)}
+        for name, sl in self.layout.items():
+            np.testing.assert_allclose(vec[sl], np.ravel(parts[name]), atol=0,
+                                       err_msg=f"layout points {name} at the wrong values")
+
+    def test_a_duplicate_feature_name_raises(self):
+        # P2.9 and P2.10 both add blocks; a collision would leave one feature unreachable by
+        # name while the vector still had exactly the right length
+        with self.assertRaises(ValueError) as cm:
+            build_observation_layout([self.cand, CandidateObserver(K, SCENARIO)])
+        self.assertIn("duplicate", str(cm.exception).lower())
+        self.assertIn("is_valid", str(cm.exception))
+
+    def test_a_non_positive_declared_length_raises(self):
+        class Bad(CandidateObserver):
+            def feature_spec(self):
+                return [("broken", 0)]
+        with self.assertRaises(ValueError):
+            build_observation_layout([Bad(K, SCENARIO)])
+
+    def test_an_observe_that_disagrees_with_its_spec_raises(self):
+        class Renamed(GlobalStateObserver):
+            def observe(self, fleetpy_module, ctx):
+                parts = super().observe(fleetpy_module, ctx)
+                parts["time_sine"] = parts.pop("time_sin")       # a typo'd rename
+                return parts
+        ctx = StubCtx(make_candidates([100.0], [1.0]))
+        with self.assertRaises(ValueError) as cm:
+            Renamed(SCENARIO).observe_vector(StubFleetCtrl([VRL_STATES.IDLE]), ctx)
+        self.assertIn("feature_spec", str(cm.exception))
+
+
+class TestGreedyEnforcesIsValidAgainstTheMask(unittest.TestCase):
+    """`greedy_action` reads `is_valid` by name and requires it to equal the mask (P2.8).
+
+    Two failures in one check: trap 12 drift between the mask and the observation, and a
+    `VecNormalize`'d observation being fed to greedy selection (P2.12). The second is the
+    dangerous one — normalization scales each `delta_cfv` slot by its own running mean and
+    variance, so an argmin across slots would compare z-scores from different distributions
+    rather than costs, returning plausible actions that are quietly not greedy.
+    """
+
+    def setUp(self):
+        self.cand = CandidateObserver(K, SCENARIO)
+        self.glob = GlobalStateObserver(SCENARIO)
+        self.layout = build_observation_layout([self.cand, self.glob])
+
+    def _obs(self, n, cfvs=None):
+        cfvs = cfvs if cfvs is not None else [float(i + 1) for i in range(n)]
+        ctx = StubCtx(make_candidates([100.0] * n, cfvs))
+        fc = StubFleetCtrl([VRL_STATES.IDLE])
+        return np.concatenate([self.cand.observe_vector(fc, ctx),
+                               self.glob.observe_vector(fc, ctx)])
+
+    def test_agreeing_mask_and_is_valid_are_accepted(self):
+        for n in range(0, K + 1):
+            with self.subTest(n=n):
+                obs = self._obs(n)
+                greedy_action(obs, build_action_mask(n, K), self.layout)
+
+    def test_a_mask_that_disagrees_with_is_valid_raises(self):
+        obs = self._obs(3)                               # is_valid = 1,1,1,0,...
+        for wrong_n in (2, 4, 0, K):
+            with self.subTest(mask_n=wrong_n):
+                with self.assertRaises(ValueError) as cm:
+                    greedy_action(obs, build_action_mask(wrong_n, K), self.layout)
+                self.assertIn("trap 12", str(cm.exception))
+
+    def test_a_normalized_observation_raises(self):
+        # what VecNormalize actually produces: is_valid is no longer 0/1
+        obs = self._obs(3)
+        normalized = obs.copy()
+        sl = self.layout["is_valid"]
+        normalized[sl] = (obs[sl] - 0.375) / 0.484      # a plausible running mean and std
+        with self.assertRaises(ValueError) as cm:
+            greedy_action(normalized, build_action_mask(3, K), self.layout)
+        msg = str(cm.exception)
+        self.assertIn("VecNormalize", msg)
+        self.assertIn("0.0 or 1.0", msg)
+
+    def test_a_wholly_normalized_vector_raises_too(self):
+        obs = self._obs(4)
+        normalized = (obs - obs.mean()) / (obs.std() + 1e-8)
+        with self.assertRaises(ValueError):
+            greedy_action(normalized, build_action_mask(4, K), self.layout)
+
+    def test_near_one_is_not_close_enough(self):
+        # the check is exact on purpose: 0.999 is not a validity flag
+        obs = self._obs(3)
+        obs[self.layout["is_valid"]] = np.array([0.999, 1.0, 1.0] + [0.0] * (K - 3),
+                                                dtype=np.float32)
+        with self.assertRaises(ValueError):
+            greedy_action(obs, build_action_mask(3, K), self.layout)
+
+    def test_a_layout_without_delta_cfv_raises_rather_than_guessing(self):
+        bad = {k: v for k, v in self.layout.items() if k != "delta_cfv"}
+        with self.assertRaises(ValueError) as cm:
+            greedy_action(self._obs(3), build_action_mask(3, K), bad)
+        self.assertIn("delta_cfv", str(cm.exception))
+
+    def test_a_layout_without_is_valid_raises(self):
+        bad = {k: v for k, v in self.layout.items() if k != "is_valid"}
+        with self.assertRaises(ValueError) as cm:
+            greedy_action(self._obs(3), build_action_mask(3, K), bad)
+        self.assertIn("is_valid", str(cm.exception))
+
+    def test_a_truncated_observation_raises(self):
+        obs = self._obs(3)
+        with self.assertRaises(ValueError):
+            greedy_action(obs[:K], build_action_mask(3, K), self.layout)
 
 
 if __name__ == "__main__":

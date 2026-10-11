@@ -2429,3 +2429,110 @@ before; +4). No stray result directories. Tests only — no source file changed,
 gate result from the DONE entry above still stands.
 
 **Stopping here** — not starting P2.8.
+
+---
+
+## P2.8 — STARTED 2026-10-10 18:31
+Files I will touch: src/rl_gym/observers.py, src/rl_gym/gym_env.py, src/rl_gym/policies.py,
+src/rl_gym/spaces.py, src/rl_gym/tools/corpus_sweep.py, src/rl_gym/tools/reward_trace.py,
+tests/test_rl_gym.py, tests/test_rl_gym_observers.py, tests/test_rl_gym_rolling_stats.py,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.7 committed as f1189dc, tree clean.
+
+Approved before starting:
+- **Two files P2.8's Files line omits**, both callers of the function whose signature changes,
+  both created after §8's P2.8 text was written: `src/rl_gym/tools/reward_trace.py` (P2.0b) and
+  `tests/test_rl_gym_rolling_stats.py` (P2.7). Without them the item does not compile.
+- The layout **raises on a duplicate feature name** — P2.9 and P2.10 both add blocks, and a
+  collision would leave one feature unreachable by name while the vector still had the right
+  length.
+- `src/rl_gym/README.md` is left for its post-Phase-2 revision (commit 74ee9c0), so its
+  `greedy_action(obs, mask, k_max)` and `obs[K:2K]` lines go stale on purpose.
+
+**Ritun's addition: `greedy_action` must also read `is_valid` by name and raise unless it
+exactly equals the mask.** Two failures at once:
+  1. It enforces trap 12 on **every gate run**, not just in the unit tests — mask and
+     `is_valid` must come from one source, and now a drift stops the gate.
+  2. It **refuses a `VecNormalize`'d observation** (P2.12). After normalization `is_valid` is no
+     longer 0/1, and more importantly each `delta_cfv` slot is scaled by its **own** running
+     mean and variance, so an argmin across slots would compare z-scores from different
+     distributions rather than costs — plausible actions, silently wrong. The `is_valid` check
+     is what catches that, since a normalized `is_valid` cannot be exactly 0/1.
+  Test required: a normalized-looking `is_valid` raises.
+
+## P2.8 — DONE 2026-10-10 18:41 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/observers.py` — `AbstractObserver.feature_spec()`; `output_length` derived from
+  it; `observe_vector` raises when `observe()` disagrees with the spec; new
+  `build_observation_layout`; both observers declare their specs; the padding docstring
+  replaced with §5.1's.
+- `src/rl_gym/gym_env.py` — publishes `observation_layout`, built from the observers' specs at
+  construction; `obs_len` summed from the same observers tuple.
+- `src/rl_gym/policies.py` — `greedy_action(obs, mask, layout)` and
+  `greedy_choice(obs, mask, layout)`; `delta_cfv` and `is_valid` read by name; the hardcoded
+  `(3K + 4,)` check gone; the `is_valid`-equals-mask enforcement added.
+- `src/rl_gym/spaces.py` — the "k-th cheapest candidate" docstring replaced with D3's exact
+  ordering language.
+- `src/rl_gym/tools/corpus_sweep.py`, `src/rl_gym/tools/reward_trace.py`,
+  `tests/test_rl_gym.py`, `tests/test_rl_gym_rolling_stats.py` — callers updated.
+- `tests/test_rl_gym_observers.py` — callers updated; two new test classes, 18 tests.
+- `docs/SDPDP_GYM_SPEC_v2.md` — the Files line, the derived `output_length`, the duplicate-name
+  raise, and the `is_valid`/`VecNormalize` rule.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+Verification — everything passed, nothing failed:
+
+1. **The P1.10 gate, byte for byte** — all 7 gate tests `ok`, including
+   `test_user_stats_matches_baseline_byte_for_byte`. Full suite **340 tests pass**, 142.4 s, no
+   failures and no skips (320 before; +20).
+2. **The layout's slices tile `[0, obs_len)` with no gap or overlap**, asserted two ways:
+   consecutive slices meet exactly and the last ends at `obs_len`; and every index is covered
+   exactly once. Also that the layout's names and order equal the concatenated declarations,
+   that the Phase 1 positions are `is_valid` 0:8, `delta_cfv` 8:16, `offered_wait` 16:24,
+   `idle_fraction` 27:28, and that each slice addresses the values `observe()` actually
+   produced in a real vector.
+3. **`check_env` through `MaskRespectingShim` passes with `base_seed` absent and set** — both
+   tests `ok`.
+4. Both tools re-run after the signature change: `corpus_sweep.py` on the reference day reports
+   0 reconciliation failures, 0 unclassified, and `2024-06-20 vs P1.10: MATCHES`.
+
+Ritun's addition, tested eight ways: an agreeing mask and `is_valid` are accepted for every
+candidate count 0..K; a mask that disagrees raises and names trap 12; **a normalized
+observation raises**, with the message naming `VecNormalize`; a wholly normalized vector raises
+too; `0.999` is rejected, because the check is exact on purpose; a layout missing `delta_cfv`
+or missing `is_valid` raises rather than guessing; and an observation too short to cover the
+slices raises.
+
+Also tested: a duplicate feature name raises and names the colliding feature; a non-positive
+declared length raises; and an `observe()` that renames a feature raises from `observe_vector`,
+naming `feature_spec`, rather than silently shifting every later slice.
+
+VERIFY findings: **P2.8 carries no `VERIFY` markers.** Two findings of its own:
+- **The Files line omitted two callers**, both created after §8's P2.8 text was written:
+  `src/rl_gym/tools/reward_trace.py` (P2.0b) and `tests/test_rl_gym_rolling_stats.py` (P2.7).
+  The item does not compile without them. Added, with the reason noted in the spec.
+- **`tests/test_rl_gym_env.py:61` defines its own local `greedy_action(env, obs)`** — a
+  different function with a different signature, unaffected by this change. Checked rather than
+  assumed, since a global rename would have been wrong there.
+
+One consequence worth stating plainly, because it is a deliberate loss of a check:
+**removing the `(3K + 4,)` shape assertion means a trailing-truncated observation is no longer
+rejected.** That is the point of the item — the layout's slices are the contract, so a vector
+that covers them reads correctly and P2.9–P2.11 can widen it without touching any consumer. A
+test pins the new behaviour explicitly (`greedy_action` gives the same answer on a vector with
+the global block dropped), so the change is recorded as intended rather than discovered later.
+What replaces it is narrower and more useful: the slices must be in range, the mask must match
+the derived `K`, and `is_valid` must equal the mask.
+
+**A test of mine that asserted the old contract.** `test_shape_mismatches_raise` required
+`greedy_action(obs[:-1], ...)` to raise — true only while the total length was checked, which
+this item removes. It failed, correctly. Split into three: a wrong-length mask raises, an
+observation that does not cover the layout raises, and the total length is deliberately no
+longer the contract.
+
+`src/rl_gym/README.md` is now stale on two lines — it documents `greedy_action(obs, mask, k_max)`
+and the `obs[K:2K]` slice. Left for the post-Phase-2 revision commit 74ee9c0 promises, as agreed.
+
+Nothing failed. **Stopping here** — not starting P2.9.

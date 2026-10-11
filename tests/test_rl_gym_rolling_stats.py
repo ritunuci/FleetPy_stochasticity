@@ -421,7 +421,8 @@ class TestTheTrackerSlotIsPerInstanceNotPerClass(unittest.TestCase):
             env.sim.set_stats_tracker(None)
             before = env._stats.episode_summary()
             for _ in range(25):
-                obs, _r, term, _t, _i = env.step(greedy_action(obs, env.action_masks(), 8))
+                obs, _r, term, _t, _i = env.step(
+                    greedy_action(obs, env.action_masks(), env.observation_layout))
                 if term:
                     break
             self.assertEqual(env._stats.episode_summary()["stats_arrivals"],
@@ -447,7 +448,7 @@ class TestWiredToARealSimulation(unittest.TestCase):
         terminated = False
         while not terminated and cls.steps < 150:
             obs, _r, terminated, _t, cls.info = cls.env.step(
-                greedy_action(obs, cls.env.action_masks(), 8))
+                greedy_action(obs, cls.env.action_masks(), cls.env.observation_layout))
             cls.steps += 1
 
     @classmethod

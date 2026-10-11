@@ -1,7 +1,11 @@
 """Action space, candidate truncation, and action masking.
 
 The action space is `Discrete(K + 1)` over ranked candidates (D3): slot `k` for
-`k in [0, K)` offers the insertion plan for the k-th cheapest candidate, and slot `K`
+`k in [0, K)` offers the insertion plan for the k-th candidate in ascending `delta_cfv`
+order -- element 0 is the minimum, i.e. the largest improvement to the control
+objective, which is why slot 0 is the greedy choice. "Cheapest" is avoided
+deliberately: `delta_cfv` is a *change* in the objective and is negative throughout on
+this scenario (D3, §5.1). Slot `K`
 rejects. Reject is always legal, so the mask is never all-False.
 
 Two rules this module exists to enforce:
