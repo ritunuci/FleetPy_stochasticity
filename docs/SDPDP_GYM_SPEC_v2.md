@@ -2599,8 +2599,31 @@ env's hot path — changes nothing. The wrapper rests on the mask and round-trip
 
 ### P2.13 — Training script
 
-**Files:** `train_sdpdp.py`, `src/rl_gym/callbacks.py` (new), `tests/test_rl_gym_train.py` (new),
+**Files:** `train_sdpdp.py`, `src/rl_gym/callbacks.py` (new), `tests/test_rl_gym_train.py`
+(created in P2.12), `tests/test_rl_gym_env.py` (the reserved-key regression test below),
 `src/rl_gym/sim_env_rl.py` and `src/rl_gym/gym_env.py` (the `tail_seconds` field below)
+
+**`info["episode"]` is reserved by SB3 and the env must not use it** *(found in P2.13, on the
+first real `MaskablePPO.learn`)*. `BaseAlgorithm._update_info_buffer` treats `info["episode"]`
+as the `Monitor` wrapper's statistics dict and extends `ep_info_buffer` with it; `dump_logs`
+then calls `len(self.ep_info_buffer[0])` and raises `TypeError: object of type 'int' has no
+len()` on an integer counter. Nothing earlier caught it because only PPO reads that buffer —
+the gates, `check_env` and every observation item drive the env directly. The counter is
+`info["episode_index"]`; it stays `episode` inside `episode_summary()`, which is ours and which
+SB3 never inspects. A regression test in `tests/test_rl_gym_env.py` asserts the key's absence.
+
+**The forkserver preload belongs to the venv builders, not the caller.**
+`train_sdpdp.prepare_multiprocessing()` is called from `build_venv` and `build_eval_venv`, so
+the training env, the evaluation env and P2.14's harness all inherit §8a's ordering without a
+caller remembering. P2.12's module-level call in `tests/test_rl_gym_train.py` came out, which
+makes that module's venvs the end-to-end proof; a test pins the preload list itself.
+
+**`--verify-run` is the item's verification, committed and re-runnable**, not a scratchpad
+script: `python train_sdpdp.py --verify-run --workers 2` trains for real and prints a
+`PASS`/`FAIL` line per check, exiting non-zero if any failed. Measured: **24/24 in 8.3 min**.
+A training run deliberately stays out of the default test suite; the pieces that can be checked
+without PPO — the pair partitioning, the callbacks' arithmetic, the seeding, the config
+guards — are unit tests in `tests/test_rl_gym_train.py`.
 
 - `MaskablePPO` (`sb3-contrib`), `MlpPolicy`, `SubprocVecEnv` (D8), `VecNormalize` (P2.12),
   training days by D10 rotation (`day_dir = "corpus"`), `base_seed` required (the D7 guard
@@ -2622,6 +2645,28 @@ env's hot path — changes nothing. The wrapper rests on the mask and round-trip
   Each evaluation must run every pair exactly once: VERIFY how SB3 spreads `n_eval_episodes`
   across the evaluation envs, split the pairs to match, and log the (day, seed) of every
   evaluation episode. Its size and frequency are config keys and small by default.
+
+  *(VERIFIED in P2.13:
+  `episode_count_targets = [(n_eval_episodes + i) // n_envs for i in range(n_envs)]`, summing
+  to `n_eval_episodes`, with the **later** workers taking the remainder. So the pairs are
+  **partitioned** by those counts, one slice per worker — handed the whole list, worker `i`
+  would run only its first `(E + i) // n_envs` pairs and never reach the rest.*
+
+  ***And the split has to survive more than one evaluation.** `evaluate_policy` stops only when
+  every worker has hit its target, so a faster worker can complete an extra episode that is
+  discarded — and that episode still advances its `eval_pairs` rotation, so the next evaluation
+  starts at a different offset. Per-worker slices make that safe: `L` consecutive positions of
+  a cycle of length `L` cover every element exactly once whatever the offset, so the order
+  rotates between evaluations and the set does not. Measured in the verification run: three
+  evaluations, each covering all four pairs, the second in the rotated order
+  `[03-19, 08-13, 01-11, 06-20]` — the shift is real and coverage held.*
+
+  ***On the statistics**: `MaskableEvalCallback._on_step` calls
+  `sync_envs_normalization(training_env, eval_env)`, which deep-copies `obs_rms` and `ret_rms`
+  **only**. It does not set `training` or `norm_reward`, so those must be False on the
+  evaluation env from construction (P2.12's `build_venv(..., training=False)`), and
+  `PairLoggingMaskableEvalCallback` asserts they still are after each evaluation. It also
+  asserts the eval env is wrapped the same way, so an unwrapped one fails loudly.)*
 - TensorBoard, per episode: reward; the `episode_summary()` counts (pickups, declines,
   cancellations, no-shows, rejections, no-candidates, and `unclassified`, which must stay 0);
   day and seed; steps per second. Aggregated: the day-visit histogram (D10) and the
@@ -2654,13 +2699,22 @@ env's hot path — changes nothing. The wrapper rests on the mask and round-trip
   already trained on. The rotation restarts at pass 0 of the new seed; the day-visit histogram
   shows the small imbalance that leaves.
 
-**How Ritun verifies:** a 2-worker, ~8-episode run completes and TensorBoard shows every listed
-scalar; a checkpoint reloads and, with `deterministic = True` on a fixed (day, seed) — `day` plus
-`episode_seed` (P2.3) — reproduces the same action sequence as before saving; each worker's first-episode `random_seed` in
-`episode_summary()` is the one D7 derives from `SeedSequence([base_seed, env_id])`, not
-`base_seed + env_id`; two runs with the same `base_seed` produce identical first-update losses;
-the script raises when any reward weight is missing, and when resuming with a `base_seed`
-already used; no orphaned workers after `close()` (P1.11's check).
+**How Ritun verifies:** `python train_sdpdp.py --verify-run --workers 2`, which runs all of it
+and prints a `PASS`/`FAIL` line per check: a 2-worker, ~8-episode run completes and TensorBoard
+shows every listed scalar (read back with `EventAccumulator`, not eyeballed); a checkpoint
+reloads and, with `deterministic = True` on a fixed (day, seed) — `day` plus `episode_seed`
+(P2.3) — reproduces the same action sequence as before saving; each worker's first-episode
+`random_seed` in `episode_summary()` is the one D7 derives from
+`SeedSequence([base_seed, env_id])`, not `base_seed + env_id`; two runs with the same
+`base_seed` produce identical first-update losses; the script raises when any reward weight is
+missing, and when resuming with a `base_seed` already used; no orphaned workers after `close()`
+(P1.11's check). Plus the P1.10 gate, byte for byte, since this item edits `gym_env.py` and
+`sim_env_rl.py`.
+
+**One trap inside that loss check**, worth keeping: `OnPolicyAlgorithm.learn` calls `dump_logs`
+**before** `self.train()`, so an update's `train/*` keys are only written at the *following*
+dump. A single-rollout run records `train/loss` and never writes it, which is what made the
+first version of the check report "no train/loss recorded". It runs three rollouts.
 
 **Commit:** `RL-GYM: add MaskablePPO training script and callbacks`
 

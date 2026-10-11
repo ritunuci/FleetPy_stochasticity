@@ -736,7 +736,18 @@ class SDPDPAssignmentEnv(gym.Env):
         self._mask = build_action_mask(0, self.k_max)
 
     def _episode_info(self) -> Dict[str, Any]:
-        info = {"episode_steps": self.step_counter, "episode": self.episode_counter}
+        """The terminal step's `info`.
+
+        **`"episode"` is reserved by SB3 and must not appear here** (found in P2.13).
+        `BaseAlgorithm._update_info_buffer` treats `info["episode"]` as the `Monitor` wrapper's
+        statistics dict and extends `ep_info_buffer` with it; `dump_logs` then calls
+        `len(self.ep_info_buffer[0])`, which raises `TypeError: object of type 'int' has no
+        len()` on an integer counter. It surfaced on the first real `MaskablePPO.learn` and on
+        nothing before, because only PPO reads that buffer. The counter is `episode_index`
+        here, and it stays `episode` inside `episode_summary()`, which is a dict of our own
+        that SB3 never inspects.
+        """
+        info = {"episode_steps": self.step_counter, "episode_index": self.episode_counter}
         if self._tracker is not None:
             info["episode_summary"] = self.episode_summary()
         return info
@@ -763,4 +774,11 @@ class SDPDPAssignmentEnv(gym.Env):
         if self._stats is not None:
             # P2.7's end-of-day totals, for reconciliation against 1_user-stats.csv
             summary.update(self._stats.episode_summary())
+        # the simulated seconds record_remaining_assignments ran past end_time (P2.13).
+        # Watched from the first training run because a policy that accepts more marginal
+        # requests lengthens it, and §6.4's branch 7 goes live when its 14,400 s cap binds --
+        # the cap is the indicator, not the margin. 0.0 once the simulation is dropped, which
+        # is why P2.13's callback reads it from the terminal step's info.
+        summary["tail_seconds"] = (
+            float(self.sim.tail_seconds) if self.sim is not None else 0.0)
         return summary

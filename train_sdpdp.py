@@ -1,22 +1,31 @@
-"""SubprocVecEnv smoke test for SDPDPAssignmentEnv (P1.11). Skeleton only — no learning yet.
+"""MaskablePPO training for SDPDPAssignmentEnv, and the harnesses around it.
 
-Runs four worker processes, one episode each, taking uniformly random actions from the legal
-set. Proves the environment survives the multiprocessing arrangement Phase 2 training needs:
-FleetPy objects hold routing engines and open file handles and are not picklable, so every env
-must be constructed *inside* the worker, never built in the parent and shipped across.
+    python train_sdpdp.py                      # P1.11's smoke test: workers, no learning
+    python train_sdpdp.py --train              # P2.13's training run
+    python train_sdpdp.py --verify-run         # P2.13's verification, pass/fail per check
+    python train_sdpdp.py --workers 2          # fewer workers
+    python train_sdpdp.py --no-vecnormalize    # the bare venv, as P1.11 measured it
 
-    python train_sdpdp.py                   # 4 workers, one episode each, VecNormalize on
-    python train_sdpdp.py --workers 2       # fewer, for a quick check
-    python train_sdpdp.py --no-vecnormalize # the bare venv, as P1.11 measured it
+Every env is constructed **inside** its worker (`make_env`), never built in the parent and
+shipped across: FleetPy objects hold routing engines and open file handles and are not
+picklable. `SubprocVecEnv` and never `DummyVecEnv` (D8), because
+`FleetSimulationBase.__init__` reconfigures process-global logging and seeds the global RNG.
 
-P2.12 added the `VecNormalize` wiring — `build_venv`, `save_vecnormalize`,
-`load_vecnormalize` — and the smoke test now runs through it by default, so the wrapper is
-exercised here rather than first inside a training run.
+What each item added here:
 
-**MaskablePPO goes here in P2.13**, with the callbacks, the checkpoints and the TensorBoard
-scalars. What exists now is `make_env`, the venv builders, the worker plumbing and the
-measurements P1.11 reports. *(An earlier version of this line said P2.6, which was never the
-item that adds the algorithm; corrected in P2.12.)*
+- **P1.11** — `make_env`, the worker plumbing, the smoke test and its measurements.
+- **P2.12** — the `VecNormalize` wiring (`build_venv`, `save_vecnormalize`,
+  `load_vecnormalize`); the smoke test runs through it by default.
+- **P2.13** — `MaskablePPO` (`train`, `build_model`), the evaluation venv with its pair
+  partitioning, the callbacks in `src/rl_gym/callbacks.py`, checkpoints with their statistics
+  and run metadata, resume with the used-`base_seed` guard, and `--verify-run`.
+
+Two seeding rules that are easy to undo by accident:
+
+- **`base_seed` is required** and never defaulted (D7): without it the env does not reseed per
+  episode, so every episode replays one sample path with every log looking healthy.
+- **`seed=` is never passed to `MaskablePPO`** -- see `parent_seed`. It would hand worker `i`
+  the seed `base_seed + i` and bypass D7's `SeedSequence([base_seed, env_id])` silently.
 """
 
 # ---------------------------------------------------------------------------------------- #
@@ -76,7 +85,38 @@ VECNORMALIZE_FILE = "vecnormalize.pkl"
 CLIP_OBS = 10.0
 
 
-def make_env(cfg, env_id, n_workers):
+#: §8's P2.13 defaults. Every one a config key; `gamma` is shared with `VecNormalize` (§5.3).
+DEFAULT_HYPERPARAMS = {
+    "gamma": 0.999,                # §6.5: a pickup lands 10-30 decisions after its assignment
+    "gae_lambda": 0.95,
+    "learning_rate": 3e-4,
+    "n_steps": 1024,               # per env
+    "batch_size": 256,
+    "n_epochs": 10,
+    "clip_range": 0.2,
+    "ent_coef": 0.0,
+    "net_arch": [256, 256],
+}
+
+#: §6.1's eight. **All must be given explicitly for training** -- `check_config` raises rather
+#: than letting `DEFAULT_REWARD_WEIGHTS` apply, because a weight silently defaulting is a
+#: different experiment than the one being recorded.
+REQUIRED_REWARD_WEIGHTS = ("w_pickup", "w_wait", "w_reject", "w_decline", "w_cancel",
+                           "w_noshow", "w_horizon", "w_no_candidates")
+
+#: §6.1's Phase 2 values, for the verification run and as the documented starting point. Not a
+#: default: the config must state them.
+PHASE2_REWARD_WEIGHTS = {
+    "w_pickup": 1.0, "w_wait": 0.05, "w_reject": 1.0, "w_decline": 0.1,
+    "w_cancel": 0.6, "w_noshow": 0.0, "w_horizon": 0.0, "w_no_candidates": 0.0,
+}
+
+#: tags the parent-process seed stream, so it cannot coincide with D7's `[base_seed, env_id]`
+#: or D10's `[base_seed, 1010, p + 1]`
+PARENT_SEED_TAG = 2020
+
+
+def make_env(cfg, env_id, n_workers, overrides=None):
     """Return a zero-argument callable that builds one env **inside the worker process**.
 
     The import and the construction both happen in `_init`, never in the parent: FleetPy
@@ -85,14 +125,35 @@ def make_env(cfg, env_id, n_workers):
 
     `n_workers` is a parameter rather than a config key on purpose -- see `DEFAULT_CFG`. Pass
     the same number used to size the `SubprocVecEnv`, which is what the only caller does.
+
+    :param overrides: per-worker config, which is how each evaluation worker gets **its own**
+        slice of the (day, seed) pairs (P2.13).
     """
     if not 0 <= env_id < n_workers:
         raise ValueError(f"env_id {env_id} out of range for n_workers {n_workers}")
 
     def _init():
         from src.rl_gym.gym_env import SDPDPAssignmentEnv
-        return SDPDPAssignmentEnv({**cfg, "env_id": env_id, "n_workers": n_workers})
+        return SDPDPAssignmentEnv({**cfg, "env_id": env_id, "n_workers": n_workers,
+                                   **(overrides or {})})
     return _init
+
+
+def prepare_multiprocessing():
+    """Make the forkserver preload numpy, so every worker inherits §8a's import order.
+
+    `SubprocVecEnv` prefers the forkserver start method, and `multiprocessing` preloads
+    `['__main__']` into it by default. For a script that is what carries the numpy-first order
+    into the workers; for a **test module** it carries nothing useful, because under
+    `python -m unittest …` `__main__` is unittest's own -- and the workers then die with
+    `OMP: Error #15 … Abort trap: 6` (measured in P2.12).
+
+    Called from `build_venv`, so the training venv, the evaluation venv and P2.14's harness all
+    get it without any caller remembering to. Idempotent, and it only affects forkservers not
+    yet started -- the second and later venvs reuse the one already running, which by then has
+    numpy loaded.
+    """
+    mp.set_forkserver_preload(["numpy"])
 
 
 def build_venv(cfg, n_workers, normalize=True, training=True):
@@ -118,6 +179,7 @@ def build_venv(cfg, n_workers, normalize=True, training=True):
     """
     from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 
+    prepare_multiprocessing()
     # n_workers reaches the envs from this one value, the same one sizing the venv (D10)
     venv = SubprocVecEnv([make_env(cfg, i, n_workers) for i in range(n_workers)])
     if not normalize:
@@ -179,12 +241,61 @@ def load_vecnormalize(checkpoint_path, venv, for_evaluation=True):
     return wrapped
 
 
-def check_config(cfg):
-    """`base_seed` must be explicit for any real run.
+def build_eval_venv(cfg, pairs, n_workers, eval_day_dir="corpus_eval"):
+    """The evaluation venv: one worker per slice of the (day, seed) pairs (§8 P2.13).
+
+    Each worker gets **its own** slice, because `evaluate_policy` gives worker `i` a target of
+    `(n_eval_episodes + i) // n_envs` episodes and each env cycles through the pairs it was
+    handed (P2.3) -- see `callbacks.partition_eval_pairs`, which also explains why a shifted
+    start between evaluations is harmless.
+
+    Wrapped with **`training=False`**, which is what makes `norm_reward=False` too (P2.12).
+    `MaskableEvalCallback` syncs `obs_rms` and `ret_rms` from the training env at every
+    evaluation but does **not** set those flags, so they have to be right from here (§5.3).
+
+    The training seeding keys are stripped: `eval_pairs` fixes both the day and the seed of
+    every episode, and P2.3 raises if it is combined with `base_seed`, `day` or `episode_seed`.
+    """
+    from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
+    from src.rl_gym.callbacks import partition_eval_pairs
+
+    slices = partition_eval_pairs(pairs, n_workers)
+    base = {k: v for k, v in cfg.items()
+            if k not in ("base_seed", "day", "episode_seed", "eval_pairs", "day_dir")}
+    base["day_dir"] = eval_day_dir
+    prepare_multiprocessing()
+    venv = SubprocVecEnv([
+        make_env(base, i, n_workers, overrides={"eval_pairs": slices[i]})
+        for i in range(n_workers)
+    ])
+    # observations normalised with the training statistics, reward reported in its own units
+    return VecNormalize(venv, training=False, norm_obs=True, norm_reward=False,
+                        clip_obs=CLIP_OBS, gamma=float(cfg["gamma"])), slices
+
+
+def parent_seed(base_seed):
+    """The seed for the parent process's own generators (§8 P2.13).
+
+    **Not** passed to `MaskablePPO` as `seed=`: `BaseAlgorithm.set_random_seed` ends with
+    `self.env.seed(seed)`, and `VecEnv.seed` hands worker `i` the seed `base_seed + i` at its
+    next reset (verified in P2.13 against SB3 2.9.0). The env would then seed its generator
+    from that number and never use D7's `SeedSequence([base_seed, env_id])` -- silently
+    bypassing the per-episode reseeding, with every log looking healthy.
+
+    So the parent seeds *itself* from a tagged stream, which makes network initialisation and
+    action sampling reproducible without touching the workers' seeds.
+    """
+    ss = np.random.SeedSequence([int(base_seed), PARENT_SEED_TAG])
+    return int(ss.generate_state(1, dtype=np.uint32)[0])
+
+
+def check_config(cfg, training=True):
+    """`base_seed` and all eight reward weights must be explicit for any real run.
 
     With `base_seed` absent the env deliberately does not reseed (D7), so every episode would
-    replay one sample path with nothing erroring and the logs looking healthy. Raise rather
-    than default.
+    replay one sample path with nothing erroring and the logs looking healthy. With a reward
+    weight absent, `DEFAULT_REWARD_WEIGHTS` would quietly apply and the run would be a
+    different experiment from the one recorded. Raise rather than default, in both cases.
     """
     if cfg.get("base_seed") is None:
         raise ValueError(
@@ -192,6 +303,160 @@ def check_config(cfg):
             "reseed per episode (D7), so every episode replays one sample path silently. "
             "Set it explicitly."
         )
+    if not training:
+        return
+    weights = cfg.get("reward_weights")
+    if not weights:
+        raise ValueError(
+            f"reward_weights is required for training: all eight of {REQUIRED_REWARD_WEIGHTS} "
+            f"must be given explicitly (§6.1). Falling back to DEFAULT_REWARD_WEIGHTS would "
+            f"make the run a different experiment from the one recorded."
+        )
+    missing = [w for w in REQUIRED_REWARD_WEIGHTS if w not in weights]
+    if missing:
+        raise ValueError(
+            f"reward_weights is missing {missing}; all eight of {REQUIRED_REWARD_WEIGHTS} "
+            f"must be given explicitly (§6.1, §8 P2.13)."
+        )
+    extra = [w for w in weights if w not in REQUIRED_REWARD_WEIGHTS]
+    if extra:
+        raise ValueError(
+            f"reward_weights has unknown key(s) {extra}; §10 forbids reward terms beyond "
+            f"§6.1's eight, and a typo'd weight would otherwise be silently ignored."
+        )
+
+
+def build_model(venv, cfg, tensorboard_log=None, resume_from=None):
+    """`MaskablePPO` with `MlpPolicy`, hyperparameters from the config (§8 P2.13).
+
+    **No `seed=`** -- see `parent_seed` for why that would bypass D7. The parent's own
+    generators are seeded by the caller before this is called, so network initialisation is
+    reproducible.
+    """
+    from sb3_contrib import MaskablePPO
+
+    hp = {k: cfg.get(k, v) for k, v in DEFAULT_HYPERPARAMS.items()}
+    if resume_from is not None:
+        model = MaskablePPO.load(resume_from, env=venv,
+                                 tensorboard_log=tensorboard_log,
+                                 custom_objects={"learning_rate": hp["learning_rate"],
+                                                 "clip_range": hp["clip_range"]})
+        return model, hp
+    model = MaskablePPO(
+        "MlpPolicy",
+        venv,
+        gamma=hp["gamma"],
+        gae_lambda=hp["gae_lambda"],
+        learning_rate=hp["learning_rate"],
+        n_steps=hp["n_steps"],
+        batch_size=hp["batch_size"],
+        n_epochs=hp["n_epochs"],
+        clip_range=hp["clip_range"],
+        ent_coef=hp["ent_coef"],
+        policy_kwargs={"net_arch": list(hp["net_arch"])},
+        tensorboard_log=tensorboard_log,
+        verbose=1,
+    )
+    return model, hp
+
+
+def train(cfg, n_workers=4, total_timesteps=10_000, out_dir="runs/sdpdp",
+          eval_pairs=None, n_eval_workers=2, eval_freq=2048,
+          checkpoint_every_n_episodes=4, resume_from=None, verbose=True):
+    """One training run: venvs, model, callbacks, `learn`, final checkpoint (§8 P2.13).
+
+    Returns the artifacts the verification reads -- the callbacks, the paths and the
+    hyperparameters actually used -- rather than only the model, so a check can look at what
+    happened instead of re-deriving it.
+    """
+    from stable_baselines3.common.utils import set_random_seed
+    from src.rl_gym import callbacks as cb
+
+    check_config(cfg)
+    os.makedirs(out_dir, exist_ok=True)
+    tb_dir = os.path.join(out_dir, "tb")
+
+    metadata = {"base_seeds": [int(cfg["base_seed"])]}
+    if resume_from is not None:
+        previous = cb.load_run_metadata(resume_from)
+        # raises if this base_seed was already used: it would restart D10's rotation and the
+        # episode-seed streams from pass 0 and replay sample paths already trained on
+        cb.check_resume_base_seed(previous, cfg["base_seed"])
+        metadata["base_seeds"] = [int(s) for s in previous.get("base_seeds", [])] + \
+                                 [int(cfg["base_seed"])]
+        metadata["resumed_from"] = os.path.basename(resume_from)
+
+    # the parent's own streams, tagged so they cannot coincide with D7's or D10's
+    set_random_seed(parent_seed(cfg["base_seed"]))
+
+    venv = build_venv(cfg, n_workers, normalize=True)
+    eval_venv, eval_slices = (None, None)
+    callback_list = []
+    try:
+        model, hp = build_model(venv, cfg, tensorboard_log=tb_dir, resume_from=resume_from)
+        if resume_from is not None:
+            # the statistics the checkpoint was trained under, not fresh ones (§5.3)
+            stats = os.path.join(os.path.dirname(os.path.abspath(resume_from)),
+                                 VECNORMALIZE_FILE)
+            if os.path.isfile(stats):
+                from stable_baselines3.common.vec_env import VecNormalize
+                venv = VecNormalize.load(stats, venv.venv)
+                venv.training, venv.norm_reward = True, True
+                model.set_env(venv)
+
+        training_days = []
+        if cfg.get("day_dir") == "corpus":
+            from src.rl_gym.corpus import training_day_files
+            training_days = training_day_files()
+        episode_log = cb.EpisodeLogCallback(k_max=int(cfg["K"]), training_days=training_days)
+        checkpointer = cb.EpisodeCheckpointCallback(
+            every_n_episodes=checkpoint_every_n_episodes,
+            save_path=os.path.join(out_dir, "checkpoints"),
+            save_stats_fn=save_vecnormalize,
+            metadata={**metadata, "hyperparams": hp,
+                      "reward_weights": dict(cfg["reward_weights"]),
+                      "day_dir": cfg.get("day_dir"), "n_workers": n_workers},
+        )
+        callback_list = [episode_log, checkpointer]
+
+        evaluator = None
+        if eval_pairs:
+            eval_venv, eval_slices = build_eval_venv(cfg, eval_pairs, n_eval_workers)
+            evaluator = cb.PairLoggingMaskableEvalCallback(
+                eval_venv,
+                n_eval_episodes=len(eval_pairs),
+                eval_freq=eval_freq,
+                deterministic=True,
+                best_model_save_path=None,
+                log_path=os.path.join(out_dir, "eval"),
+                verbose=1 if verbose else 0,
+            )
+            callback_list.append(evaluator)
+
+        t0 = time.perf_counter()
+        model.learn(total_timesteps=total_timesteps, callback=callback_list,
+                    reset_num_timesteps=resume_from is None)
+        wall = time.perf_counter() - t0
+        final = checkpointer.save()
+    finally:
+        processes = venv.unwrapped.processes
+        venv.close()
+        if eval_venv is not None:
+            eval_venv.close()
+
+    return {
+        "model_path": final,
+        "out_dir": out_dir,
+        "tb_dir": tb_dir,
+        "hyperparams": hp,
+        "episode_log": episode_log,
+        "checkpointer": checkpointer,
+        "evaluator": evaluator,
+        "eval_slices": eval_slices,
+        "wall_seconds": wall,
+        "worker_exitcodes": [p.exitcode for p in processes],
+        "metadata": metadata,
+    }
 
 
 def random_masked_actions(masks, rng):
@@ -282,6 +547,306 @@ def smoke_test(n_workers=4, cfg=None, verbose=True, normalize=True):
     }
 
 
+#: the (day, seed) pairs the verification run evaluates on. Four pairs over two evaluation
+#: workers, from `docs/RL_GYM_EVAL_SEEDS.csv`'s eventual role -- P2.14 generates that file, so
+#: these are fixed here and are not the real evaluation seeds.
+VERIFY_EVAL_PAIRS = [("2024-01-11", 11), ("2024-03-19", 12),
+                     ("2024-06-20", 13), ("2024-08-13", 14)]
+
+#: every TensorBoard key §8's P2.13 asks to be present, checked by name
+REQUIRED_SCALARS = (
+    "episode/reward", "episode/steps", "episode/steps_per_second",
+    "episode/pickups", "episode/rider_declined", "episode/diffusion_cancelled",
+    "episode/no_show", "episode/operator_rejected", "episode/no_candidates",
+    "episode/unclassified", "episode/day_index", "episode/random_seed",
+    "episode/horizon_margin", "episode/tail_seconds",
+    "episode/candidate_list_mean", "episode/candidate_list_max",
+    "train/episodes", "time/fps", "train/loss",
+)
+REQUIRED_HISTOGRAMS = ("episode/candidate_list_lengths", "train/day_visits")
+
+
+def _tb_tags(tb_dir):
+    """Every tag in the run's event files, by kind."""
+    from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+    tags = {"scalars": set(), "histograms": set(), "tensors": set()}
+    for root, _dirs, files in os.walk(tb_dir):
+        for name in files:
+            if "events.out.tfevents" not in name:
+                continue
+            acc = EventAccumulator(os.path.join(root, name),
+                                   size_guidance={"scalars": 0, "histograms": 0,
+                                                  "tensors": 0})
+            acc.Reload()
+            found = acc.Tags()
+            for kind in tags:
+                tags[kind].update(found.get(kind, []))
+    return tags
+
+
+def verify_run(n_workers=2, episodes=8, out_dir=None, keep=False, verbose=True):
+    """§8 P2.13's verification, as a committed command: `python train_sdpdp.py --verify-run`.
+
+    Prints one `PASS`/`FAIL` line per check and exits non-zero if any failed, so it can be
+    re-run independently (§0) rather than living in a scratchpad. It trains for real -- about
+    8 episodes over 2 workers, two evaluations, two checkpoints -- so expect roughly 10-15
+    minutes.
+
+    Deliberately **not** a unit test: a test that trains would put minutes into every
+    `python -m unittest discover tests`. The pieces it cannot check cheaply (the callbacks'
+    arithmetic, the pair partitioning, the seeding) are unit-tested in
+    `tests/test_rl_gym_train.py`; what needs a real run is checked here.
+    """
+    import shutil
+    import tempfile
+
+    from src.rl_gym import callbacks as cb
+    from src.rl_gym.day_rotation import day_for_episode
+
+    results = []
+
+    def check(name, ok, detail=""):
+        results.append((name, bool(ok), detail))
+        if verbose:
+            print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f" -- {detail}" if detail
+                                                              else ""), flush=True)
+        return bool(ok)
+
+    base_seed = 20261011
+    tmp = out_dir or tempfile.mkdtemp(prefix="sdpdp_verify_")
+    cfg = dict(DEFAULT_CFG, base_seed=base_seed, skip_output=True,
+               reward_weights=dict(PHASE2_REWARD_WEIGHTS), n_steps=256,
+               log_level="warning")
+    # about `episodes` episodes over the workers, and two evaluations inside that
+    steps_per_episode = 450
+    total_timesteps = episodes * steps_per_episode
+    eval_freq = max(1, (total_timesteps // n_workers) // 3)
+
+    t0 = time.perf_counter()
+    if verbose:
+        print(f"verification run: {n_workers} workers, ~{episodes} episodes, "
+              f"base_seed {base_seed}, out {tmp}", flush=True)
+        print("-- the raises, before spending any wall clock on training --", flush=True)
+
+    # 1) the config guards
+    try:
+        check_config(dict(cfg, reward_weights={k: v for k, v in
+                                               PHASE2_REWARD_WEIGHTS.items()
+                                               if k != "w_cancel"}))
+        check("a missing reward weight raises", False, "it did not")
+    except ValueError as e:
+        check("a missing reward weight raises", "w_cancel" in str(e))
+    try:
+        check_config({k: v for k, v in cfg.items() if k != "base_seed"})
+        check("a missing base_seed raises", False, "it did not")
+    except ValueError as e:
+        check("a missing base_seed raises", "base_seed" in str(e))
+    try:
+        cb.check_resume_base_seed({"base_seeds": [base_seed]}, base_seed)
+        check("resuming with a used base_seed raises", False, "it did not")
+    except ValueError as e:
+        check("resuming with a used base_seed raises", str(base_seed) in str(e))
+
+    if verbose:
+        print("-- training --", flush=True)
+    r = train(cfg, n_workers=n_workers, total_timesteps=total_timesteps, out_dir=tmp,
+              eval_pairs=VERIFY_EVAL_PAIRS, n_eval_workers=2, eval_freq=eval_freq,
+              checkpoint_every_n_episodes=max(1, episodes // 2), verbose=verbose)
+    log, evaluator = r["episode_log"], r["evaluator"]
+
+    if verbose:
+        print("-- checks --", flush=True)
+    # 2) the run itself
+    check("the run completed and every worker exited 0",
+          all(code == 0 for code in r["worker_exitcodes"]),
+          f"exit codes {r['worker_exitcodes']}")
+    check("at least 4 episodes finished", log.episodes >= 4, f"{log.episodes} episodes")
+
+    # 3) unclassified is 0 in every episode (§6.4: non-zero means a path was missed)
+    bad = [s.get("unclassified") for s in log.episode_summaries
+           if s.get("unclassified")]
+    check("unclassified == 0 in every episode", not bad, f"non-zero in {len(bad)}")
+
+    # 4) every TensorBoard scalar and histogram §8 asks for
+    tags = _tb_tags(r["tb_dir"])
+    missing = [k for k in REQUIRED_SCALARS if k not in tags["scalars"]]
+    check("every required TensorBoard scalar is present", not missing,
+          f"missing {missing}" if missing else f"{len(REQUIRED_SCALARS)} keys")
+    missing_h = [k for k in REQUIRED_HISTOGRAMS
+                 if k not in tags["histograms"] and k not in tags["tensors"]]
+    check("the day-visit and candidate-length histograms are present", not missing_h,
+          f"missing {missing_h}" if missing_h else "both")
+    slot_keys = [f"slots/slot_{i}" for i in range(int(cfg["K"]))] + ["slots/reject"]
+    missing_s = [k for k in slot_keys if k not in tags["scalars"]]
+    check("slot-selection frequency is logged for every slot", not missing_s,
+          f"missing {missing_s}" if missing_s else f"{len(slot_keys)} slots")
+
+    # 5) no training day visited twice, and the days are the ones D10 assigns
+    counts = log.day_visit_counts()
+    repeats = {d: c for d, c in counts.items() if c > 1}
+    check("no training day visited twice", not repeats, f"repeats {repeats}")
+    from src.rl_gym.corpus import training_day_files
+    days = training_day_files()
+    expected = {}
+    for env_id in range(n_workers):
+        for index in range(8):
+            day, _p, _pos = day_for_episode(days, base_seed, n_workers, env_id, index)
+            expected.setdefault(env_id, []).append(day)
+    per_env = {}
+    for s in log.episode_summaries:
+        per_env.setdefault(int(s.get("env_id", -1)), []).append(s.get("day"))
+    mismatch = {e: (got, expected.get(e, [])[:len(got)])
+                for e, got in per_env.items()
+                if got != expected.get(e, [])[:len(got)]}
+    check("each worker ran the days D10 assigns it, in order", not mismatch,
+          f"{mismatch}" if mismatch else f"{sum(len(v) for v in per_env.values())} episodes")
+
+    # 6) the episode seeds are D7's, not VecEnv.seed's base_seed + env_id
+    seed_ok, seed_detail = True, []
+    for env_id in sorted(per_env):
+        first = next((s for s in log.episode_summaries
+                      if int(s.get("env_id", -1)) == env_id), None)
+        if first is None:
+            continue
+        ss = np.random.SeedSequence([base_seed, env_id])
+        worker_seed = int(ss.generate_state(1, dtype=np.uint32)[0])
+        # the env seeds its own Generator from the worker seed, then draws the episode seed
+        want = int(np.random.default_rng(worker_seed).integers(0, 2_508_743))
+        got = int(first.get("random_seed", -1))
+        if got == base_seed + env_id:
+            seed_ok = False
+            seed_detail.append(f"env {env_id}: got base_seed + env_id ({got})")
+        elif got != want:
+            seed_detail.append(f"env {env_id}: {got} (derived {want})")
+    check("episode seeds come from SeedSequence([base_seed, env_id]), not base_seed + env_id",
+          seed_ok, "; ".join(seed_detail) if seed_detail else "D7 holds")
+
+    # 7) the two evaluations each ran every pair exactly once
+    evals = evaluator.evaluation_pairs if evaluator is not None else []
+    check("at least two evaluations fired", len(evals) >= 2, f"{len(evals)} evaluation(s)")
+    for i, pairs in enumerate(evals):
+        want = sorted(VERIFY_EVAL_PAIRS)
+        check(f"evaluation {i + 1} ran every (day, seed) exactly once",
+              sorted(pairs) == want,
+              f"ran {sorted(pairs)}")
+    if len(evals) >= 2:
+        check("the second evaluation covered the pairs despite any rotation shift",
+              sorted(evals[1]) == sorted(VERIFY_EVAL_PAIRS),
+              f"order {evals[1]}")
+
+    # 8) the evaluation statistics are synced but frozen
+    check("the evaluation env kept training=False and norm_reward=False",
+          evaluator is None or (not evaluator.eval_env.training
+                                and not evaluator.eval_env.norm_reward))
+
+    # 9) at least two checkpoints, each with its statistics and the metadata
+    ckpt_dir = os.path.join(tmp, "checkpoints")
+    models = sorted(f for f in os.listdir(ckpt_dir) if f.endswith(".zip"))
+    check("at least two checkpoints were written", len(models) >= 2, f"{models}")
+    check("the statistics were saved beside them",
+          os.path.isfile(os.path.join(ckpt_dir, VECNORMALIZE_FILE)))
+    meta = cb.load_run_metadata(ckpt_dir)
+    check("the metadata records every base_seed used",
+          meta.get("base_seeds") == [base_seed], f"{meta.get('base_seeds')}")
+    check("the metadata records the hyperparameters and the eight weights",
+          set(meta.get("reward_weights", {})) == set(REQUIRED_REWARD_WEIGHTS)
+          and "gamma" in meta.get("hyperparams", {}))
+
+    # 10) a reloaded checkpoint reproduces its deterministic actions on a fixed (day, seed)
+    actions_match, detail = _check_reload_determinism(r["model_path"], cfg)
+    check("a reloaded checkpoint reproduces its deterministic action sequence",
+          actions_match, detail)
+
+    # 11) two runs with the same base_seed produce identical first-update losses
+    same, detail = _check_loss_determinism(cfg, n_workers)
+    check("two runs with the same base_seed give identical first-update losses", same, detail)
+
+    wall = time.perf_counter() - t0
+    failed = [name for name, ok, _d in results if not ok]
+    if verbose:
+        print(f"\n{len(results) - len(failed)}/{len(results)} checks passed in "
+              f"{wall / 60:.1f} min")
+        if failed:
+            print("FAILED: " + "; ".join(failed))
+        print(f"artifacts: {tmp}" if keep else f"removing {tmp}")
+    if not keep and out_dir is None:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return 0 if not failed else 1
+
+
+def _check_reload_determinism(model_path, cfg):
+    """Reload the checkpoint and compare 15 deterministic actions on a fixed (day, seed)."""
+    from sb3_contrib import MaskablePPO
+    from stable_baselines3.common.vec_env import VecNormalize
+    from src.rl_gym.gym_env import SDPDPAssignmentEnv
+
+    stats = os.path.join(os.path.dirname(os.path.abspath(model_path)), VECNORMALIZE_FILE)
+    pinned = {k: v for k, v in cfg.items() if k not in ("base_seed", "eval_pairs")}
+    pinned.update({"day_dir": "corpus_eval", "day": "2024-06-20", "episode_seed": 42,
+                   "env_id": 0})
+
+    def rollout():
+        from stable_baselines3.common.vec_env import DummyVecEnv
+        # DummyVecEnv is forbidden for training (D8) but this is one env in one process for a
+        # handful of steps, which is what VecNormalize.load needs to attach to
+        venv = DummyVecEnv([lambda: SDPDPAssignmentEnv(pinned)])
+        wrapped = VecNormalize.load(stats, venv)
+        wrapped.training, wrapped.norm_reward = False, False
+        model = MaskablePPO.load(model_path, env=wrapped)
+        obs = wrapped.reset()
+        taken = []
+        for _ in range(15):
+            masks = np.stack(wrapped.env_method("action_masks"))
+            action, _state = model.predict(obs, deterministic=True, action_masks=masks)
+            taken.append(int(np.asarray(action).reshape(-1)[0]))
+            obs, _r, dones, _i = wrapped.step(action)
+            if dones[0]:
+                break
+        wrapped.close()
+        return taken
+
+    first, second = rollout(), rollout()
+    return first == second, f"{first} vs {second}"
+
+
+def _check_loss_determinism(cfg, n_workers, n_steps=64, rollouts=3):
+    """Two short runs with the same base_seed must give the same first-update loss.
+
+    **Three rollouts, not one.** `OnPolicyAlgorithm.learn` calls `dump_logs` *before*
+    `self.train()`, so the `train/*` keys recorded by an update are only written at the
+    following dump -- a single-rollout run records `train/loss` and never writes it, which is
+    what made the first version of this check report "no train/loss recorded".
+    """
+    import shutil
+    import tempfile
+
+    losses = []
+    for _ in range(2):
+        tmp = tempfile.mkdtemp(prefix="sdpdp_loss_")
+        try:
+            r = train(dict(cfg, n_steps=n_steps), n_workers=n_workers,
+                      total_timesteps=rollouts * n_steps * n_workers, out_dir=tmp,
+                      eval_pairs=None, checkpoint_every_n_episodes=10_000, verbose=False)
+            from tensorboard.backend.event_processing.event_accumulator import (
+                EventAccumulator,
+            )
+            found = None
+            for root, _dirs, files in os.walk(r["tb_dir"]):
+                for name in files:
+                    if "events.out.tfevents" not in name:
+                        continue
+                    acc = EventAccumulator(os.path.join(root, name))
+                    acc.Reload()
+                    if "train/loss" in acc.Tags().get("scalars", []):
+                        found = acc.Scalars("train/loss")[0].value
+            losses.append(found)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    if any(v is None for v in losses):
+        return False, f"no train/loss recorded ({losses})"
+    return losses[0] == losses[1], f"{losses[0]!r} vs {losses[1]!r}"
+
+
 def _rss(pid):
     import psutil
     try:
@@ -301,6 +866,19 @@ def _alive(pid):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--train", action="store_true",
+                    help="run MaskablePPO training (P2.13) instead of the smoke test")
+    ap.add_argument("--verify-run", action="store_true",
+                    help="P2.13's verification: a short real training run with a pass/fail "
+                         "line per check (about 10-15 minutes)")
+    ap.add_argument("--timesteps", type=int, default=100_000,
+                    help="--train only: total timesteps")
+    ap.add_argument("--out-dir", default=os.path.join("runs", "sdpdp"))
+    ap.add_argument("--resume-from", default=None,
+                    help="--train only: a checkpoint to resume. Requires a base_seed the run "
+                         "has not used (§8 P2.13)")
+    ap.add_argument("--keep", action="store_true",
+                    help="--verify-run only: keep the run directory")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--base-seed", type=int, default=DEFAULT_CFG["base_seed"])
     ap.add_argument("--log-level", default="warning")
@@ -313,8 +891,25 @@ def main():
                     help="discount; VecNormalize and PPO must share it (§5.3, §6.5)")
     args = ap.parse_args()
 
+    if args.verify_run:
+        return verify_run(n_workers=max(2, args.workers if args.workers <= 4 else 2),
+                          out_dir=args.out_dir if args.keep else None, keep=args.keep)
+
     cfg = dict(DEFAULT_CFG, base_seed=args.base_seed, skip_output=not args.output,
                log_level=args.log_level, gamma=args.gamma)
+
+    if args.train:
+        cfg["reward_weights"] = dict(PHASE2_REWARD_WEIGHTS)
+        print(f"training: workers {args.workers} | base_seed {cfg['base_seed']} | "
+              f"timesteps {args.timesteps} | out {args.out_dir}", flush=True)
+        r = train(cfg, n_workers=args.workers, total_timesteps=args.timesteps,
+                  out_dir=args.out_dir, eval_pairs=VERIFY_EVAL_PAIRS,
+                  resume_from=args.resume_from)
+        print(f"\nfinished in {r['wall_seconds'] / 60:.1f} min | "
+              f"{r['episode_log'].episodes} episodes | checkpoint {r['model_path']}")
+        print(f"day visits: {r['episode_log'].day_visit_counts()}")
+        print(f"tensorboard --logdir {r['tb_dir']}")
+        return 0 if all(c == 0 for c in r["worker_exitcodes"]) else 1
     # mp's process default is not what SubprocVecEnv uses; it prefers forkserver where
     # available. The one SB3 actually chose is reported after the run.
     print(f"mp default start method: {mp.get_start_method()} (SB3 picks its own) | "

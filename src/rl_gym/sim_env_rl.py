@@ -46,9 +46,49 @@ class RLImmediateDecisionsSimulation(ImmediateDecisionsSimulation):
     #: own. None means the clock is never set and the tracker is never touched.
     _stats_tracker = None
 
+    #: highest `next_time` `update_sim_state_fleets` has been called with, for `tail_seconds`
+    #: (P2.13). A class-level default for the same reason as `_stats_tracker`: this class
+    #: defines no `__init__`, and P1.4 forbids adding a parameter to
+    #: `FleetSimulationBase.__init__`. Shadowed per instance on the first call.
+    _max_sim_time = None
+
     def set_stats_tracker(self, tracker) -> None:
         """Attach the RollingStatsTracker (P2.7). The one call site is None-guarded."""
         self._stats_tracker = tracker
+
+    def update_sim_state_fleets(self, last_time, next_time, force_update_plan=False):
+        """Parent behaviour, plus the high-water mark `tail_seconds` is derived from (P2.13).
+
+        **Measured here rather than inside `record_remaining_assignments`**, which keeps
+        `c_time` local and would have to be mirrored — 25 lines of parent loop that must stay
+        identical or the gate breaks. This reads the real loop instead: the tail calls this
+        method once per `time_step` past `end_time`, so the high-water mark minus `end_time`
+        is exactly the tail, and it is the same quantity P1.10's driver measured by wrapping
+        this method from outside.
+        """
+        if self._max_sim_time is None or next_time > self._max_sim_time:
+            self._max_sim_time = next_time
+        return super().update_sim_state_fleets(last_time, next_time,
+                                               force_update_plan=force_update_plan)
+
+    @property
+    def tail_seconds(self) -> float:
+        """Simulated seconds `record_remaining_assignments` ran past `end_time`.
+
+        **Logged rather than derived from `horizon_margin`** (P2.13): the derivation
+        `tail = ceil(-margin / 10) * 10 + 30` is exact on all 79 negative-margin days of the
+        corpus and wrong on all 48 others, where the tail is 0 s or 10 s against a predicted
+        30 s (P2.4). A quantity that is exact in one regime and wrong in another is what gets
+        misread later.
+
+        What makes this the number to watch rather than the margin: §6.4's branch 7 goes live
+        when the tail's own cap binds (`end_time + 2 * 7200`), and greedy's longest tail
+        anywhere in the corpus is 1,950 s, 13.5% of that cap. A trained policy can move it by
+        accepting more marginal requests.
+        """
+        if self._max_sim_time is None:
+            return 0.0
+        return max(0.0, float(self._max_sim_time) - float(self.end_time))
 
     def _rl_operator(self, op_id):
         """Return operator `op_id`, requiring it to be RL-capable.

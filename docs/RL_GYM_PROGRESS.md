@@ -3201,3 +3201,155 @@ One smaller defect of my own, also caught by its test: the guard's message rende
 something you have to decode. Fixed in the code — plain `int`/`float` — not in the test.
 
 Nothing failed. **Stopping here** — not starting P2.13.
+
+---
+
+## P2.13 — STARTED 2026-10-11 00:10
+Files I will touch: train_sdpdp.py, src/rl_gym/callbacks.py (new), src/rl_gym/sim_env_rl.py,
+src/rl_gym/gym_env.py, tests/test_rl_gym_train.py, docs/SDPDP_GYM_SPEC_v2.md,
+docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.12 committed, tree clean.
+
+Checked before starting:
+- **TensorBoard is importable** — `tensorboard 2.21.0` and
+  `torch.utils.tensorboard.SummaryWriter`. Verified end to end rather than by import alone:
+  SB3's logger configured with `["tensorboard"]`, one scalar recorded and dumped, produced an
+  `events.out.tfevents.*` file whose `rollout/probe` read back as `(1, 1.5)` through
+  `EventAccumulator`. **No install needed** (§0).
+- **SB3's TensorBoard writer takes strings via `add_text` and numpy arrays / torch tensors via
+  `add_histogram`**, so the day logs as text and the day-visit and candidate-length
+  distributions as arrays, with no custom writer.
+- **`MaskableEvalCallback` syncs the statistics but does not set the flags.** `_on_step` calls
+  `sync_envs_normalization(self.training_env, self.eval_env)`, gated on
+  `self.model.get_vec_normalize_env() is not None`, and that function deep-copies **`obs_rms`
+  and `ret_rms` only** — it never touches `training` or `norm_reward`. Those are the caller's
+  job at construction, which is what §8's "synced, `training = False`" means. It also
+  **asserts** the eval env is wrapped the same way, so an unwrapped eval venv fails loudly.
+- **VERIFY, how SB3 spreads `n_eval_episodes`:**
+  `episode_count_targets = [(n_eval_episodes + i) // n_envs for i in range(n_envs)]`, summing
+  to `n_eval_episodes`, with the **later** envs taking the remainder. Giving every eval env the
+  whole pair list would therefore replay the first few pairs and never reach the rest; the
+  pairs must be **partitioned** by those counts.
+- **VERIFY, `MaskablePPO(seed=...)` would bypass D7, as §8 says.**
+  `BaseAlgorithm.set_random_seed` ends with `self.env.seed(seed)` and `VecEnv.seed` sets
+  `self._seeds = [seed + idx for idx in range(num_envs)]`, handing worker `i`
+  `base_seed + i` at its next reset. So no `seed=` to the model; `set_random_seed(s)` in the
+  parent with `s` from `SeedSequence([base_seed, 2020])`.
+- **The eight reward weights** in `DEFAULT_REWARD_WEIGHTS` match §6.1's names exactly.
+
+Approved before starting:
+- **Ritun's point 1:** `mp.set_forkserver_preload(["numpy"])` moves into
+  `prepare_multiprocessing()`, called from `build_venv`, so the training venv, the evaluation
+  venv and P2.14's harness all get it without relying on the caller's import order. The
+  module-level call comes **out** of `tests/test_rl_gym_train.py`, which turns its existing 19
+  tests into the proof, plus one test pinning the preload list itself.
+- **Ritun's point 2:** `--verify-run`, a committed re-runnable command printing a pass/fail
+  line per check, not a scratchpad script, because Ritun re-runs every verification himself
+  (§0).
+- **Ritun's point 3:** the eval-pair partitioning is tested across **two consecutive**
+  evaluations, not one. His reasoning is right and it shapes the design: an extra discarded
+  episode at the end of evaluation 1 advances that worker's `eval_pairs` rotation, so the
+  second evaluation starts at a different offset. **Per-worker slices make that safe**, and the
+  argument is worth writing down: if worker `i` holds exactly its own `L_i = (E + i) // N`
+  pairs and runs `L_i` counted episodes per evaluation, then `L_i` consecutive positions of a
+  cycle of length `L_i` cover every pair exactly once **whatever the starting offset** — the
+  order rotates, the set does not. Both evaluations will log and assert every (day, seed).
+
+## P2.13 — DONE 2026-10-11 01:55 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/callbacks.py` — **new.** `partition_eval_pairs`; `EpisodeLogCallback` (the
+  per-episode scalars, the slot frequencies, the two histograms, one dump per episode);
+  `EpisodeCheckpointCallback` (episode-counted, with statistics and metadata);
+  `load_run_metadata` / `check_resume_base_seed`; `PairLoggingMaskableEvalCallback`.
+- `train_sdpdp.py` — `prepare_multiprocessing` (called by both venv builders),
+  `DEFAULT_HYPERPARAMS`, `REQUIRED_REWARD_WEIGHTS` / `PHASE2_REWARD_WEIGHTS`,
+  `make_env(..., overrides=)`, `build_eval_venv`, `parent_seed`, the extended `check_config`,
+  `build_model`, `train`, `verify_run` with `_check_reload_determinism` and
+  `_check_loss_determinism`; `--train`, `--verify-run`, `--timesteps`, `--out-dir`,
+  `--resume-from`, `--keep`; the module docstring rewritten around the three items.
+- `src/rl_gym/sim_env_rl.py` — `_max_sim_time` and the `tail_seconds` property, via a
+  three-line `update_sim_state_fleets` override.
+- `src/rl_gym/gym_env.py` — `tail_seconds` in `episode_summary()`; **`info["episode"]` renamed
+  to `info["episode_index"]`** (see below).
+- `tests/test_rl_gym_env.py` — `TestInfoKeysDoNotCollideWithSB3` (3).
+- `tests/test_rl_gym_train.py` — the module-level preload call removed;
+  `TestForkserverPreload` (3), `TestEvalPairPartitioning` (8), `TestEpisodeLogCallback` (6),
+  `TestEpisodeCheckpointCallback` (5), `TestResumeGuard` (3), `TestTrainingConfigGuards` (6),
+  `TestParentSeeding` (3).
+- `docs/SDPDP_GYM_SPEC_v2.md`, `docs/RL_GYM_PROGRESS.md`.
+
+Verification — everything passed, nothing failed:
+
+1. **The P1.10 gate, byte for byte** — all 7 gate tests `ok`. Full suite **541 tests pass**,
+   187.4 s, no failures and no skips (503 before; +38).
+2. **`python train_sdpdp.py --verify-run --workers 2`: 24/24 checks passed in 8.3 min**,
+   exit 0. The committed command Ritun asked for, printing a line per check:
+   the three config/resume raises; the run completing with worker exit codes `[0, 0]` and 8
+   episodes; `unclassified == 0` in every episode; all 19 required scalars and both histograms
+   present in the event files; slot frequencies for all 9 slots; no training day visited twice
+   and each worker running exactly the days D10 assigns it, in order; the episode seeds being
+   D7's rather than `base_seed + env_id`; three evaluations each covering every pair exactly
+   once; the evaluation env still `training=False, norm_reward=False`; two checkpoints with
+   their statistics and metadata; a reloaded checkpoint reproducing its 15 deterministic
+   actions; and two runs with the same `base_seed` giving identical first-update losses
+   (1.027919888496399 both times).
+3. **Ritun's point 2 confirmed empirically, and the shift is real.** Evaluation 1 ran the pairs
+   in order; **evaluation 2 ran them as `[03-19, 08-13, 01-11, 06-20]`** — rotated, because a
+   discarded episode advanced a worker's rotation — and still covered all four exactly once, as
+   did evaluation 3. A unit test simulates the same thing over three evaluations with 1, 2 and
+   5 discarded episodes across 1, 2 and 3 workers, asserts the order really does change (so the
+   test is not vacuous), and pins the counter-example: handing every worker the whole list
+   covers only 4 of 6 pairs.
+4. **`tail_seconds` cross-checks against P2.4's formula exactly.** Reference day, margin
+   +194.7 s → **0.0 s**; 2024-10-09, margin −1038.3 s → **1070.0 s**, which is
+   `ceil(1038.3/10) × 10 + 30` to the second. Two independent measurements agreeing is what
+   makes the field trustworthy rather than plausible.
+5. **TensorBoard checked before being relied on** (Ritun's point 2 of the proposal):
+   `tensorboard 2.21.0` importable, and SB3's logger verified writing a scalar that reads back
+   through `EventAccumulator`. No install.
+6. **The forkserver preload moved** into `prepare_multiprocessing`, called by `build_venv` and
+   `build_eval_venv`. `tests/test_rl_gym_train.py` no longer sets it and all 54 of its tests
+   pass both under `-m unittest` and as a script — the proof Ritun asked for. Three tests pin
+   the mechanism: no module-level call in the test file (checked by **parsing**, not grepping,
+   because one test legitimately calls it inside a function to set the broken default),
+   `prepare_multiprocessing` setting `["numpy"]`, and `build_venv` restoring it after the
+   broken default is deliberately installed.
+
+VERIFY findings:
+- **How SB3 spreads `n_eval_episodes`: measured**,
+  `[(n_eval_episodes + i) // n_envs for i in range(n_envs)]`, later workers taking the
+  remainder. The partitioning matches it, and a test compares against that formula directly
+  rather than against hardcoded slice sizes.
+- **`MaskablePPO(seed=...)` would bypass D7: confirmed.** `BaseAlgorithm.set_random_seed` ends
+  with `self.env.seed(seed)`; `VecEnv.seed` sets `[seed + idx for idx in range(num_envs)]`. No
+  `seed=` is passed; `parent_seed` tags its own stream and a test asserts it can never equal
+  `base_seed + env_id` or collide with D7's or D10's streams.
+- **`MaskableEvalCallback` syncs statistics but not the flags: confirmed**, and the callback
+  asserts the flags afterwards.
+- **The episode-seed derivation: matched.** Predicted 523045 for `base_seed=20261011, env_id=1`
+  from `SeedSequence([base_seed, env_id])` → `default_rng(worker_seed).integers(...)`; the env
+  produced 523045. `base_seed + env_id` would have been 20261012.
+
+**One real defect found, and only a real training run could have found it.** The env put the
+episode counter in `info["episode"]`, which **SB3 reserves** for the `Monitor` wrapper's
+statistics dict: `_update_info_buffer` extends `ep_info_buffer` with it and `dump_logs` then
+calls `len()` on the entry, so the first `MaskablePPO.learn` died with
+`TypeError: object of type 'int' has no len()`. Nothing earlier could have caught it — the
+gates, `check_env` and every observation item drive the env directly, and only PPO reads that
+buffer. Renamed to `info["episode_index"]`; it stays `episode` inside `episode_summary()`,
+which SB3 never inspects. Three regression tests in `tests/test_rl_gym_env.py`.
+
+**Two mistakes of my own, both caught by the thing they were meant to check:**
+- `--verify-run`'s loss-determinism check reported "no train/loss recorded". The cause is a
+  real SB3 ordering detail: `OnPolicyAlgorithm.learn` calls `dump_logs` **before**
+  `self.train()`, so an update's `train/*` keys are written only at the following dump, and my
+  single-rollout runs never reached one. Three rollouts now, and the check passes with
+  identical losses to the last digit. Recorded in §8 so the next short run does not repeat it.
+- Two test-fixture errors: `BaseCallback.logger` and `.training_env` are **read-only
+  properties** reading `self.model.logger` and `self.model.get_env()`, so the stubs had to
+  provide them through the model. And my first "this module sets no preload" test grepped the
+  source, which flagged its own fixture; it parses the AST for module-level calls instead.
+
+Nothing failed. **Stopping here** — not starting P2.14.

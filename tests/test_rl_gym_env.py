@@ -1212,6 +1212,48 @@ class TestGlobalBlockInTheEnv(unittest.TestCase):
             env.close()
 
 
+class TestInfoKeysDoNotCollideWithSB3(unittest.TestCase):
+    """`info["episode"]` is reserved by SB3 (found in P2.13).
+
+    `BaseAlgorithm._update_info_buffer` treats it as the `Monitor` wrapper's statistics dict
+    and extends `ep_info_buffer` with it; `dump_logs` then calls `len()` on the first entry.
+    An integer counter there raises `TypeError: object of type 'int' has no len()` on the first
+    `MaskablePPO.learn` -- and on nothing earlier, because only PPO reads that buffer, which is
+    why it survived until P2.13's first real training run.
+    """
+
+    def test_the_terminal_info_has_no_episode_key(self):
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            env.reset()
+            info = env._episode_info()
+            self.assertNotIn("episode", info)
+            self.assertEqual(info["episode_index"], env.episode_counter)
+        finally:
+            env.close()
+
+    def test_a_dict_under_episode_is_what_sb3_expects_so_an_int_must_not_be_there(self):
+        # the shape SB3 assumes: info["episode"] is a Monitor dict with at least one key
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            env.reset()
+            for key, value in env._episode_info().items():
+                if key == "episode":
+                    self.assertIsInstance(value, dict)
+        finally:
+            env.close()
+
+    def test_the_counter_is_still_in_the_episode_summary(self):
+        # it moved out of `info`, not out of the record: `episode_summary` is ours and SB3
+        # never inspects it
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            env.reset()
+            self.assertEqual(env.episode_summary()["episode"], env.episode_counter)
+        finally:
+            env.close()
+
+
 class TestNonFiniteObservationGuard(unittest.TestCase):
     """The env raises `ValueError` on any non-finite observation value (P2.12).
 

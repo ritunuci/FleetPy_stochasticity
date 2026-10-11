@@ -27,21 +27,20 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # ---------------------------------------------------------------------------------------- #
-# THE FORKSERVER MUST PRELOAD numpy, NOT `__main__` (§8a).
+# THE FORKSERVER PRELOAD IS NOT SET HERE -- `train_sdpdp.build_venv` does it (P2.13).
 #
-# `SubprocVecEnv` prefers the forkserver start method, and `multiprocessing` preloads
-# `['__main__']` into the forkserver by default. For a *script* like train_sdpdp.py that is
-# exactly what carries the numpy-first import order into every worker. For a *test module* it
-# does two wrong things at once: under `python -m unittest ...` `__main__` is unittest's own
-# `__main__.py`, so the preload (a) establishes no numpy-first ordering, and the workers died
-# with "OMP: Error #15 ... Abort trap: 6", and (b) would execute `unittest.main()` inside the
-# forkserver process, re-entering the suite.
+# It has to happen somewhere: `SubprocVecEnv` prefers the forkserver start method, and
+# `multiprocessing` preloads `['__main__']` into it by default. For a *script* that carries
+# §8a's numpy-first import order into every worker; for a *test module* it carries nothing,
+# because under `python -m unittest ...` `__main__` is unittest's own `__main__.py` -- and the
+# workers then die with "OMP: Error #15 ... Abort trap: 6" (measured in P2.12).
 #
-# Preloading numpy by name fixes both: the forkserver image has numpy loaded before any worker
-# forks from it, and nothing re-enters the test runner. Measured: without this the three
-# classes below fail in `setUpClass` under `-m unittest` while passing when the file is run as
-# a script; with it, both ways pass.
-mp.set_forkserver_preload(["numpy"])
+# P2.12 fixed that with a `mp.set_forkserver_preload(["numpy"])` call right here. P2.13 moved
+# it into `prepare_multiprocessing`, called by every venv builder, so the training env, the
+# evaluation env and P2.14's harness all get it without a caller remembering. Its absence from
+# this module is therefore the proof: every class below builds a venv from a unittest module
+# with no preload call of its own, and `TestForkserverPreload` pins the mechanism rather than
+# resting on the absence of a crash.
 # ---------------------------------------------------------------------------------------- #
 
 from sb3_contrib.common.maskable.utils import (  # noqa: E402
@@ -318,6 +317,475 @@ class TestNormalisedObservationsNeverReachGreedy(unittest.TestCase):
         # so the comparison above is not vacuous
         raw = self.venv.get_original_obs()
         self.assertFalse(np.allclose(raw[0], self.venv.normalize_obs(raw)[0]))
+
+
+class TestForkserverPreload(unittest.TestCase):
+    """P2.13: the preload belongs to the venv builders, not to the caller (Ritun's point 1).
+
+    The classes above are the end-to-end proof -- they build venvs from a unittest module with
+    no preload call in this file and their workers start cleanly, which is exactly what failed
+    before P2.12. These two tests pin the mechanism, so a future refactor that drops the call
+    fails here rather than as an `OMP: Error #15` in whatever module spawns next.
+    """
+
+    def test_this_module_does_not_set_the_preload_at_import_time(self):
+        """No **module-level** preload call: that is `build_venv`'s job now (P2.13).
+
+        Parsed rather than grepped, because the test below legitimately calls
+        `set_forkserver_preload` inside a function to set the broken default and prove
+        `build_venv` overrides it -- a grep would flag its own fixture.
+        """
+        import ast
+        path = os.path.join(os.path.dirname(__file__), "test_rl_gym_train.py")
+        tree = ast.parse(open(path).read())
+        top_level = [
+            node for node in tree.body
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+            and "set_forkserver_preload" in ast.dump(node.value.func)
+        ]
+        self.assertEqual(top_level, [],
+                         "the preload is train_sdpdp.prepare_multiprocessing's job (P2.13)")
+
+    def test_prepare_multiprocessing_sets_numpy_as_the_preload(self):
+        import multiprocessing.forkserver as fs
+        train_sdpdp.prepare_multiprocessing()
+        self.assertEqual(list(fs._forkserver._preload_modules), ["numpy"])
+
+    def test_build_venv_prepares_multiprocessing(self):
+        import multiprocessing.forkserver as fs
+        mp.set_forkserver_preload(["__main__"])          # the broken default
+        venv = train_sdpdp.build_venv(cfg(), 1, normalize=False)
+        try:
+            self.assertEqual(list(fs._forkserver._preload_modules), ["numpy"])
+        finally:
+            venv.close()
+
+
+class TestEvalPairPartitioning(unittest.TestCase):
+    """The pairs must be split the way `evaluate_policy` spreads episodes (P2.13).
+
+    Pure arithmetic, so it runs in milliseconds; the end-to-end version is `--verify-run`.
+    """
+
+    def setUp(self):
+        from src.rl_gym.callbacks import partition_eval_pairs
+        self.partition = partition_eval_pairs
+        self.pairs = [(f"2024-0{i}-01", 100 + i) for i in range(1, 7)]
+
+    @staticmethod
+    def sb3_targets(n_eval_episodes, n_envs):
+        """`evaluate_policy`'s own formula, verified against sb3-contrib 2.9.0 in P2.13."""
+        return [(n_eval_episodes + i) // n_envs for i in range(n_envs)]
+
+    def test_slice_sizes_match_sb3s_episode_targets(self):
+        for n_envs in (1, 2, 3, 4, 5, 6):
+            with self.subTest(n_envs=n_envs):
+                slices = self.partition(self.pairs, n_envs)
+                self.assertEqual([len(s) for s in slices],
+                                 self.sb3_targets(len(self.pairs), n_envs))
+
+    def test_the_slices_concatenate_back_to_the_input_in_order(self):
+        for n_envs in (1, 2, 3, 6):
+            with self.subTest(n_envs=n_envs):
+                slices = self.partition(self.pairs, n_envs)
+                flat = [p for s in slices for p in s]
+                self.assertEqual(flat, self.pairs)
+
+    def test_an_uneven_split_gives_the_remainder_to_the_later_workers(self):
+        # 5 pairs over 2 workers: SB3 targets are [2, 3], not [3, 2]
+        slices = self.partition(self.pairs[:5], 2)
+        self.assertEqual([len(s) for s in slices], [2, 3])
+
+    def test_fewer_pairs_than_workers_raises(self):
+        with self.assertRaises(ValueError) as cm:
+            self.partition(self.pairs[:1], 2)
+        self.assertIn("at least one pair per worker", str(cm.exception))
+
+    def test_an_empty_list_or_no_workers_raises(self):
+        with self.assertRaises(ValueError):
+            self.partition([], 2)
+        with self.assertRaises(ValueError):
+            self.partition(self.pairs, 0)
+
+    # ---- two consecutive evaluations (Ritun's point 2) --------------- #
+
+    def _simulate(self, pairs, n_envs, n_evaluations, extra_episodes=0):
+        """Which pairs each worker *completes* in each evaluation.
+
+        Models the two mechanisms that interact: each env cycles through the slice it was
+        handed, `slice[(episode_index) % len(slice)]` (P2.3), and `evaluate_policy` counts
+        `(E + i) // n_envs` completions per worker but keeps the loop alive until every worker
+        has hit its target -- so a faster worker can complete `extra_episodes` more, which are
+        discarded and still advance its rotation.
+        """
+        slices = self.partition(pairs, n_envs)
+        counters = [0] * n_envs
+        per_evaluation = []
+        for _ in range(n_evaluations):
+            ran = []
+            for i, slice_ in enumerate(slices):
+                target = self.sb3_targets(len(pairs), n_envs)[i]
+                for _ in range(target):
+                    ran.append(slice_[counters[i] % len(slice_)])
+                    counters[i] += 1
+                for _ in range(extra_episodes):          # discarded, but the rotation moves
+                    counters[i] += 1
+            per_evaluation.append(ran)
+        return per_evaluation
+
+    def test_each_evaluation_runs_every_pair_exactly_once(self):
+        for n_envs in (1, 2, 3):
+            with self.subTest(n_envs=n_envs):
+                for ran in self._simulate(self.pairs, n_envs, n_evaluations=3):
+                    self.assertEqual(sorted(ran), sorted(self.pairs))
+
+    def test_coverage_survives_a_discarded_episode_between_evaluations(self):
+        """Ritun's point 2: an extra discarded episode shifts the rotation; coverage holds.
+
+        `L` consecutive positions of a cycle of length `L` cover every element exactly once
+        whatever the offset -- the order rotates between evaluations, the set does not. This is
+        why each worker gets **its own** slice rather than the whole list.
+        """
+        for extra in (1, 2, 5):
+            for n_envs in (1, 2, 3):
+                with self.subTest(extra=extra, n_envs=n_envs):
+                    runs = self._simulate(self.pairs, n_envs, n_evaluations=3,
+                                          extra_episodes=extra)
+                    for i, ran in enumerate(runs):
+                        self.assertEqual(sorted(ran), sorted(self.pairs),
+                                         f"evaluation {i + 1} with {extra} discarded")
+
+    def test_the_order_really_does_rotate_so_the_test_is_not_vacuous(self):
+        runs = self._simulate(self.pairs, 2, n_evaluations=2, extra_episodes=1)
+        self.assertNotEqual(runs[0], runs[1], "the offset did not shift; nothing was tested")
+        self.assertEqual(sorted(runs[0]), sorted(runs[1]))
+
+    def test_handing_every_worker_the_whole_list_would_miss_pairs(self):
+        """The counter-example the partitioning exists to avoid."""
+        n_envs = 2
+        targets = self.sb3_targets(len(self.pairs), n_envs)
+        ran = []
+        for i in range(n_envs):
+            for j in range(targets[i]):
+                ran.append(self.pairs[j % len(self.pairs)])      # the whole list per worker
+        self.assertNotEqual(sorted(ran), sorted(self.pairs))
+        self.assertLess(len(set(ran)), len(self.pairs))
+
+
+class _StubLogger:
+    """Records what a callback asked to log, without a TensorBoard writer."""
+
+    def __init__(self):
+        self.values = {}
+        self.dumps = []
+
+    def record(self, key, value, exclude=None):
+        self.values[key] = value
+
+    def record_mean(self, key, value, exclude=None):
+        self.values[key] = value
+
+    def dump(self, step=0):
+        self.dumps.append((step, dict(self.values)))
+
+
+class _StubVenv:
+    def __init__(self, num_envs=2):
+        self.num_envs = num_envs
+
+
+class _StubModel:
+    """Just the surface a callback touches. `logger` lives here because
+    `BaseCallback.logger` is a read-only property that reads `self.model.logger`."""
+
+    def __init__(self, venv=None, logger=None, env=None):
+        self._venv = venv
+        self._env = env
+        self.num_timesteps = 0
+        self.saved = []
+        self.logger = logger or _StubLogger()
+
+    def get_env(self):
+        # `BaseCallback.training_env` is a read-only property reading this
+        return self._env
+
+    def get_vec_normalize_env(self):
+        return self._venv
+
+    def save(self, path):
+        self.saved.append(path)
+        with open(path, "w") as fh:
+            fh.write("stub")
+
+
+def summary(**overrides):
+    s = {"episode_reward": 1.0, "pickups": 3, "rider_declined": 1, "diffusion_cancelled": 0,
+         "no_show": 0, "operator_rejected": 0, "no_candidates": 0, "unclassified": 0,
+         "day": "2024-01-11", "random_seed": 7, "env_id": 0, "pass": 0,
+         "horizon_margin": 12.5, "tail_seconds": 0.0}
+    s.update(overrides)
+    return s
+
+
+class TestEpisodeLogCallback(unittest.TestCase):
+    """What lands in TensorBoard per episode (§8 P2.13), against a stub logger."""
+
+    def make(self, days=("2024-01-11", "2024-01-30"), num_envs=2):
+        from src.rl_gym.callbacks import EpisodeLogCallback
+        callback = EpisodeLogCallback(k_max=K, training_days=list(days))
+        callback.model = _StubModel(env=_StubVenv(num_envs))
+        callback._on_training_start()
+        return callback
+
+    def step(self, callback, actions, infos, dones):
+        callback.locals = {"actions": np.array(actions), "infos": infos,
+                           "dones": np.array(dones)}
+        callback._on_step()
+
+    def test_an_episode_logs_the_counts_the_day_and_the_seed(self):
+        callback = self.make()
+        self.step(callback, [0, 1], [{"n_candidates": 4}, {"n_candidates": 5}], [False, False])
+        self.step(callback, [0, 2],
+                  [{"episode_summary": summary(), "episode_steps": 436}, {"n_candidates": 3}],
+                  [True, False])
+        values = callback.model.logger.dumps[-1][1]
+        self.assertEqual(values["episode/reward"], 1.0)
+        self.assertEqual(values["episode/pickups"], 3)
+        self.assertEqual(values["episode/unclassified"], 0)
+        self.assertEqual(values["episode/day"], "2024-01-11")
+        self.assertEqual(values["episode/day_index"], 0)
+        self.assertEqual(values["episode/random_seed"], 7)
+        self.assertEqual(values["episode/steps"], 436)
+        self.assertEqual(values["episode/tail_seconds"], 0.0)
+        self.assertEqual(values["episode/horizon_margin"], 12.5)
+        self.assertEqual(callback.episodes, 1)
+
+    def test_one_dump_per_episode(self):
+        callback = self.make()
+        for _ in range(3):
+            self.step(callback, [0, 0],
+                      [{"episode_summary": summary(), "episode_steps": 10},
+                       {"n_candidates": 2}], [True, False])
+        self.assertEqual(len(callback.model.logger.dumps), 3)
+
+    def test_slot_selection_frequencies_cover_every_slot_and_sum_to_one(self):
+        callback = self.make()
+        self.step(callback, [0, K], [{}, {}], [False, False])
+        self.step(callback, [1, K],
+                  [{"episode_summary": summary(), "episode_steps": 2}, {}], [True, False])
+        values = callback.model.logger.dumps[-1][1]
+        keys = [f"slots/slot_{i}" for i in range(K)] + ["slots/reject"]
+        for key in keys:
+            self.assertIn(key, values)
+        self.assertAlmostEqual(sum(values[k] for k in keys), 1.0, places=6)
+        # two rejects out of four actions
+        self.assertAlmostEqual(values["slots/reject"], 0.5, places=6)
+
+    def test_candidate_lengths_are_logged_as_an_array_and_reset_per_episode(self):
+        callback = self.make()
+        self.step(callback, [0, 0], [{"n_candidates": 4}, {}], [False, False])
+        self.step(callback, [0, 0], [{"n_candidates": 11}, {}], [False, False])
+        self.step(callback, [0, 0],
+                  [{"episode_summary": summary(), "episode_steps": 3, "n_candidates": 6}, {}],
+                  [True, False])
+        values = callback.model.logger.dumps[-1][1]
+        lengths = values["episode/candidate_list_lengths"]
+        self.assertIsInstance(lengths, np.ndarray)
+        self.assertEqual(sorted(lengths.tolist()), [4.0, 6.0, 11.0])
+        self.assertEqual(values["episode/candidate_list_max"], 11)
+        self.assertEqual(values["episode/candidate_lists_over_k"], 1)   # 11 > K = 8
+        # the next episode starts from an empty list
+        self.step(callback, [0, 0],
+                  [{"episode_summary": summary(), "episode_steps": 1, "n_candidates": 2}, {}],
+                  [True, False])
+        self.assertEqual(
+            callback.model.logger.dumps[-1][1]["episode/candidate_list_lengths"].tolist(),
+            [2.0])
+
+    def test_the_day_visit_histogram_accumulates(self):
+        callback = self.make()
+        for day in ("2024-01-11", "2024-01-30", "2024-01-11"):
+            self.step(callback, [0, 0],
+                      [{"episode_summary": summary(day=day), "episode_steps": 1}, {}],
+                      [True, False])
+        self.assertEqual(callback.day_visit_counts(),
+                         {"2024-01-11": 2, "2024-01-30": 1})
+        visits = callback.model.logger.dumps[-1][1]["train/day_visits"]
+        self.assertIsInstance(visits, np.ndarray)
+        self.assertEqual(visits.tolist(), [0.0, 1.0, 0.0])
+
+    def test_steps_per_second_is_positive(self):
+        callback = self.make()
+        self.step(callback, [0, 0],
+                  [{"episode_summary": summary(), "episode_steps": 100}, {}], [True, False])
+        self.assertGreater(
+            callback.model.logger.dumps[-1][1]["episode/steps_per_second"], 0.0)
+
+
+class TestEpisodeCheckpointCallback(unittest.TestCase):
+    """Checkpoints counted in episodes, with the statistics and the metadata (§8 P2.13)."""
+
+    def make(self, tmp, every=2, venv=None, metadata=None):
+        from src.rl_gym.callbacks import EpisodeCheckpointCallback
+        saved = []
+
+        def save_stats(venv_, path):
+            target = os.path.join(os.path.dirname(path), train_sdpdp.VECNORMALIZE_FILE)
+            with open(target, "w") as fh:
+                fh.write("stats")
+            saved.append((venv_, target))
+            return target
+
+        callback = EpisodeCheckpointCallback(
+            every_n_episodes=every, save_path=tmp, save_stats_fn=save_stats,
+            metadata=metadata or {"base_seeds": [11]})
+        callback.model = _StubModel(venv=venv if venv is not None else _StubVenv())
+        callback.stats_saved = saved
+        return callback
+
+    def step(self, callback, dones):
+        callback.locals = {"dones": np.array(dones)}
+        callback._on_step()
+
+    def test_it_saves_every_n_episodes_not_every_n_steps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            callback = self.make(tmp, every=2)
+            for _ in range(3):
+                self.step(callback, [False, False])
+            self.assertEqual(callback.model.saved, [])
+            self.step(callback, [True, False])            # 1 episode
+            self.assertEqual(callback.model.saved, [])
+            self.step(callback, [False, True])            # 2 episodes -> save
+            self.assertEqual(len(callback.model.saved), 1)
+            self.assertTrue(callback.model.saved[0].endswith("model_ep00002.zip"))
+
+    def test_the_statistics_are_saved_beside_the_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            callback = self.make(tmp, every=1)
+            self.step(callback, [True])
+            self.assertTrue(os.path.isfile(os.path.join(tmp, train_sdpdp.VECNORMALIZE_FILE)))
+            self.assertEqual(len(callback.stats_saved), 1)
+
+    def test_the_metadata_records_the_seeds_and_the_checkpoints(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            callback = self.make(tmp, every=1,
+                                 metadata={"base_seeds": [11, 22], "day_dir": "corpus"})
+            self.step(callback, [True])
+            self.step(callback, [True])
+            with open(os.path.join(tmp, "run_metadata.json")) as fh:
+                meta = json.load(fh)
+            self.assertEqual(meta["base_seeds"], [11, 22])
+            self.assertEqual(meta["day_dir"], "corpus")
+            self.assertEqual(meta["episodes"], 2)
+            self.assertEqual(len(meta["checkpoints"]), 2)
+
+    def test_an_unwrapped_training_env_raises_rather_than_saving_without_statistics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            callback = self.make(tmp, every=1, venv=None)
+            callback.model = _StubModel(venv=None)
+            with self.assertRaises(RuntimeError) as cm:
+                self.step(callback, [True])
+            self.assertIn("VecNormalize", str(cm.exception))
+
+    def test_a_non_positive_interval_raises(self):
+        from src.rl_gym.callbacks import EpisodeCheckpointCallback
+        with self.assertRaises(ValueError):
+            EpisodeCheckpointCallback(0, "x", save_stats_fn=lambda v, p: p)
+
+
+class TestResumeGuard(unittest.TestCase):
+    """Resuming with a used `base_seed` would replay trained-on sample paths (§8 P2.13)."""
+
+    def test_a_used_base_seed_raises_and_names_it(self):
+        from src.rl_gym.callbacks import check_resume_base_seed
+        with self.assertRaises(ValueError) as cm:
+            check_resume_base_seed({"base_seeds": [11, 22]}, 22)
+        self.assertIn("22", str(cm.exception))
+        self.assertIn("pass 0", str(cm.exception))
+
+    def test_a_fresh_base_seed_is_accepted(self):
+        from src.rl_gym.callbacks import check_resume_base_seed
+        check_resume_base_seed({"base_seeds": [11, 22]}, 33)          # must not raise
+        check_resume_base_seed({}, 33)                                 # no metadata yet
+
+    def test_metadata_is_read_from_beside_a_checkpoint(self):
+        import json
+        from src.rl_gym.callbacks import load_run_metadata
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "run_metadata.json"), "w") as fh:
+                json.dump({"base_seeds": [5]}, fh)
+            self.assertEqual(load_run_metadata(os.path.join(tmp, "model.zip")),
+                             {"base_seeds": [5]})
+            self.assertEqual(load_run_metadata(tmp), {"base_seeds": [5]})
+        with tempfile.TemporaryDirectory() as empty:
+            self.assertEqual(load_run_metadata(empty), {})
+
+
+class TestTrainingConfigGuards(unittest.TestCase):
+    """`base_seed` and all eight weights explicit, or raise (D7, §6.1)."""
+
+    def test_every_missing_weight_raises_and_names_itself(self):
+        for name in train_sdpdp.REQUIRED_REWARD_WEIGHTS:
+            with self.subTest(missing=name):
+                weights = {k: v for k, v in train_sdpdp.PHASE2_REWARD_WEIGHTS.items()
+                           if k != name}
+                with self.assertRaises(ValueError) as cm:
+                    train_sdpdp.check_config(cfg(reward_weights=weights))
+                self.assertIn(name, str(cm.exception))
+
+    def test_absent_weights_raise(self):
+        with self.assertRaises(ValueError) as cm:
+            train_sdpdp.check_config(cfg())
+        self.assertIn("reward_weights is required", str(cm.exception))
+
+    def test_an_unknown_weight_raises(self):
+        with self.assertRaises(ValueError) as cm:
+            train_sdpdp.check_config(cfg(reward_weights={
+                **train_sdpdp.PHASE2_REWARD_WEIGHTS, "w_detour": 1.0}))
+        self.assertIn("w_detour", str(cm.exception))
+
+    def test_a_missing_base_seed_raises(self):
+        c = cfg(reward_weights=dict(train_sdpdp.PHASE2_REWARD_WEIGHTS))
+        del c["base_seed"]
+        with self.assertRaises(ValueError) as cm:
+            train_sdpdp.check_config(c)
+        self.assertIn("base_seed", str(cm.exception))
+
+    def test_the_full_phase_two_config_passes(self):
+        train_sdpdp.check_config(
+            cfg(reward_weights=dict(train_sdpdp.PHASE2_REWARD_WEIGHTS)))
+
+    def test_the_eight_names_are_sect_6_1s(self):
+        from src.rl_gym.reward import DEFAULT_REWARD_WEIGHTS
+        self.assertEqual(set(train_sdpdp.REQUIRED_REWARD_WEIGHTS),
+                         set(DEFAULT_REWARD_WEIGHTS))
+
+
+class TestParentSeeding(unittest.TestCase):
+    """The parent seeds itself; `seed=` is never handed to MaskablePPO (§8 P2.13)."""
+
+    def test_it_is_deterministic_and_base_seed_dependent(self):
+        self.assertEqual(train_sdpdp.parent_seed(7), train_sdpdp.parent_seed(7))
+        self.assertNotEqual(train_sdpdp.parent_seed(7), train_sdpdp.parent_seed(8))
+
+    def test_it_is_not_the_seed_vecenv_would_have_handed_a_worker(self):
+        # VecEnv.seed(s) gives worker i the seed s + i, which is what bypassing D7 looks like
+        for base in (7, 4242, 20261011):
+            for env_id in range(4):
+                self.assertNotEqual(train_sdpdp.parent_seed(base), base + env_id)
+
+    def test_its_stream_cannot_coincide_with_d7s_or_d10s(self):
+        base = 4242
+        parent = np.random.SeedSequence([base, train_sdpdp.PARENT_SEED_TAG]) \
+            .generate_state(4).tolist()
+        for env_id in range(4):
+            self.assertNotEqual(
+                parent, np.random.SeedSequence([base, env_id]).generate_state(4).tolist())
+        for p in range(4):
+            self.assertNotEqual(
+                parent,
+                np.random.SeedSequence([base, 1010, p + 1]).generate_state(4).tolist())
 
 
 if __name__ == "__main__":
