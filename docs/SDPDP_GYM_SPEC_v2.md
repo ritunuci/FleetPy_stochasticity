@@ -2899,7 +2899,23 @@ than a caveat.
 
 ### P2.15 — Short test training (Phase 2 exit gate)
 
-**Files:** no code; report `docs/RL_GYM_PHASE2_RESULTS.md`
+**Files:** `src/rl_gym/tools/phase2_run.py` (new), `src/rl_gym/callbacks.py`,
+`train_sdpdp.py`, `tests/test_rl_gym_train.py`, `.gitignore`; report
+`docs/RL_GYM_PHASE2_RESULTS.md`.
+
+*(Corrected in P2.15, on Ritun's decision. This line said "no code", and the run cannot be
+driven without any: `train_sdpdp.py`'s CLI reaches none of `n_steps`, `eval_freq`,
+`n_eval_workers`, or the evaluation pairs **from P2.14's seed file** that P2.13's item text
+requires — `--train` hardcodes `VERIFY_EVAL_PAIRS` and `eval_freq = 2048`, which on this budget
+fires the callback twice and misses the sizing below. So the run goes through a driver, and a
+committed one, because §0 has Ritun re-running every verification himself; it sits beside
+`corpus_sweep.py` (P2.4) and `reward_trace.py` (P2.0b), the other committed drivers for
+report-producing items. Three small changes come with it, each tied to a pass criterion:
+`PairLoggingMaskableEvalCallback` also keeps every counted evaluation episode's
+`episode_summary` — without it criterion 2 reads `unclassified` on the training episodes only,
+since `EpisodeLogCallback` rides on the training env; `train()` takes `extra_callbacks`, so
+criterion 4's per-step mask audit can observe `collect_rollouts` instead of being written
+inside the script it is checking; and `runs/` joins `.gitignore` for the artifacts.)*
 
 Purpose: prove that all the machinery works together, with repositioning off. **Not a
 performance test, and not a learning test.** It is sized to exercise every component a few
@@ -2990,12 +3006,33 @@ In this order:
 6. **Regenerate both baselines**: the two byte-gate files — keeping the current ones under new names,
    so the repositioning-off configuration stays testable — and the stock-greedy KPI runs. A
    single training run at the swept weights then checks that they carry over.
-7. **Full-length training** (~7,000 episodes).
+7. **Per-episode timing in the training log — a diagnostic fix, not a simulation change.**
+   `EpisodeLogCallback._log_episode` measures an episode's wall clock as the gap between
+   consecutive episode completions on that worker, so **an evaluation or a PPO update landing
+   inside an episode is charged to that episode**: `episode/wall_seconds` comes out inflated and
+   `episode/steps_per_second` deflated for whichever episodes straddle a pause. Measured in
+   P2.15: mean 87.7 s against a median of 65.5 s over 47 episodes with three evaluations, and
+   **2.56 steps/s against a true 10.47** in a truncated run where nearly every episode straddled
+   one.
+
+   It touches only those two logged diagnostics — never the reward, the policy, the day rotation
+   or any gate — which is why P2.15 left it in place and reported around it, deriving throughput
+   from the pause-free rate instead (`src/rl_gym/tools/phase2_run.py` times its own callback
+   gaps, and the two figures agreed to 0.3%). The fix is to measure an episode's own elapsed time
+   **inside the env**, where its start and end are known, and surface it through
+   `episode_summary()` rather than differencing completion times in the callback.
+
+   Wanted **before step 8**, not after: a full-length run is the case where the artifact is
+   worst, since evaluations recur throughout and the per-episode throughput log is what would be
+   read to size later runs. Cheap, and independent of every other step here.
+
+8. **Full-length training** (~7,000 episodes).
 
 Steps 1, 3 and 5 change the simulation. They invalidate every earlier baseline comparison, and the
 gates must be re-established against the new baselines. Step 4 changes no simulation output, but
 it rebuilds an observation artifact and so invalidates any policy trained against the old
-baseline; it is cheap to do before training and expensive to do during it.
+baseline; it is cheap to do before training and expensive to do during it. Step 7 changes neither:
+it corrects what the training log records about itself.
 
 ---
 

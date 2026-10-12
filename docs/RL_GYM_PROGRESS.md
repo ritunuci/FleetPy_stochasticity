@@ -3521,3 +3521,191 @@ and git, the KPI reading decisions, `--verify`, and D9's result), §8 After Phas
 (both baselines), trap 1 (the `skip_output` output-directory hazard and P2.14's guard).
 
 **Stopping here** — not starting P2.15.
+
+## P2.15 — STARTED 2026-10-11 16:56
+Files I will touch: src/rl_gym/tools/phase2_run.py (new), src/rl_gym/callbacks.py,
+tests/test_rl_gym_train.py, .gitignore, docs/RL_GYM_PHASE2_RESULTS.md (new),
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.14 committed (`de97ea8`; `a8f4604` before it carries the same message but is
+only the deletion of a tracked root `.DS_Store`), tree clean. K stays at 8, observation
+length 139, 585 tests passing as of P2.14.
+
+Ritun's decisions on the proposal:
+- **D1 (b): a committed driver**, `src/rl_gym/tools/phase2_run.py`, with the one-line
+  correction to §8 P2.15's "Files: no code". The house pattern — P2.0b's `reward_trace.py` and
+  P2.4's `corpus_sweep.py` are also committed drivers for report-producing items — and §0 has
+  him re-running every verification himself, which a scratchpad script cannot support. The
+  reason a driver is needed at all: `train_sdpdp.py`'s CLI cannot set `n_steps`, `eval_freq`,
+  `n_eval_workers`, or eval pairs from the seed file (`--train` hardcodes
+  `eval_pairs=VERIFY_EVAL_PAIRS`, seeds 11–14, and `eval_freq=2048`, which would fire the
+  callback only twice).
+- **D2 yes**: `PairLoggingMaskableEvalCallback` also records each evaluation episode's
+  `episode_summary`, plus a test, so pass criterion 2 (`unclassified = 0`) covers the
+  in-callback evaluation episodes instead of only the training ones.
+- **D3**: artifacts in `runs/p215/`, and `runs/` added to `.gitignore`.
+- Parameters as proposed: `base_seed = 20261015`, `total_timesteps = 22,528` (22 rollouts ×
+  1024, 5,632 steps per worker, ~22 updates), `n_steps = 256`, 4 training workers,
+  `eval_freq = 1,700` (fires at calls 1700/3400/5100 of 5,632 — three evaluations), the 4
+  callback pairs being the first seed of 2024-01-11, 2024-03-19, 2024-06-20 and 2024-08-13
+  over 2 evaluation workers, `checkpoint_every_n_episodes = 12`.
+- Pre-flight: the full suite first.
+
+Run conditions: Mac plugged in, heavy apps closed, the long run under `caffeinate -i`.
+**Load average at start: 2.51 / 2.41 2.91** (10-core M4, 4P + 6E, 16 GB), recorded because
+P2.10 showed throughput figures track machine load rather than the code.
+
+## P2.15 — DONE 2026-10-11 18:40 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/tools/phase2_run.py` — **new.** The gate driver (D1): `run_training` with the
+  §6.1 weights and P2.15's sizing, `run_harness` (P2.14's functions in process, so the rows
+  come back structured for criterion 7), `check_training` / `check_harness` printing a
+  `PASS`/`FAIL` line per criterion, `collect_figures` writing `p215_figures.json`,
+  `make_mask_audit_callback` (criterion 4, per step), `ResourceSampler`, `helper_pids` /
+  `live_children`, `tb_scalars`. `--skip-harness` / `--harness-only --checkpoint` run either
+  half.
+- `src/rl_gym/callbacks.py` — D2: `PairLoggingMaskableEvalCallback.episode_summaries` keeps
+  every **counted** evaluation episode's summary (only counted ones: `evaluate_policy` calls
+  the hook solely for workers below their target, so a faster worker's discarded episode is
+  absent, exactly as for `evaluation_pairs`).
+- `train_sdpdp.py` — `train(..., extra_callbacks=None)`, appended to the callback list.
+  Needed because criterion 4's audit reads `action_masks` and `actions` out of
+  `collect_rollouts`' locals, and without it the audit would have to be written inside the
+  script it checks. Default changes no behaviour.
+- `tests/test_rl_gym_train.py` — `_MinimalVecEnv` and
+  `TestEvalCallbackRecordsEpisodeSummaries` (6).
+- `.gitignore` — `runs/` (D3).
+- `docs/RL_GYM_PHASE2_RESULTS.md` — **new**, the report.
+- `docs/SDPDP_GYM_SPEC_v2.md` — §8 P2.15's Files line, with why it changed.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+Verification: **22/22 checks in 24.0 min**, exit 0, and the full suite after the changes.
+
+1. **The gate: 22/22** (`caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir
+   runs/p215b`). Training 17.7 min, 47 episodes (12/12/11/12 per worker, all pass 0), 22
+   updates; harness 6.2 min. All eight criteria and all four sizing statements in
+   `docs/RL_GYM_PHASE2_RESULTS.md` §2.
+2. **The full suite after the changes: 591 tests, 200.3 s, OK** (585 at the pre-flight; +6).
+   **The P1.10 gate 8/8**, both byte comparisons. Ritun asked for this explicitly, and he was
+   right to: the pre-flight ran *before* the edits to `callbacks.py` and `train_sdpdp.train()`,
+   so it did not cover them.
+3. **The reference run untouched**: `53879ea79cf211d700f670dee1173dd5` and
+   `ded74ef39a274397c921c29f128f6950` before and after everything (trap 1).
+4. **Two runs at the same `base_seed` agree bit for bit** on everything the policy and the
+   simulation produced — `kpi_report.txt` md5 `db34f5aea5f8cd59437fb2628c9534e0` in both, same
+   day visits, same slot counts, same outcome statistics, same reloaded-checkpoint action
+   sequence. Only wall clock, load and RSS differ (7.10 against 7.44 steps/s per worker, load
+   medians 4.23 and 3.87). Not a planned check; it is the strongest thing the run says, and it
+   is what makes the weight sweep comparable.
+
+VERIFY findings: **P2.15 carries no `VERIFY` markers.** The claims it rests on were checked
+before being relied on:
+- **`eval_freq` is counted in `_on_step` calls, so an evaluation fires every
+  `eval_freq × n_workers` timesteps: matched** (`self.n_calls % self.eval_freq`, sb3-contrib
+  2.9.0). This is what makes "three evaluations" a derivation rather than a hope — they fired at
+  timesteps 6,800 / 13,600 / 20,400 as predicted.
+- **`action_masks` and `actions` are both in `collect_rollouts`' locals at `on_step`: matched**
+  — `callback.update_locals(locals())` after the action array is materialised, which is what
+  makes criterion 4 a positive per-step measurement.
+- **The five P2.15 days are all in `docs/RL_GYM_EVAL_SEEDS.csv`: matched**, and the first two
+  seeds of each are the 10 harness pairs.
+- **`episode_summary()` carries `unclassified`, `tail_seconds` and `horizon_margin` but **not**
+  per-episode steps or wall clock** — those are computed in `EpisodeLogCallback` from `info` and
+  exist only in TensorBoard, so the throughput figures are read back with `EventAccumulator`
+  rather than recomputed.
+- **`_counts` is initialised with every outcome at 0**, so `unclassified` is always present;
+  the check nonetheless fails on the key's *absence* as well as on a non-zero value, since
+  `s.get(...)` on a missing key is falsy.
+
+**Two defects of my own, both in the driver's orphan check, both found because run A reported
+them as failures** (run A: 20/22; the other 20 checks passed, and run B reproduced them all
+after the fix):
+- **False positive.** It flagged `caffeinate -i python -m src.rl_gym.tools.phase2_run`.
+  Reproduced directly: `caffeinate -i <utility>` **execs the utility in its own process and
+  forks a child to hold the power assertion**, and that child keeps the original argv, so it
+  appears as a child of the driver. Never a FleetPy worker.
+- **False negative, the serious one.** The filter skipped children whose cmdline contained
+  `forkserver` — but a forkserver child is `fork`ed without `exec`, so **every worker inherits
+  the forkserver's cmdline**. Measured with two workers alive, the check reported *no* live
+  children: it could not have detected a real orphan. A guard that cannot fail is decoration
+  (§0, P1.10).
+  Fixed by resolving the two helpers **by pid** (`forkserver._forkserver._forkserver_pid`,
+  `resource_tracker._resource_tracker._pid`) and ignoring any child that is not this
+  interpreter; if those internals move, the helpers read as orphans and the check fails loudly
+  instead of silently passing. Re-verified in both directions on the real machinery: with a
+  2-worker `SubprocVecEnv` open it lists exactly the two worker pids, after `close()` none, the
+  same for a `Pool(maxtasksperchild=1)`, and caffeinate's holder is in the raw child list
+  throughout and correctly excluded — so the re-verification is not vacuous.
+
+**One measurement artifact found and left open, per Ritun's instruction** (recorded in the
+report §6, not fixed here): `EpisodeLogCallback._log_episode` measures an episode's wall clock
+as the gap between consecutive episode completions on that worker, so an evaluation or update
+landing inside an episode is charged to it — mean 87.7 s against a median of 65.5 s here, and
+2.56 against a true 10.47 steps/s in a truncated smoke where nearly every episode straddled an
+evaluation. It touches only `episode/wall_seconds` and `episode/steps_per_second`, never the
+reward, the policy or any criterion. The driver sidesteps it by timing its own call gaps. The
+fix is to measure the episode's elapsed time inside the env rather than differencing completion
+times in the callback. *Ritun approved adding it to the spec: it is now §8's **After Phase 2
+step 7**, between regenerating the baselines and full-length training, since a long run is
+where the artifact is worst; full-length training renumbers 7 → 8, and the closing paragraph's
+"Steps 1, 3 and 5" references are unaffected.*
+
+**My pre-run wall-clock estimate was 30% optimistic per episode, and the cause is measured.**
+I predicted ~10 steps/s per worker from P2.4's 44.7 s per day; the truth is **7.10**. P2.4's
+figures are the **greedy** driver with the Phase 1 observation, while this run has longer
+candidate lists off the greedy path (5.88 per decision against 4.60; ~55 lists per episode over
+`K` against greedy's 13 on the reference day), the full 139-feature observation, per-step
+inference, 6 FleetPy processes rather than 4, and more load. The total envelope held anyway
+(24.0 min against 20–25 predicted) because the evaluation estimate was accurate — ~89 s per
+evaluation against ~85 s predicted.
+
+Two figures worth Ritun's attention, both reported not judged:
+- **The worst tail was 2,130 s, 14.8% of the 14,400 s cap — above greedy's worst anywhere in
+  the corpus** (1,950 s, 13.5%, P2.4). Still 6.8× headroom and `unserved_at_horizon` is 0 in all
+  47 training episodes and all 20 harness runs, so branch 7 has not fired; but this is the first
+  measured sign that a policy lengthens tails, which is what P2.13 said to watch.
+- **`K = 8` reads both ways.** Slot 7 is the least-used candidate slot (1.9%) and the frequency
+  decays monotonically, so there is no pile-up at the truncation boundary; but 11.9% of decisions
+  had a list longer than `K`, against 5.13% corpus-wide under greedy. Worth re-reading after the
+  weight sweep. Decision stays with Ritun.
+
+Decisions:
+- Asked: D1, how to drive a run that `train_sdpdp.py`'s CLI cannot configure — scratchpad
+  script, committed tool, or new CLI flags.
+  Ritun: a committed `src/rl_gym/tools/phase2_run.py`, with the one-line P2.15 Files
+  correction.
+- Asked: D2, whether to close the gap where criterion 2 reads `unclassified` on the training
+  episodes only.
+  Ritun: yes, add the one line and its test.
+- Asked: D3, where the artifacts live.
+  Ritun: `runs/p215/`, and add `runs/` to `.gitignore`.
+- Asked: the sizing — `base_seed`, `total_timesteps`, `eval_freq`, the callback pairs.
+  Ritun: as proposed, and run the pre-flight suite first.
+- Asked (mid-item, by Ritun): re-run the full suite after the run, since P2.15 changed
+  `callbacks.py` and `train_sdpdp.train()` after the pre-flight; and record the
+  `episode/steps_per_second` artifact as a known issue to fix after Phase 2 without changing it
+  here.
+  Both done — items 2 above and the open issue.
+
+Spec corrections proposed and applied in this turn: §8 P2.15's Files line (the driver, the two
+small code changes it needs, `.gitignore`, and why "no code" could not hold); §8 After Phase 2
+gains step 7, the per-episode timing fix above, with full-length training renumbered to 8.
+Nothing else in the spec needed correcting — the item's figures, sizing and criteria all held
+as written.
+
+**Re-running this gate** (§0: Ritun verifies independently). On this machine, in `fleetpy_rl`,
+from the repository root:
+
+    mkdir -p runs/p215_ritun && caffeinate -i python -m src.rl_gym.tools.phase2_run \
+        --out-dir runs/p215_ritun 2>&1 | tee runs/p215_ritun/console.log
+
+(`mkdir` first because `tee` opens its file before the driver creates the directory.)
+
+`runs/p215_ritun/kpi_report.txt` must come out **md5 `db34f5aea5f8cd59437fb2628c9534e0`** — the
+figure both runs here produced, byte for byte, at `base_seed 20261015` with the driver's default
+sizing. `p215_figures.json` will **not** match: wall clock, load and RSS differ by design.
+
+**Stopping here.** Phase 2's work items are complete; §8's After Phase 2 steps are Ritun's, not
+work items.
+

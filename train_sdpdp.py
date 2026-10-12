@@ -362,12 +362,19 @@ def build_model(venv, cfg, tensorboard_log=None, resume_from=None):
 
 def train(cfg, n_workers=4, total_timesteps=10_000, out_dir="runs/sdpdp",
           eval_pairs=None, n_eval_workers=2, eval_freq=2048,
-          checkpoint_every_n_episodes=4, resume_from=None, verbose=True):
+          checkpoint_every_n_episodes=4, resume_from=None, verbose=True,
+          extra_callbacks=None):
     """One training run: venvs, model, callbacks, `learn`, final checkpoint (§8 P2.13).
 
     Returns the artifacts the verification reads -- the callbacks, the paths and the
     hyperparameters actually used -- rather than only the model, so a check can look at what
     happened instead of re-deriving it.
+
+    :param extra_callbacks: further `BaseCallback`s to run alongside the three this builds
+        (added in P2.15). A caller that needs to *observe* the rollout -- P2.15's per-step
+        audit that no masked action is ever selected reads `action_masks` and `actions` out of
+        `collect_rollouts`' locals -- would otherwise have to edit the training script it is
+        checking. Nothing here depends on them, and the default changes no behaviour.
     """
     from stable_baselines3.common.utils import set_random_seed
     from src.rl_gym import callbacks as cb
@@ -417,7 +424,7 @@ def train(cfg, n_workers=4, total_timesteps=10_000, out_dir="runs/sdpdp",
                       "reward_weights": dict(cfg["reward_weights"]),
                       "day_dir": cfg.get("day_dir"), "n_workers": n_workers},
         )
-        callback_list = [episode_log, checkpointer]
+        callback_list = [episode_log, checkpointer] + list(extra_callbacks or [])
 
         evaluator = None
         if eval_pairs:

@@ -47,7 +47,11 @@ from sb3_contrib.common.maskable.utils import (  # noqa: E402
     get_action_masks,
     is_masking_supported,
 )
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize  # noqa: E402
+from stable_baselines3.common.vec_env import (  # noqa: E402
+    SubprocVecEnv,
+    VecEnv,
+    VecNormalize,
+)
 
 from src.rl_gym.policies import greedy_action  # noqa: E402
 import train_sdpdp  # noqa: E402
@@ -470,6 +474,108 @@ class TestEvalPairPartitioning(unittest.TestCase):
                 ran.append(self.pairs[j % len(self.pairs)])      # the whole list per worker
         self.assertNotEqual(sorted(ran), sorted(self.pairs))
         self.assertLess(len(set(ran)), len(self.pairs))
+
+
+class _MinimalVecEnv(VecEnv):
+    """Enough `VecEnv` for `EvalCallback.__init__` to accept it without wrapping.
+
+    Nothing below steps it: `_log_success_callback` is fed `evaluate_policy`'s locals directly,
+    which is the whole point -- the end-to-end version of this is P2.15's run.
+    """
+
+    def __init__(self, num_envs=2):
+        import gymnasium as gym
+        super().__init__(num_envs,
+                         gym.spaces.Box(low=-np.inf, high=np.inf, shape=(4,),
+                                        dtype=np.float32),
+                         gym.spaces.Discrete(K + 1))
+
+    def reset(self):                                   # pragma: no cover - never called
+        raise NotImplementedError
+
+    def step_async(self, actions):                     # pragma: no cover
+        raise NotImplementedError
+
+    def step_wait(self):                               # pragma: no cover
+        raise NotImplementedError
+
+    def close(self):
+        pass
+
+    def get_attr(self, attr_name, indices=None):
+        # `VecEnv.__init__` itself asks for "render_mode" before anything else can
+        return [None] * self.num_envs
+
+    def set_attr(self, attr_name, value, indices=None):    # pragma: no cover
+        raise NotImplementedError
+
+    def env_method(self, method_name, *args, indices=None, **kwargs):   # pragma: no cover
+        raise NotImplementedError
+
+    def env_is_wrapped(self, wrapper_class, indices=None):             # pragma: no cover
+        raise NotImplementedError
+
+
+class TestEvalCallbackRecordsEpisodeSummaries(unittest.TestCase):
+    """`PairLoggingMaskableEvalCallback` keeps each counted evaluation episode's summary.
+
+    P2.15's pass criterion 2 is "`unclassified = 0` in **every** episode", and
+    `EpisodeLogCallback` rides on the *training* env, so without this the evaluation episodes
+    are the one part of a training run with no `unclassified` reading at all. The summary is
+    already in `info` at this hook, so recording it costs nothing.
+    """
+
+    def make(self):
+        from src.rl_gym.callbacks import PairLoggingMaskableEvalCallback
+        return PairLoggingMaskableEvalCallback(_MinimalVecEnv(), n_eval_episodes=4,
+                                               eval_freq=100, verbose=0)
+
+    @staticmethod
+    def locals_for(done=True, **overrides):
+        return {"done": done, "info": {"episode_summary": summary(**overrides)}}
+
+    def test_the_list_starts_empty(self):
+        callback = self.make()
+        self.assertEqual(callback.episode_summaries, [])
+
+    def test_a_finished_episode_is_recorded_with_its_counts(self):
+        callback = self.make()
+        callback._log_success_callback(self.locals_for(unclassified=0, day="2024-03-19"), {})
+        self.assertEqual(len(callback.episode_summaries), 1)
+        self.assertEqual(callback.episode_summaries[0]["day"], "2024-03-19")
+        self.assertEqual(callback.episode_summaries[0]["unclassified"], 0)
+
+    def test_a_non_terminal_step_records_nothing(self):
+        callback = self.make()
+        callback._log_success_callback(self.locals_for(done=False), {})
+        self.assertEqual(callback.episode_summaries, [])
+
+    def test_a_non_zero_unclassified_is_visible_rather_than_swallowed(self):
+        """What criterion 2 actually needs: the bad value must survive to the driver."""
+        callback = self.make()
+        callback._log_success_callback(self.locals_for(unclassified=3), {})
+        self.assertEqual([s["unclassified"] for s in callback.episode_summaries], [3])
+
+    def test_summaries_accumulate_flat_across_evaluations_and_match_the_pairs(self):
+        callback = self.make()
+        for day, seed in (("2024-01-11", 11), ("2024-03-19", 12)):
+            callback._log_success_callback(self.locals_for(day=day, random_seed=seed), {})
+        callback.evaluation_pairs.append(list(callback._current))
+        callback._current = []
+        callback._log_success_callback(self.locals_for(day="2024-06-20", random_seed=13), {})
+        self.assertEqual([(s["day"], s["random_seed"]) for s in callback.episode_summaries],
+                         [("2024-01-11", 11), ("2024-03-19", 12), ("2024-06-20", 13)])
+        # one summary per recorded pair, so a missing summary cannot hide behind the pair list
+        self.assertEqual(len(callback.episode_summaries),
+                         sum(len(e) for e in callback.evaluation_pairs) + len(callback._current))
+
+    def test_a_summary_is_copied_not_aliased(self):
+        """The driver reads these after the run; an alias would let the env mutate them."""
+        callback = self.make()
+        locals_ = self.locals_for(unclassified=0)
+        callback._log_success_callback(locals_, {})
+        locals_["info"]["episode_summary"]["unclassified"] = 99
+        self.assertEqual(callback.episode_summaries[0]["unclassified"], 0)
 
 
 class _StubLogger:

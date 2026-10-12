@@ -316,7 +316,9 @@ class PairLoggingMaskableEvalCallback(MaskableEvalCallback):
 
     It hooks `_log_success_callback`, which `evaluate_policy` calls per env per step with
     `info` and `done` in its locals -- so the terminal `episode_summary` is available there
-    without reimplementing `evaluate_policy`.
+    without reimplementing `evaluate_policy`. **It keeps the whole summary too**
+    (`episode_summaries`, added in P2.15), because the evaluation episodes are otherwise the
+    one part of a training run with no `unclassified` reading at all.
 
     **On the statistics**: the parent already calls `sync_envs_normalization(training_env,
     eval_env)` at each evaluation, which deep-copies `obs_rms` and `ret_rms` only. It does
@@ -330,6 +332,15 @@ class PairLoggingMaskableEvalCallback(MaskableEvalCallback):
         super().__init__(*args, **kwargs)
         #: one list of (day, seed) per evaluation, in order
         self.evaluation_pairs: List[List[Tuple[str, int]]] = []
+        #: every counted evaluation episode's `episode_summary()`, flat and in order. P2.15's
+        #: pass criterion 2 (`unclassified = 0` in **every** episode) would otherwise cover
+        #: only the training episodes: `EpisodeLogCallback` rides on the training env, and the
+        #: evaluation episodes run through `evaluate_policy` on a venv it never sees. The
+        #: summary is already in `info` here, so recording it costs nothing. Only counted
+        #: episodes appear -- `evaluate_policy` calls this callback solely for workers that
+        #: have not yet reached their target, so a faster worker's discarded episode is absent,
+        #: exactly as for `evaluation_pairs`.
+        self.episode_summaries: List[Dict[str, Any]] = []
         self._current: List[Tuple[str, int]] = []
 
     def _log_success_callback(self, locals_: Dict[str, Any],
@@ -339,6 +350,8 @@ class PairLoggingMaskableEvalCallback(MaskableEvalCallback):
             return
         info = locals_.get("info") or {}
         summary = info.get("episode_summary") or {}
+        if summary:
+            self.episode_summaries.append(dict(summary))
         day, seed = summary.get("day"), summary.get("random_seed")
         if day is not None and seed is not None:
             self._current.append((str(day), int(seed)))
