@@ -1110,9 +1110,23 @@ Two layers.
 2. **`VecNormalize(norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.999)`.** Its `gamma`
    must equal PPO's (§6.5) and come from the same config value: `VecNormalize` scales rewards
    by a running estimate of the discounted return, and its default of 0.99 would normalise
-   against the wrong horizon. Save its statistics with every checkpoint and reload them with the
-   model; at evaluation set `training = False` and `norm_reward = False`. Evaluating with
-   mismatched statistics is a silent and very common failure.
+   against the wrong horizon. Save its statistics with every checkpoint **in a file named after
+   that checkpoint** (`<stem>_vecnormalize.pkl`) and reload them with the model; at evaluation
+   set `training = False` and `norm_reward = False`. Evaluating with mismatched statistics is a
+   silent and very common failure.
+
+   **A single shared filename per folder is the trap here**, and it is the one this project
+   fell into: every checkpoint after the first overwrites it, so only the newest keeps the
+   statistics it was trained under and every earlier one silently loads a later point's. That is
+   what P2.12–P2.15 shipped; P2.16 fixes it. The loader therefore verifies the pairing rather
+   than trusting the filename: `ret_rms.count − 1e-4 == num_timesteps`, read from the checkpoint
+   zip's `data` entry. The relation is exact — `_update_reward` is gated on `training` alone and
+   adds one row per env per step iteration, `reset()` never touches `ret_rms`, and
+   `num_timesteps` advances by `n_envs` on the same iteration — so the 1e-6 tolerance is float
+   safety, not slack. **It is not decorative**: a *simulated* accumulation (not a real training
+   run) shows zero drift at 22,528, 3.2M and 8M timesteps, but P2.16's own gate run produced
+   `11900.000100000001` at 11,900 timesteps, 1.8e-12 out, which a strict equality would have
+   rejected.
 
    *(Wired in P2.12 as `train_sdpdp.build_venv` / `save_vecnormalize` / `load_vecnormalize`,
    with `gamma` a config key the same value feeds to PPO in P2.13. Two findings worth carrying:
@@ -2593,8 +2607,10 @@ committed `corpus_hash` and `baseline_hash` are unchanged and
 
 - Wrap the `SubprocVecEnv` in `VecNormalize` per §5.3, `gamma` taken from the same config value
   as PPO's.
-- Save/load helpers: `vecnormalize.pkl` beside each checkpoint; the evaluation loader sets
-  `training = False` and `norm_reward = False`.
+- Save/load helpers: the statistics beside each checkpoint; the evaluation loader sets
+  `training = False` and `norm_reward = False`. *(As implemented this was one shared
+  `vecnormalize.pkl` per folder, not one file per checkpoint — P2.16 corrects it and records
+  what it cost.)*
 - The env raises `ValueError` on any non-finite observation value, at reset and at step.
 
 **`tests/test_rl_gym_train.py` is the only test module that imports `torch` /
@@ -2717,7 +2733,8 @@ guards — are unit tests in `tests/test_rl_gym_train.py`.
     stops being a placeholder and becomes a real decision** — so this is watched from the first
     training run, not discovered afterwards.
 - Checkpoints every N episodes with their `VecNormalize` statistics and run metadata, including
-  every `base_seed` the run has used. Resuming from a checkpoint requires a `base_seed` that is
+  every `base_seed` the run has used. *(As implemented, "their statistics" was a single file per
+  folder that each checkpoint overwrote; P2.16 makes it one per checkpoint.)* Resuming from a checkpoint requires a `base_seed` that is
   not in that list, and the script raises otherwise: resuming with the same `base_seed` would
   restart D10's rotation and the episode-seed streams from the beginning, and replay sample paths
   already trained on. The rotation restarts at pass 0 of the new seed; the day-visit histogram
@@ -2949,6 +2966,86 @@ used to size the weight sweep.
 
 ---
 
+### P2.16 — One statistics file per checkpoint
+
+**Files:** `train_sdpdp.py`, `src/rl_gym/callbacks.py` (docstring), `src/rl_gym/evaluate.py`,
+`src/rl_gym/tools/phase2_run.py`, `tests/test_rl_gym_train.py`; `docs/SDPDP_GYM_SPEC_v2.md`,
+`docs/RL_GYM_PHASE2_RESULTS.md`, `docs/RL_GYM_PROGRESS.md`
+
+**The defect, found in review after P2.15.** `save_vecnormalize` wrote the fixed basename
+`vecnormalize.pkl` into the checkpoint's directory, so every checkpoint after the first
+**overwrote** the previous statistics: N checkpoints, one file, holding the state at the last
+save. The earlier states were destroyed, not shadowed. `load_vecnormalize`, the `--resume-from`
+branch, `_check_reload_determinism` and `evaluate.run_rl_pairs` all derived the path from the
+checkpoint's *directory*, never its name, so any checkpoint but the newest silently loaded a
+later point's statistics — §5.3's named failure, on the path that produces the KPI table.
+Measured on P2.15's folders: `ret_rms.count = 22,528.0001` against `model_ep00047.zip`'s
+`num_timesteps = 22,528`, while ep12, ep24 and ep36 stand at 6,236, 11,900 and 17,540 with no
+statistics of their own.
+
+**P2.15's published figures are unaffected** and were not re-run for correctness: its harness
+evaluated `model_ep00047.zip`, and the shared file was written by that same `checkpointer.save()`
+call. Confirmed at byte level in P2.16's gate run, whose `model_ep00047_vecnormalize.pkl` is
+**byte-identical** to P2.15's shared `vecnormalize.pkl`. The defect was latent there; it bites
+the first time anyone evaluates or resumes an earlier checkpoint, which is most of what a long
+run produces.
+
+- **Naming.** `vecnormalize_path_for(checkpoint_path)` is the **single definition** of the
+  mapping — `model_ep00047.zip` → `model_ep00047_vecnormalize.pkl`, beside it — and every writer
+  and reader goes through it. No globbing, no "newest" heuristic, no search. This is trap 13's
+  rule applied to a filename: two agreeing derivations are what drift. A path given **with or
+  without the `.zip`** maps to the same file, because `MaskablePPO.load` accepts both forms.
+- **Pairing check at load.** `ret_rms.count − 1e-4` must equal the checkpoint's `num_timesteps`,
+  read from the zip's `data` entry without loading the policy. The relation is exact (§5.3), so
+  the tolerance is 1e-6 for float safety and nothing more — and it is **not decorative**: a
+  *simulated* accumulation shows zero drift at 22,528, 3.2M and 8M timesteps, but the gate run's
+  own `model_ep00024` came out 1.8e-12 off, which a strict equality would have rejected.
+  `obs_rms.count` carries an additional `n_envs` per `learn()` call and is reported in the
+  message, never tested. Statistics still at `count ≈ 1e-4` get their own message: they were
+  never updated, and P2.12 measured what that does to the observation scale. The relation holds
+  across `--resume-from`, since `reset_num_timesteps=False` keeps both sides counting from `T1`.
+- **Old run folders are never written to and never fall back.** `load_vecnormalize` raises when
+  the per-checkpoint file is missing, naming the shared `vecnormalize.pkl`, which checkpoint it
+  belongs to (from `run_metadata.json`'s `checkpoints` list), and that the earlier checkpoints'
+  statistics no longer exist. There is no migration command: `runs/p215/` and `runs/p215b/` are
+  the evidence for the published P2.15 figures and stay byte-unchanged.
+- **An explicit statistics path instead.** `load_vecnormalize(..., stats_path=)` takes a file
+  directly, exposed as `--stats` on `evaluate --rl` and `phase2_run --harness-only`. The pairing
+  check runs on an explicit path too, so pointing it at an old shared file **succeeds for the
+  checkpoint it belongs to and raises for every other** — the mispairing cannot be re-entered by
+  hand. The pair is verified **before** any venv is built, so a refusal costs no simulation and
+  orphans no workers.
+- **Two fixes folded in.** The `--resume-from` branch calls `load_vecnormalize(...,
+  for_evaluation=False)` rather than its own `if os.path.isfile(...)`, so resuming without
+  statistics **raises** instead of silently starting at `count = 1e-4`; and `phase2_run`'s
+  docstring example names the checkpoint that run actually produces, `model_ep00047.zip`.
+- **The verification checks move from the folder to the checkpoints.** `--verify-run`'s "the
+  statistics were saved beside them" tested `os.path.isfile(ckpt_dir/vecnormalize.pkl)` — one
+  boolean for the whole folder, which passed with N checkpoints sharing one file, and would have
+  passed with one checkpoint's statistics and N−1 missing. It becomes
+  `check_checkpoint_statistics`: **every `.zip` has its own statistics file, and each passes the
+  pairing check.** `phase2_run.check_training` runs the same function, which is why its gate is
+  now 23 checks rather than 22.
+
+P2.16 touches no env, tracker or observation code, so it is not in this section's list of items
+that re-run the P1.10 gate; the full suite, which contains the gate, runs anyway because
+`train_sdpdp.py` changes (as in P2.12 and P2.15).
+
+**How Ritun verifies:** the full suite; `python train_sdpdp.py --verify-run`;
+`python -m src.rl_gym.evaluate --verify`, since `evaluate.py` changes; a real-artifact check
+against P2.15's committed result — `phase2_run --harness-only` on
+`runs/p215/checkpoints/model_ep00047.zip` with `--stats` pointing at that folder's shared
+`vecnormalize.pkl` and a fresh `--out-dir`, which must reproduce `kpi_report.txt` md5
+`db34f5aea5f8cd59437fb2628c9534e0` while leaving `runs/p215/` and the ten
+`greedy_<day>_s<seed>` output directories byte-unchanged; the same `--stats` with
+`model_ep00012.zip`, which must raise the pairing error naming 6,236 against 22,528; and the
+full gate at `base_seed 20261015` into a fresh `--out-dir`, which must give four checkpoints with
+four **distinct** statistics files and the same KPI md5, since training is unchanged.
+
+**Commit:** `RL-GYM: one VecNormalize statistics file per checkpoint, with a pairing check`
+
+---
+
 ### After Phase 2 — Ritun's steps, not work items
 
 In this order:
@@ -3026,7 +3123,9 @@ In this order:
    worst, since evaluations recur throughout and the per-episode throughput log is what would be
    read to size later runs. Cheap, and independent of every other step here.
 
-8. **Full-length training** (~7,000 episodes).
+8. **Full-length training** (~7,000 episodes). **Requires P2.16.** Until each checkpoint carries
+   its own statistics, every checkpoint but the newest is unusable for evaluation or resume —
+   which is most of what a 7,000-episode run produces.
 
 Steps 1, 3 and 5 change the simulation. They invalidate every earlier baseline comparison, and the
 gates must be re-established against the new baselines. Step 4 changes no simulation output, but

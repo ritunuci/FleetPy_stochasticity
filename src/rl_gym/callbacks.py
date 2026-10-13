@@ -220,10 +220,14 @@ class EpisodeCheckpointCallback(BaseCallback):
 
     Three artifacts per checkpoint, written together:
 
-    - the model;
-    - its `VecNormalize` statistics, through the injected `save_stats_fn` -- a policy and the
-      statistics it was trained under are one artifact, and evaluating a checkpoint against
-      another point's statistics silently shifts every observation (§5.3);
+    - the model, `model_ep{episodes:05d}.zip`;
+    - its `VecNormalize` statistics, through the injected `save_stats_fn`, in a file named
+      after that checkpoint -- `model_ep00012_vecnormalize.pkl` beside `model_ep00012.zip`
+      (P2.16). A policy and the statistics it was trained under are one artifact, and
+      evaluating a checkpoint against another point's statistics silently shifts every
+      observation (§5.3). Through P2.15 this was one shared `vecnormalize.pkl` per folder that
+      each save overwrote, so only the newest checkpoint kept its own statistics and the rest
+      lost theirs;
     - `run_metadata.json`, carrying **every `base_seed` the run has used**. Resuming with a
       `base_seed` already in that list would restart D10's rotation and the episode-seed
       streams from the beginning and replay sample paths already trained on, so

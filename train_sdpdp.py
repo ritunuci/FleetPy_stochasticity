@@ -19,6 +19,12 @@ What each item added here:
 - **P2.13** — `MaskablePPO` (`train`, `build_model`), the evaluation venv with its pair
   partitioning, the callbacks in `src/rl_gym/callbacks.py`, checkpoints with their statistics
   and run metadata, resume with the used-`base_seed` guard, and `--verify-run`.
+- **P2.16** — **one statistics file per checkpoint** (`vecnormalize_path_for`) and the pairing
+  check that enforces it (`check_statistics_pairing`). Through P2.15 every checkpoint in a
+  folder shared one `vecnormalize.pkl` and overwrote it, so only the newest kept the statistics
+  it was trained under; every earlier one silently loaded a later point's, which is §5.3's named
+  failure. Old folders are never written to and never fall back -- the loader raises and names
+  which checkpoint the shared file belongs to.
 
 Two seeding rules that are easy to undo by accident:
 
@@ -48,6 +54,7 @@ import numpy as np  # noqa: I001  -- must stay first
 # ---------------------------------------------------------------------------------------- #
 
 import argparse
+import json
 import multiprocessing as mp
 import os
 import sys
@@ -77,8 +84,26 @@ DEFAULT_CFG = {
     "gamma": 0.999,
 }
 
-#: filename of the saved observation/reward statistics, written beside each checkpoint (§5.3).
+#: **Legacy** name: through P2.15 every checkpoint in a folder shared this one file and
+#: overwrote it (P2.16). Kept only so the loader can recognise an old run folder and say which
+#: checkpoint the file belongs to. Nothing writes it any more.
 VECNORMALIZE_FILE = "vecnormalize.pkl"
+
+#: P2.16: the statistics live beside their checkpoint, named after it --
+#: `model_ep00047.zip` -> `model_ep00047_vecnormalize.pkl`.
+VECNORMALIZE_SUFFIX = "_vecnormalize.pkl"
+
+#: `RunningMeanStd.__init__` sets `count = epsilon`, and SB3's default epsilon is 1e-4. This is
+#: **not** `VecNormalize(epsilon=1e-8)`, which is the normalisation floor -- a different number.
+STATS_COUNT_EPSILON = 1e-4
+
+#: Tolerance for the pairing check, and it is float safety only, not semantic slack.
+#: `ret_rms.count - STATS_COUNT_EPSILON == num_timesteps` holds **exactly**: `_update_reward` is
+#: gated on `training` alone and adds one row per env per step iteration, `reset()` never touches
+#: `ret_rms`, and `num_timesteps` advances by `n_envs` on the same iteration. Simulated
+#: accumulation -- not real training runs -- shows zero drift at 22,528, 3.2M and 8M timesteps,
+#: and the real P2.15 artifact matches to 0.0. The smallest *real* mismatch is one rollout.
+STATS_PAIRING_TOL = 1e-6
 
 #: §5.3's settings. `clip_obs = 10.0` is what bounds the unbounded Box the env declares;
 #: `clip_reward` stays at SB3's default.
@@ -194,6 +219,150 @@ def build_venv(cfg, n_workers, normalize=True, training=True):
     )
 
 
+def vecnormalize_path_for(checkpoint_path):
+    """The statistics file belonging to `checkpoint_path`. **The only definition of this map.**
+
+    `model_ep00047.zip` -> `model_ep00047_vecnormalize.pkl`, beside it. Every writer and reader
+    goes through this function; two agreeing derivations of a path are what drift (trap 13),
+    and a shared name is the P2.16 defect itself.
+
+    **With or without the `.zip` gives the same file**, because `MaskablePPO.load` accepts both
+    forms and a caller that drops the extension must not get different statistics. Only a `.zip`
+    suffix is stripped, so a checkpoint named `model.v2` keeps its dot.
+    """
+    directory = os.path.dirname(os.path.abspath(checkpoint_path))
+    stem = os.path.basename(str(checkpoint_path))
+    if stem.endswith(".zip"):
+        stem = stem[: -len(".zip")]
+    return os.path.join(directory, f"{stem}{VECNORMALIZE_SUFFIX}")
+
+
+def checkpoint_timesteps(checkpoint_path):
+    """`num_timesteps` out of a checkpoint zip's `data` entry, or `None` if there is no zip.
+
+    Read with `zipfile` + `json`, so it costs no policy construction and no torch import.
+
+    `None` means the pairing check cannot run: a statistics file saved beside a path with no
+    checkpoint (as several unit tests do) has nothing to be paired against. Every real caller
+    loads the model from the same path moments later, so an absent zip fails at once rather
+    than silently evaluating an unpaired policy.
+    """
+    import zipfile
+    path = str(checkpoint_path)
+    if not path.endswith(".zip"):
+        path += ".zip"
+    if not os.path.isfile(path):
+        return None
+    with zipfile.ZipFile(path) as archive:
+        if "data" not in archive.namelist():
+            raise ValueError(
+                f"{path} has no `data` entry, so it is not a Stable-Baselines3 checkpoint and "
+                f"its statistics cannot be paired with it (§5.3)."
+            )
+        data = json.loads(archive.read("data").decode("utf-8"))
+    if "num_timesteps" not in data:
+        raise ValueError(f"{path}'s `data` entry carries no num_timesteps.")
+    return int(data["num_timesteps"])
+
+
+def check_statistics_pairing(stats, checkpoint_path, stats_file=None):
+    """Raise unless `stats` are the statistics `checkpoint_path` was trained under (P2.16).
+
+    The test is `ret_rms.count - 1e-4 == num_timesteps`, exactly (see `STATS_PAIRING_TOL`).
+    `obs_rms.count` is **not** tested -- it carries an extra `n_envs` per `learn()` call, from
+    `reset()`, and that count is not recoverable from the checkpoint -- but it is reported,
+    because it is useful when diagnosing a mismatch.
+
+    Holds across `--resume-from` too: the resumed model keeps counting from `T1`
+    (`reset_num_timesteps=False`) and the loaded statistics keep accumulating from `1e-4 + T1`,
+    so both sides advance together.
+
+    :param stats: anything carrying `ret_rms` / `obs_rms` -- a `VecNormalize`, attached or not
+    """
+    timesteps = checkpoint_timesteps(checkpoint_path)
+    if timesteps is None:
+        return None
+    ret_count = float(stats.ret_rms.count)
+    obs_count = float(stats.obs_rms.count)
+    implied = ret_count - STATS_COUNT_EPSILON
+    if abs(implied - timesteps) <= STATS_PAIRING_TOL:
+        return timesteps
+    where = stats_file or "the statistics"
+    if ret_count <= STATS_COUNT_EPSILON + STATS_PAIRING_TOL:
+        raise ValueError(
+            f"{where} were never updated: ret_rms.count is {ret_count!r}, the value a freshly "
+            f"constructed VecNormalize starts at (count 1e-4, mean 0, var 1), while "
+            f"{os.path.basename(str(checkpoint_path))} was trained for {timesteps} timesteps. "
+            f"A policy fed observations normalised by unused statistics sees every feature on a "
+            f"scale it never trained under -- P2.12 measured a raw is_valid of 1.0 arriving as "
+            f"about 0.005. Load the statistics saved with this checkpoint (§5.3)."
+        )
+    raise ValueError(
+        f"{where} do not belong to {os.path.basename(str(checkpoint_path))}: they imply "
+        f"{implied:.0f} timesteps (ret_rms.count {ret_count!r} - 1e-4) but that checkpoint was "
+        f"trained for {timesteps}. Evaluating or resuming a policy against another point's "
+        f"statistics silently shifts every observation it sees (§5.3). "
+        f"[diagnostic: obs_rms.count {obs_count!r}, which also carries n_envs per learn() call]"
+    )
+
+
+def verify_statistics_pairing(checkpoint_path, stats_path=None):
+    """`check_statistics_pairing` without building anything -- the pre-flight form (P2.16).
+
+    Reads the pickle directly, so a caller can fail **before** constructing a `SubprocVecEnv`
+    whose workers would otherwise be orphaned by the raise. `load_vecnormalize` checks again
+    after attaching, which is what covers the callers that do not come through here.
+
+    :return: the statistics file that was checked
+    """
+    import pickle
+    path = stats_path or vecnormalize_path_for(checkpoint_path)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(_missing_statistics_message(checkpoint_path, path))
+    with open(path, "rb") as handle:
+        stats = pickle.load(handle)
+    check_statistics_pairing(stats, checkpoint_path, stats_file=path)
+    return path
+
+
+def _missing_statistics_message(checkpoint_path, path):
+    """Why the statistics are missing, and -- for an old run folder -- what is actually there.
+
+    P2.16 does not migrate and does not fall back: a silent fallback to the shared file is the
+    mismatch it exists to remove. The message therefore names the shared file, says which
+    checkpoint it belongs to, and says plainly that the other checkpoints' statistics are gone.
+    """
+    directory = os.path.dirname(os.path.abspath(checkpoint_path))
+    legacy = os.path.join(directory, VECNORMALIZE_FILE)
+    message = (
+        f"no statistics file {os.path.basename(path)} beside "
+        f"{os.path.basename(str(checkpoint_path))}. A checkpoint without the observation "
+        f"statistics it was trained under cannot be evaluated faithfully (§5.3); "
+        f"save_vecnormalize writes one per checkpoint at checkpoint time."
+    )
+    if not os.path.isfile(legacy):
+        return message
+    owner = "unknown"
+    try:
+        from src.rl_gym.callbacks import load_run_metadata
+        checkpoints = load_run_metadata(directory).get("checkpoints") or []
+        if checkpoints:
+            owner = checkpoints[-1]
+    except Exception:                                      # pragma: no cover - best effort
+        pass
+    return (
+        f"{message}\n"
+        f"This folder predates P2.16: it holds a single shared {VECNORMALIZE_FILE}, which every "
+        f"checkpoint overwrote, so it holds the statistics of the LAST checkpoint only "
+        f"({owner}). The earlier checkpoints' statistics no longer exist and those checkpoints "
+        f"cannot be evaluated faithfully -- re-run to get them. Nothing here falls back to the "
+        f"shared file, because pairing it with the wrong checkpoint is the failure this check "
+        f"exists to stop. To use it deliberately for the checkpoint it does belong to, pass it "
+        f"explicitly: --stats {legacy} (the pairing check still runs, and will refuse it for "
+        f"any other checkpoint)."
+    )
+
+
 def save_vecnormalize(venv, checkpoint_path):
     """Write the running statistics beside `checkpoint_path`, returning the file written.
 
@@ -201,6 +370,10 @@ def save_vecnormalize(venv, checkpoint_path):
     are one artifact: evaluating a checkpoint against statistics from a different point in
     training silently shifts every observation the policy sees. §5.3 calls this out as a common
     and silent failure, which is why the two are written together and loaded together.
+
+    **One file per checkpoint** (P2.16), named by `vecnormalize_path_for`. Until P2.16 this
+    wrote a fixed `vecnormalize.pkl` per folder, so each checkpoint destroyed the previous
+    statistics and only the newest was faithfully evaluable.
     """
     from stable_baselines3.common.vec_env import VecNormalize
     if not isinstance(venv, VecNormalize):
@@ -208,37 +381,68 @@ def save_vecnormalize(venv, checkpoint_path):
             f"save_vecnormalize needs a VecNormalize, got {type(venv).__name__}. Build the "
             f"venv with build_venv(..., normalize=True)."
         )
-    directory = os.path.dirname(os.path.abspath(checkpoint_path))
-    os.makedirs(directory, exist_ok=True)
-    path = os.path.join(directory, VECNORMALIZE_FILE)
+    path = vecnormalize_path_for(checkpoint_path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     venv.save(path)
     return path
 
 
-def load_vecnormalize(checkpoint_path, venv, for_evaluation=True):
-    """Attach the statistics saved beside `checkpoint_path` to `venv`.
+def load_vecnormalize(checkpoint_path, venv, for_evaluation=True, stats_path=None):
+    """Attach `checkpoint_path`'s own statistics to `venv`, refusing any others (P2.16).
 
     With `for_evaluation` (the default) this sets **`training = False`** so the statistics stop
     updating, and **`norm_reward = False`** so the reported return is in the reward's own units
     rather than normalised ones. §5.3 requires both: evaluating with mismatched or still-moving
     statistics is silent and very common.
 
+    The file is `vecnormalize_path_for(checkpoint_path)` unless `stats_path` names one. Either
+    way the pairing check runs, so an explicitly named file -- an old run folder's shared
+    `vecnormalize.pkl`, say -- is accepted for the checkpoint it belongs to and **refused for
+    every other**. There is no fallback to the shared file: reintroducing that silently is the
+    defect P2.16 removes.
+
     :param venv: an unwrapped venv to attach to -- `VecNormalize.load` wraps it
+    :param stats_path: an explicit statistics file, still pairing-checked
     :return: the wrapped venv
     """
     from stable_baselines3.common.vec_env import VecNormalize
-    path = os.path.join(os.path.dirname(os.path.abspath(checkpoint_path)), VECNORMALIZE_FILE)
+    path = stats_path or vecnormalize_path_for(checkpoint_path)
     if not os.path.isfile(path):
-        raise FileNotFoundError(
-            f"no {VECNORMALIZE_FILE} beside {checkpoint_path}. A checkpoint without its "
-            f"observation statistics cannot be evaluated faithfully (§5.3); it is written by "
-            f"save_vecnormalize at checkpoint time."
-        )
+        raise FileNotFoundError(_missing_statistics_message(checkpoint_path, path))
     wrapped = VecNormalize.load(path, venv)
+    check_statistics_pairing(wrapped, checkpoint_path, stats_file=path)
     if for_evaluation:
         wrapped.training = False
         wrapped.norm_reward = False
     return wrapped
+
+
+def check_checkpoint_statistics(checkpoint_dir):
+    """Every `.zip` in the folder has its own statistics, and each passes the pairing check.
+
+    The check `--verify-run` and `phase2_run.check_training` both run (P2.16), replacing a
+    folder-level `os.path.isfile(ckpt_dir/vecnormalize.pkl)` that passed with N checkpoints and
+    one shared file -- and would have passed with one checkpoint's statistics and N-1 missing.
+
+    :return: `(ok, detail)` for a pass/fail line
+    """
+    models = sorted(f for f in os.listdir(checkpoint_dir) if f.endswith(".zip"))
+    if not models:
+        return False, f"no checkpoints in {checkpoint_dir}"
+    problems = []
+    for name in models:
+        checkpoint = os.path.join(checkpoint_dir, name)
+        stats = vecnormalize_path_for(checkpoint)
+        if not os.path.isfile(stats):
+            problems.append(f"{name}: no {os.path.basename(stats)}")
+            continue
+        try:
+            verify_statistics_pairing(checkpoint)
+        except (ValueError, FileNotFoundError) as exc:
+            problems.append(f"{name}: {str(exc).splitlines()[0]}")
+    if problems:
+        return False, "; ".join(problems)
+    return True, f"{len(models)} checkpoint(s), each with its own statistics, each paired"
 
 
 def build_eval_venv(cfg, pairs, n_workers, eval_day_dir="corpus_eval"):
@@ -402,14 +606,14 @@ def train(cfg, n_workers=4, total_timesteps=10_000, out_dir="runs/sdpdp",
     try:
         model, hp = build_model(venv, cfg, tensorboard_log=tb_dir, resume_from=resume_from)
         if resume_from is not None:
-            # the statistics the checkpoint was trained under, not fresh ones (§5.3)
-            stats = os.path.join(os.path.dirname(os.path.abspath(resume_from)),
-                                 VECNORMALIZE_FILE)
-            if os.path.isfile(stats):
-                from stable_baselines3.common.vec_env import VecNormalize
-                venv = VecNormalize.load(stats, venv.venv)
-                venv.training, venv.norm_reward = True, True
-                model.set_env(venv)
+            # The statistics the checkpoint was trained under, not fresh ones (§5.3).
+            # **Raises when they are missing** (P2.16): this was `if os.path.isfile(...)`, so a
+            # resume without statistics silently restarted them at count 1e-4, mean 0, var 1 --
+            # the resumed policy then saw every feature on a scale it never trained under, with
+            # nothing in the log to show it. `load_vecnormalize` also pairing-checks the file,
+            # and `for_evaluation=False` leaves training and norm_reward on for the resumed run.
+            venv = load_vecnormalize(resume_from, venv.venv, for_evaluation=False)
+            model.set_env(venv)
 
         training_days = []
         if cfg.get("day_dir") == "corpus":
@@ -750,8 +954,12 @@ def verify_run(n_workers=2, episodes=8, out_dir=None, keep=False, verbose=True):
     ckpt_dir = os.path.join(tmp, "checkpoints")
     models = sorted(f for f in os.listdir(ckpt_dir) if f.endswith(".zip"))
     check("at least two checkpoints were written", len(models) >= 2, f"{models}")
-    check("the statistics were saved beside them",
-          os.path.isfile(os.path.join(ckpt_dir, VECNORMALIZE_FILE)))
+    # P2.16: per checkpoint, not per folder. The old check was
+    # `isfile(ckpt_dir/vecnormalize.pkl)` -- one boolean that passed with N checkpoints sharing
+    # one file, which is exactly the defect it was meant to exclude.
+    stats_ok, stats_detail = check_checkpoint_statistics(ckpt_dir)
+    check("every checkpoint has its own statistics file, each paired with it",
+          stats_ok, stats_detail)
     meta = cb.load_run_metadata(ckpt_dir)
     check("the metadata records every base_seed used",
           meta.get("base_seeds") == [base_seed], f"{meta.get('base_seeds')}")
@@ -784,10 +992,8 @@ def verify_run(n_workers=2, episodes=8, out_dir=None, keep=False, verbose=True):
 def _check_reload_determinism(model_path, cfg):
     """Reload the checkpoint and compare 15 deterministic actions on a fixed (day, seed)."""
     from sb3_contrib import MaskablePPO
-    from stable_baselines3.common.vec_env import VecNormalize
     from src.rl_gym.gym_env import SDPDPAssignmentEnv
 
-    stats = os.path.join(os.path.dirname(os.path.abspath(model_path)), VECNORMALIZE_FILE)
     pinned = {k: v for k, v in cfg.items() if k not in ("base_seed", "eval_pairs")}
     pinned.update({"day_dir": "corpus_eval", "day": "2024-06-20", "episode_seed": 42,
                    "env_id": 0})
@@ -797,8 +1003,9 @@ def _check_reload_determinism(model_path, cfg):
         # DummyVecEnv is forbidden for training (D8) but this is one env in one process for a
         # handful of steps, which is what VecNormalize.load needs to attach to
         venv = DummyVecEnv([lambda: SDPDPAssignmentEnv(pinned)])
-        wrapped = VecNormalize.load(stats, venv)
-        wrapped.training, wrapped.norm_reward = False, False
+        # this checkpoint's own statistics, pairing-checked (P2.16); for_evaluation sets
+        # training = False and norm_reward = False
+        wrapped = load_vecnormalize(model_path, venv, for_evaluation=True)
         model = MaskablePPO.load(model_path, env=wrapped)
         obs = wrapped.reset()
         taken = []

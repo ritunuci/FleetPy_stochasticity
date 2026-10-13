@@ -18,11 +18,14 @@ once per class and the tests take a handful of steps rather than whole episodes.
 import numpy as np  # noqa: I001  -- must stay first
 # ---------------------------------------------------------------------------------------- #
 
+import json
 import multiprocessing as mp
 import os
+import pickle
 import sys
 import tempfile
 import unittest
+import zipfile
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -132,7 +135,8 @@ class TestVecNormalizeWiring(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             checkpoint = os.path.join(tmp, "model_000042.zip")
             path = train_sdpdp.save_vecnormalize(self.venv, checkpoint)
-            self.assertEqual(os.path.basename(path), train_sdpdp.VECNORMALIZE_FILE)
+            # P2.16: named after the checkpoint, not a shared name per folder
+            self.assertEqual(os.path.basename(path), "model_000042_vecnormalize.pkl")
             self.assertEqual(os.path.dirname(path), tmp)
 
             fixed = np.linspace(-5.0, 5.0, 139, dtype=np.float32).reshape(1, 139)
@@ -187,7 +191,33 @@ class TestVecNormalizeWiring(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(FileNotFoundError) as cm:
                 train_sdpdp.load_vecnormalize(os.path.join(tmp, "model.zip"), self.venv.venv)
-            self.assertIn(train_sdpdp.VECNORMALIZE_FILE, str(cm.exception))
+            self.assertIn("model_vecnormalize.pkl", str(cm.exception))
+
+    def test_an_explicit_statistics_path_is_used_when_given(self):
+        """The `--stats` contract (P2.16): a named file, still pairing-checked."""
+        with tempfile.TemporaryDirectory() as tmp:
+            elsewhere = os.path.join(tmp, "somewhere_else.pkl")
+            self.venv.save(elsewhere)
+            checkpoint = os.path.join(tmp, "model.zip")          # no file beside it
+            reloaded = train_sdpdp.load_vecnormalize(checkpoint, self.venv.venv,
+                                                     stats_path=elsewhere)
+            try:
+                self.assertEqual(reloaded.obs_rms.count, self.venv.obs_rms.count)
+                self.assertFalse(reloaded.training)
+            finally:
+                reloaded.venv = None
+
+    def test_the_resume_path_raises_when_the_statistics_are_missing(self):
+        """P2.16's second fix: `train()`'s resume branch used to continue on fresh statistics.
+
+        It now goes through `load_vecnormalize(..., for_evaluation=False)`, so a folder with no
+        statistics raises instead of silently restarting them at count 1e-4, mean 0, var 1 --
+        which P2.12 measured turning a raw `is_valid` of 1.0 into about 0.005.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(FileNotFoundError):
+                train_sdpdp.load_vecnormalize(os.path.join(tmp, "model_ep00012.zip"),
+                                              self.venv.venv, for_evaluation=False)
 
 
 class TestMasksPassThroughVecNormalize(unittest.TestCase):
@@ -476,6 +506,242 @@ class TestEvalPairPartitioning(unittest.TestCase):
         self.assertLess(len(set(ran)), len(self.pairs))
 
 
+class _Counts:
+    """Stands in for a `RunningMeanStd` -- the pairing check reads `.count` and nothing else."""
+
+    def __init__(self, count):
+        self.count = float(count)
+
+
+class _Stats:
+    """Stands in for a saved `VecNormalize`. Module-level so it survives a pickle round trip."""
+
+    def __init__(self, ret_count, obs_count=None):
+        self.ret_rms = _Counts(ret_count)
+        self.obs_rms = _Counts(ret_count if obs_count is None else obs_count)
+
+
+def write_checkpoint(path, num_timesteps, n_envs=4, data=True):
+    """A checkpoint zip carrying only what the pairing check reads.
+
+    `checkpoint_timesteps` opens the `data` entry and reads `num_timesteps`, so a synthetic zip
+    is a faithful fixture and keeps these tests in milliseconds -- a real `model.save()` would
+    need a policy, a venv and torch.
+    """
+    with zipfile.ZipFile(path, "w") as archive:
+        if data:
+            archive.writestr("data", json.dumps({"num_timesteps": int(num_timesteps),
+                                                 "n_envs": int(n_envs)}))
+        else:
+            archive.writestr("policy.pth", b"not a data entry")
+    return path
+
+
+def write_stats(path, ret_count, obs_count=None):
+    with open(path, "wb") as handle:
+        pickle.dump(_Stats(ret_count, obs_count), handle)
+    return path
+
+
+EPS = 1e-4          # RunningMeanStd's initial count, i.e. train_sdpdp.STATS_COUNT_EPSILON
+
+
+class TestPerCheckpointStatistics(unittest.TestCase):
+    """One statistics file per checkpoint, and a pairing check that proves it (P2.16).
+
+    Pure functions over synthetic zips and pickles -- no venv, no torch, milliseconds. The
+    end-to-end versions are `--verify-run` and `phase2_run`.
+    """
+
+    # ---- the path map ------------------------------------------------ #
+
+    def test_the_zip_extension_does_not_change_the_statistics_file(self):
+        """`MaskablePPO.load` accepts both forms, so both must resolve to the same file."""
+        with_zip = train_sdpdp.vecnormalize_path_for("/tmp/run/model_ep00047.zip")
+        without = train_sdpdp.vecnormalize_path_for("/tmp/run/model_ep00047")
+        self.assertEqual(with_zip, without)
+        self.assertEqual(os.path.basename(with_zip), "model_ep00047_vecnormalize.pkl")
+
+    def test_only_a_zip_suffix_is_stripped(self):
+        """A dot that is not an extension stays: `model.v2` is not `model`."""
+        self.assertEqual(
+            os.path.basename(train_sdpdp.vecnormalize_path_for("/tmp/run/model.v2")),
+            "model.v2_vecnormalize.pkl")
+        self.assertEqual(train_sdpdp.vecnormalize_path_for("/tmp/run/model.v2.zip"),
+                         train_sdpdp.vecnormalize_path_for("/tmp/run/model.v2"))
+
+    def test_the_file_sits_beside_its_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = train_sdpdp.vecnormalize_path_for(os.path.join(tmp, "model_ep00001.zip"))
+            self.assertEqual(os.path.dirname(path), tmp)
+            self.assertTrue(os.path.isabs(path))
+
+    def test_two_checkpoints_never_map_to_one_file(self):
+        self.assertNotEqual(train_sdpdp.vecnormalize_path_for("/tmp/r/model_ep00012.zip"),
+                            train_sdpdp.vecnormalize_path_for("/tmp/r/model_ep00047.zip"))
+
+    # ---- the pairing check ------------------------------------------- #
+
+    def test_a_checkpoints_own_statistics_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = write_checkpoint(os.path.join(tmp, "model_ep00012.zip"), 6236)
+            self.assertEqual(
+                train_sdpdp.check_statistics_pairing(_Stats(EPS + 6236), ckpt), 6236)
+
+    def test_another_checkpoints_statistics_are_refused(self):
+        """The defect itself: ep47's statistics against ep12's policy."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = write_checkpoint(os.path.join(tmp, "model_ep00012.zip"), 6236)
+            with self.assertRaises(ValueError) as cm:
+                train_sdpdp.check_statistics_pairing(_Stats(EPS + 22528), ckpt)
+            message = str(cm.exception)
+            self.assertIn("22528", message)          # what the statistics imply
+            self.assertIn("6236", message)           # what the checkpoint says
+            self.assertIn("model_ep00012.zip", message)
+
+    def test_never_updated_statistics_get_their_own_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = write_checkpoint(os.path.join(tmp, "model_ep00012.zip"), 6236)
+            with self.assertRaises(ValueError) as cm:
+                train_sdpdp.check_statistics_pairing(_Stats(EPS), ckpt)
+            self.assertIn("never updated", str(cm.exception))
+
+    def test_fresh_statistics_pass_against_an_untrained_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = write_checkpoint(os.path.join(tmp, "model_ep00000.zip"), 0)
+            self.assertEqual(train_sdpdp.check_statistics_pairing(_Stats(EPS), ckpt), 0)
+
+    def test_the_pairing_holds_across_a_resume(self):
+        """`reset_num_timesteps=False`, so both sides keep counting from T1."""
+        t1, t2 = 22528, 10240
+        with tempfile.TemporaryDirectory() as tmp:
+            resumed = write_checkpoint(os.path.join(tmp, "model_ep00090.zip"), t1 + t2)
+            original = write_checkpoint(os.path.join(tmp, "model_ep00047.zip"), t1)
+            self.assertEqual(
+                train_sdpdp.check_statistics_pairing(_Stats(EPS + t1 + t2), resumed), t1 + t2)
+            with self.assertRaises(ValueError):
+                train_sdpdp.check_statistics_pairing(_Stats(EPS + t1 + t2), original)
+
+    def test_the_tolerance_is_numerical_not_semantic(self):
+        """1e-6 is float safety. One timestep of slack is a real mismatch and must fail."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = write_checkpoint(os.path.join(tmp, "model_ep00012.zip"), 6236)
+            train_sdpdp.check_statistics_pairing(_Stats(EPS + 6236 + 1e-7), ckpt)   # passes
+            with self.assertRaises(ValueError):
+                train_sdpdp.check_statistics_pairing(_Stats(EPS + 6237), ckpt)
+            with self.assertRaises(ValueError):
+                train_sdpdp.check_statistics_pairing(_Stats(EPS + 6236 + 1e-3), ckpt)
+
+    def test_obs_rms_is_reported_but_never_tested(self):
+        """It carries an extra n_envs per learn() call, which the checkpoint cannot tell us."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = write_checkpoint(os.path.join(tmp, "model_ep00047.zip"), 22528)
+            # obs_rms 4 higher than ret_rms, exactly as a real run's one reset leaves it
+            self.assertEqual(
+                train_sdpdp.check_statistics_pairing(_Stats(EPS + 22528, EPS + 22532), ckpt),
+                22528)
+            with self.assertRaises(ValueError) as cm:
+                train_sdpdp.check_statistics_pairing(_Stats(EPS + 1024, EPS + 22532), ckpt)
+            self.assertIn("22532", str(cm.exception))      # reported as a diagnostic
+
+    def test_without_a_zip_there_is_nothing_to_pair_against(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(train_sdpdp.checkpoint_timesteps(
+                os.path.join(tmp, "model.zip")))
+            self.assertIsNone(train_sdpdp.check_statistics_pairing(
+                _Stats(EPS + 99), os.path.join(tmp, "model.zip")))
+
+    def test_a_zip_without_a_data_entry_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = write_checkpoint(os.path.join(tmp, "model.zip"), 0, data=False)
+            with self.assertRaises(ValueError) as cm:
+                train_sdpdp.checkpoint_timesteps(ckpt)
+            self.assertIn("Stable-Baselines3", str(cm.exception))
+
+    def test_checkpoint_timesteps_accepts_the_path_without_the_extension(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_checkpoint(os.path.join(tmp, "model_ep00012.zip"), 6236)
+            self.assertEqual(
+                train_sdpdp.checkpoint_timesteps(os.path.join(tmp, "model_ep00012")), 6236)
+
+    # ---- the file-level form, and old run folders --------------------- #
+
+    def test_verify_statistics_pairing_reads_the_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = write_checkpoint(os.path.join(tmp, "model_ep00012.zip"), 6236)
+            write_stats(train_sdpdp.vecnormalize_path_for(ckpt), EPS + 6236)
+            self.assertEqual(train_sdpdp.verify_statistics_pairing(ckpt),
+                             train_sdpdp.vecnormalize_path_for(ckpt))
+
+    def test_a_legacy_folder_raises_and_names_the_owning_checkpoint(self):
+        """No fallback to the shared file -- that is the mismatch P2.16 removes."""
+        with tempfile.TemporaryDirectory() as tmp:
+            write_checkpoint(os.path.join(tmp, "model_ep00012.zip"), 6236)
+            write_checkpoint(os.path.join(tmp, "model_ep00047.zip"), 22528)
+            write_stats(os.path.join(tmp, train_sdpdp.VECNORMALIZE_FILE), EPS + 22528)
+            with open(os.path.join(tmp, "run_metadata.json"), "w") as fh:
+                json.dump({"checkpoints": ["model_ep00012.zip", "model_ep00047.zip"]}, fh)
+
+            with self.assertRaises(FileNotFoundError) as cm:
+                train_sdpdp.verify_statistics_pairing(os.path.join(tmp, "model_ep00012.zip"))
+            message = str(cm.exception)
+            self.assertIn(train_sdpdp.VECNORMALIZE_FILE, message)
+            self.assertIn("model_ep00047.zip", message)     # which checkpoint it belongs to
+            self.assertIn("--stats", message)
+            self.assertIn("no longer exist", message)
+
+    def test_the_shared_file_is_accepted_only_for_the_checkpoint_it_belongs_to(self):
+        """The `--stats` escape hatch cannot re-enter the mispairing (P2.16, check (c))."""
+        with tempfile.TemporaryDirectory() as tmp:
+            old = write_checkpoint(os.path.join(tmp, "model_ep00012.zip"), 6236)
+            newest = write_checkpoint(os.path.join(tmp, "model_ep00047.zip"), 22528)
+            shared = write_stats(os.path.join(tmp, train_sdpdp.VECNORMALIZE_FILE), EPS + 22528)
+
+            self.assertEqual(train_sdpdp.verify_statistics_pairing(newest, shared), shared)
+            with self.assertRaises(ValueError) as cm:
+                train_sdpdp.verify_statistics_pairing(old, shared)
+            self.assertIn("6236", str(cm.exception))
+
+    # ---- the check the verifications run ------------------------------ #
+
+    def test_check_checkpoint_statistics_passes_when_every_checkpoint_is_paired(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for episodes, steps in ((12, 6236), (47, 22528)):
+                ckpt = write_checkpoint(os.path.join(tmp, f"model_ep{episodes:05d}.zip"), steps)
+                write_stats(train_sdpdp.vecnormalize_path_for(ckpt), EPS + steps)
+            ok, detail = train_sdpdp.check_checkpoint_statistics(tmp)
+            self.assertTrue(ok, detail)
+            self.assertIn("2 checkpoint", detail)
+
+    def test_check_checkpoint_statistics_fails_on_the_pre_p216_layout(self):
+        """Two checkpoints sharing one file: what P2.15's folders actually hold."""
+        with tempfile.TemporaryDirectory() as tmp:
+            write_checkpoint(os.path.join(tmp, "model_ep00012.zip"), 6236)
+            write_checkpoint(os.path.join(tmp, "model_ep00047.zip"), 22528)
+            write_stats(os.path.join(tmp, train_sdpdp.VECNORMALIZE_FILE), EPS + 22528)
+            ok, detail = train_sdpdp.check_checkpoint_statistics(tmp)
+            self.assertFalse(ok)
+            self.assertIn("model_ep00012.zip", detail)
+            self.assertIn("model_ep00047.zip", detail)
+
+    def test_check_checkpoint_statistics_fails_on_a_mispaired_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = write_checkpoint(os.path.join(tmp, "model_ep00012.zip"), 6236)
+            second = write_checkpoint(os.path.join(tmp, "model_ep00047.zip"), 22528)
+            write_stats(train_sdpdp.vecnormalize_path_for(first), EPS + 22528)   # wrong
+            write_stats(train_sdpdp.vecnormalize_path_for(second), EPS + 22528)
+            ok, detail = train_sdpdp.check_checkpoint_statistics(tmp)
+            self.assertFalse(ok)
+            self.assertIn("model_ep00012.zip", detail)
+            self.assertNotIn("model_ep00047.zip", detail)
+
+    def test_check_checkpoint_statistics_fails_on_an_empty_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ok, detail = train_sdpdp.check_checkpoint_statistics(tmp)
+            self.assertFalse(ok)
+            self.assertIn("no checkpoints", detail)
+
+
 class _MinimalVecEnv(VecEnv):
     """Enough `VecEnv` for `EvalCallback.__init__` to accept it without wrapping.
 
@@ -736,9 +1002,12 @@ class TestEpisodeCheckpointCallback(unittest.TestCase):
         saved = []
 
         def save_stats(venv_, path):
-            target = os.path.join(os.path.dirname(path), train_sdpdp.VECNORMALIZE_FILE)
+            # P2.16: named after the checkpoint, through the one definition of that map. This
+            # stub used to hardcode the shared `vecnormalize.pkl`, so the fixture reproduced
+            # the overwrite defect in miniature and no test here could see it.
+            target = train_sdpdp.vecnormalize_path_for(path)
             with open(target, "w") as fh:
-                fh.write("stats")
+                fh.write(f"stats for {os.path.basename(path)}")
             saved.append((venv_, target))
             return target
 
@@ -769,8 +1038,32 @@ class TestEpisodeCheckpointCallback(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             callback = self.make(tmp, every=1)
             self.step(callback, [True])
-            self.assertTrue(os.path.isfile(os.path.join(tmp, train_sdpdp.VECNORMALIZE_FILE)))
+            self.assertTrue(os.path.isfile(
+                os.path.join(tmp, "model_ep00001_vecnormalize.pkl")))
             self.assertEqual(len(callback.stats_saved), 1)
+
+    def test_each_checkpoint_gets_its_own_statistics_file(self):
+        """P2.16, and the test that fails on the pre-P2.16 shared name.
+
+        Two checkpoints must leave two files, and the first must be **byte-unchanged** by the
+        second save -- an overwrite destroys the earlier statistics rather than shadowing them,
+        so only the newest checkpoint stays faithfully evaluable.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            callback = self.make(tmp, every=1)
+            self.step(callback, [True])
+            first = os.path.join(tmp, "model_ep00001_vecnormalize.pkl")
+            before = open(first, "rb").read()
+            self.step(callback, [True])
+            second = os.path.join(tmp, "model_ep00002_vecnormalize.pkl")
+
+            self.assertTrue(os.path.isfile(first), "the first checkpoint lost its statistics")
+            self.assertTrue(os.path.isfile(second))
+            self.assertNotEqual(first, second)
+            self.assertEqual(open(first, "rb").read(), before,
+                             "the second save overwrote the first checkpoint's statistics")
+            self.assertFalse(os.path.isfile(os.path.join(tmp, train_sdpdp.VECNORMALIZE_FILE)),
+                             "nothing may still write the shared pre-P2.16 name")
 
     def test_the_metadata_records_the_seeds_and_the_checkpoints(self):
         import json

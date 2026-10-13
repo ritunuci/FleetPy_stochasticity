@@ -436,7 +436,8 @@ def run_env_greedy_pair(day: str, seed: int, cfg: Optional[Dict[str, Any]] = Non
 
 def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
                  cfg: Optional[Dict[str, Any]] = None, n_workers: int = 1,
-                 day_dir: str = EVAL_DAY_DIR) -> List[Dict[str, Any]]:
+                 day_dir: str = EVAL_DAY_DIR,
+                 stats_path: Optional[str] = None) -> List[Dict[str, Any]]:
     """The trained policy on every pair: deterministic actions, output on.
 
     `eval_pairs` mode (P2.3) pins both the day and the seed of each episode, and
@@ -449,6 +450,11 @@ def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
     and would feed the policy observations on a scale it never trained on -- §5.3's silent and
     very common failure. `load_vecnormalize` also sets `training = False` and
     `norm_reward = False`.
+
+    `stats_path` names a statistics file explicitly, for an old run folder whose checkpoints
+    share one `vecnormalize.pkl` (P2.16). It is pairing-checked like any other, so it is
+    accepted for the checkpoint it belongs to and refused for the rest. **The pair is verified
+    before the workers are built**, so a refusal costs no simulation and orphans nothing.
 
     Each episode's output directory is found through `episode_summary()["scenario_name"]`, which
     the env records for exactly this purpose (P2.14).
@@ -466,6 +472,9 @@ def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
     if n_workers > len(pairs):
         raise ValueError(f"n_workers {n_workers} exceeds the {len(pairs)} pair(s): a worker "
                          f"with no pair has nothing to run")
+    # before anything is constructed: a mispaired or missing statistics file must not cost a
+    # SubprocVecEnv whose workers the raise would then orphan (P2.16)
+    train_sdpdp.verify_statistics_pairing(checkpoint, stats_path)
 
     env_cfg = {
         "constant_cfg_path": DEFAULT_CONSTANT_CFG,
@@ -487,7 +496,8 @@ def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
         train_sdpdp.make_env(base, i, n_workers, overrides={"eval_pairs": slices[i]})
         for i in range(n_workers)
     ])
-    venv = train_sdpdp.load_vecnormalize(checkpoint, raw, for_evaluation=True)
+    venv = train_sdpdp.load_vecnormalize(checkpoint, raw, for_evaluation=True,
+                                         stats_path=stats_path)
     model = MaskablePPO.load(checkpoint, device="cpu")
 
     rows: List[Dict[str, Any]] = []
@@ -710,6 +720,11 @@ def main() -> int:
     parser.add_argument("--greedy", action="store_true", help="run the stock greedy baseline")
     parser.add_argument("--rl", action="store_true", help="run a trained checkpoint")
     parser.add_argument("--checkpoint", help="the .zip to load for --rl")
+    parser.add_argument("--stats",
+                        help="--rl only: an explicit VecNormalize statistics file, for a run "
+                             "folder written before P2.16 whose checkpoints share one "
+                             "vecnormalize.pkl. Pairing-checked like any other, so it is "
+                             "refused for every checkpoint but the one it belongs to")
     parser.add_argument("--days", help="comma-separated evaluation days; default every day")
     parser.add_argument("--seeds", type=int,
                         help="first N seeds of each day; default every seed in the file")
@@ -764,7 +779,8 @@ def main() -> int:
     if args.rl:
         if not args.checkpoint:
             parser.error("--rl needs --checkpoint")
-        runs += run_rl_pairs(pairs, args.checkpoint, n_workers=args.workers)
+        runs += run_rl_pairs(pairs, args.checkpoint, n_workers=args.workers,
+                             stats_path=args.stats)
 
     rows = kpi_rows(runs)
     report = format_report(rows)

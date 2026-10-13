@@ -3709,3 +3709,159 @@ sizing. `p215_figures.json` will **not** match: wall clock, load and RSS differ 
 **Stopping here.** Phase 2's work items are complete; §8's After Phase 2 steps are Ritun's, not
 work items.
 
+## P2.16 — STARTED 2026-10-12 12:20
+Files I will touch: train_sdpdp.py, src/rl_gym/callbacks.py, src/rl_gym/evaluate.py,
+src/rl_gym/tools/phase2_run.py, tests/test_rl_gym_train.py, docs/SDPDP_GYM_SPEC_v2.md,
+docs/RL_GYM_PHASE2_RESULTS.md, docs/RL_GYM_PROGRESS.md
+
+Resume state: P2.15 committed (`406c951`), tree clean.
+
+**Why this item exists.** Ritun's code review at `406c951` suspected that all checkpoints share
+one `VecNormalize` statistics file. An inspection-only pass confirmed it, and found it worse in
+one respect than suspected: the earlier checkpoints' statistics are **destroyed, not shadowed**.
+`save_vecnormalize` wrote the fixed basename `vecnormalize.pkl` into the checkpoint's directory,
+and all four readers derived the path from the directory rather than the checkpoint's name.
+
+Evidence on P2.15's folders, read without loading any policy: `ret_rms.count = 22,528.0001`
+against `model_ep00047.zip`'s `num_timesteps = 22,528`, while ep12, ep24 and ep36 stand at
+6,236, 11,900 and 17,540; the file's mtime is the final checkpoint's; `runs/p215` and
+`runs/p215b` agree to the last digit.
+
+Ritun's decisions on the proposal:
+- **P2.16 is a numbered work item** under §0, not an After Phase 2 step.
+- **Naming and pairing check as proposed**, with `vecnormalize_path_for` the only definition of
+  the map, `ret_rms` (not `obs_rms`) the quantity checked, a 1e-6 tolerance, and `obs_rms` in
+  the error message only.
+- **No `--migrate-stats`, and nothing ever writes into an existing run folder.** `runs/p215/`
+  and `runs/p215b/` are the evidence for the published P2.15 figures. Instead the loader raises
+  and names which checkpoint the shared file belongs to, and takes an **explicit** statistics
+  path, exposed as `--stats` on `evaluate --rl` and `phase2_run --harness-only`, still
+  pairing-checked.
+- **The verification checks become per-checkpoint**, dropping the "not all identical bytes"
+  idea since the pairing check subsumes it.
+- Fold in the resume branch's silent `if os.path.isfile(...)` and `phase2_run`'s wrong docstring
+  example.
+- **Spec text approved in advance**; docs edited only after (a)–(e) pass.
+- Three additions: `vecnormalize_path_for` must map a path with or without `.zip` to the same
+  file, with a test; check (c) records before/after md5s of every result directory the harness
+  overwrites; and the drift figures must be labelled as a simulated accumulation.
+- Two further verifications added mid-item: **(d)** `evaluate --verify`, since `evaluate.py`
+  changes, and **(e)** the full gate at `base_seed 20261015` into a fresh out-dir, since
+  `phase2_run.check_training` changes and no unit test covers that file.
+
+## P2.16 — DONE 2026-10-12 13:55 — awaiting Ritun's verification
+
+Files changed:
+- `train_sdpdp.py` — `VECNORMALIZE_SUFFIX`, `STATS_COUNT_EPSILON`, `STATS_PAIRING_TOL`;
+  `vecnormalize_path_for` (the one definition of the map; strips only a `.zip`);
+  `checkpoint_timesteps` (zip `data` entry, no policy load); `check_statistics_pairing`;
+  `verify_statistics_pairing` (the pre-venv form); `_missing_statistics_message` (the
+  legacy-folder message); `save_vecnormalize` and `load_vecnormalize` through the helper, the
+  latter gaining `stats_path=`; `check_checkpoint_statistics`; the resume branch now
+  `load_vecnormalize(..., for_evaluation=False)`; `_check_reload_determinism` through the same
+  loader; `--verify-run`'s folder check replaced; `import json`. `VECNORMALIZE_FILE` is kept
+  **only** for the legacy message — nothing writes it.
+- `src/rl_gym/callbacks.py` — docstring only: the three artifacts, with the per-checkpoint name.
+- `src/rl_gym/evaluate.py` — `run_rl_pairs(..., stats_path=)`, verified **before** the
+  `SubprocVecEnv` is built so a refusal orphans nothing; `--stats`; docstring.
+- `src/rl_gym/tools/phase2_run.py` — `run_harness(..., stats_path=)` verifying the pair before
+  the ten greedy runs; `--stats`; `check_training` gains the per-checkpoint statistics check;
+  docstring example corrected to `model_ep00047.zip`.
+- `tests/test_rl_gym_train.py` — `TestPerCheckpointStatistics` (21), three tests added to the
+  existing classes, two assertions updated, and the `save_stats` fixture that hardcoded the
+  shared name now goes through `vecnormalize_path_for`.
+- `docs/SDPDP_GYM_SPEC_v2.md` — §5.3, §8 P2.12, §8 P2.13, the P2.16 entry, After Phase 2 step 8.
+- `docs/RL_GYM_PHASE2_RESULTS.md` — the visible correction note.
+- `docs/RL_GYM_PROGRESS.md` — this entry.
+
+Verification — all five passed, in the order Ritun set, before any doc was edited:
+
+1. **(a) The full suite: `python -m unittest discover tests` → 615 tests, 208.1 s, OK**
+   (591 before; +24). **The P1.10 gate 8/8**, both byte comparisons.
+2. **(b) `python train_sdpdp.py --verify-run` → 24/24 in 7.8 min**, exit 0. The replaced check
+   reads `[PASS] every checkpoint has its own statistics file, each paired with it -- 2
+   checkpoint(s), each with its own statistics, each paired`, and that run's two checkpoints
+   wrote `model_ep00004_vecnormalize.pkl` and `model_ep00008_vecnormalize.pkl`.
+3. **(c) The real-artifact check → `kpi_report.txt` md5
+   `db34f5aea5f8cd59437fb2628c9534e0`**, 3/3 checks in 6.3 min, reproducing P2.15's published
+   table through the **explicit** `--stats` path (`-- statistics: vecnormalize.pkl, paired with
+   model_ep00047.zip`). Nothing was altered:
+   - `runs/p215/checkpoints/` all six files byte-unchanged, `vecnormalize.pkl` still
+     `9cee9181d8a6df6b24595b4e6efd966d`;
+   - all ten `greedy_<day>_s<seed>` directories, **20 md5s identical before and after** — the
+     harness regenerated them byte for byte, which also re-confirms stock greedy's determinism
+     at fixed seeds;
+   - the reference run `53879ea79cf211d700f670dee1173dd5` / `ded74ef39a274397c921c29f128f6950`.
+   - **Negative control**: the same `--stats` with `model_ep00012.zip` raised in **1.6 s**,
+     before any simulation, with `they imply 22528 timesteps (ret_rms.count 22528.0001 - 1e-4)
+     but that checkpoint was trained for 6236`, and produced no KPI table.
+4. **(d) `python -m src.rl_gym.evaluate --verify` → 13/13**, including both baseline byte
+   comparisons, D9's premise, and its own "the reference output directory is byte-unchanged by
+   every run above".
+5. **(e) The full gate at `base_seed 20261015` → 23/23 in 24.9 min**, exit 0, into
+   `runs/p216_gate`. All four of Ritun's expectations met:
+   - every check passed — **23, not 22, because the per-checkpoint statistics check adds a
+     line**;
+   - four checkpoints, each with its own `model_epNNNNN_vecnormalize.pkl`, each passing the
+     pairing check, and **no shared `vecnormalize.pkl` written at all**;
+   - the four files have **four distinct md5s** (`33a1cc45…`, `914579f2…`, `e02d52bc…`,
+     `9cee9181…`);
+   - `kpi_report.txt` md5 **`db34f5aea5f8cd59437fb2628c9534e0`**, as expected: training is
+     unchanged and the seed is the same. Confirmed directly — day visits, slot-selection counts,
+     episode outcomes, horizon figures and candidate-list figures are all **identical** to
+     `runs/p215b`, and episodes per worker are again 12/12/11/12. Only throughput moved (6.8
+     against 7.1 steps/s per worker, at load 3.96 against 2.48 at start).
+
+**Two findings from (e), both worth carrying:**
+
+- **The byte-level confirmation of the whole diagnosis.** (e)'s
+  `model_ep00047_vecnormalize.pkl` is **byte-identical** to P2.15's shared `vecnormalize.pkl`
+  (`9cee9181d8a6df6b24595b4e6efd966d`). So the shared file was demonstrably the *final*
+  checkpoint's statistics, the harness that used it was correctly paired, and P2.15's published
+  figures stand — now on identical bytes rather than on count arithmetic.
+- **The 1e-6 tolerance is load-bearing, and my justification for it was incomplete.** I argued
+  it was pure float safety because a simulated accumulation showed **zero** drift at 22,528,
+  3.2M and 8M timesteps. (e)'s own `model_ep00024` came out at `11900.000100000001` —
+  **1.8e-12** off — so a strict equality check would have failed a correctly paired checkpoint.
+  The simulation sampled three lengths and missed the case; the real artifacts found it in the
+  first run. The tolerance stays at 1e-6, now with a measured reason rather than a theoretical
+  one, and §5.3 and the P2.16 entry both record that the 3.2M and 8M figures are simulated, not
+  real runs.
+
+VERIFY findings: **P2.16 carries no `VERIFY` markers.** The claims it rests on were checked
+against the installed SB3 2.9.0 before being relied on:
+- **`RunningMeanStd.__init__` sets `count = epsilon`, default 1e-4: matched**, and it is **not**
+  `VecNormalize(epsilon=1e-8)`, which is the normalisation floor — a different number.
+- **`_update_reward` is gated on `self.training` alone and `reset()` never updates `ret_rms`:
+  matched** (`reset` zeroes `self.returns` and updates `obs_rms` only). This is what makes
+  `ret_rms` the exact quantity and `obs_rms` the one carrying `n_envs` per `learn()` call.
+- **`OnPolicyAlgorithm.collect_rollouts` advances `self.num_timesteps += env.num_envs`:
+  matched**, on the same iteration, which is why the two sides track exactly.
+- **An SB3 checkpoint's `data` entry is JSON carrying `num_timesteps`: matched** — read with
+  `zipfile` + `json`, no policy construction and no torch import.
+
+One contract stated rather than left implicit: when **no checkpoint zip exists** beside the
+statistics (as several unit tests arrange), the pairing check cannot run and `load_vecnormalize`
+loads unchecked. Every real caller loads the model from the same path moments later, so an
+absent zip fails at once; a test pins the behaviour so it is a stated contract and not an
+accident.
+
+Decisions:
+- Asked: whether P2.16 is a work item or an After Phase 2 step.
+  Ritun: a numbered work item under §0.
+- Asked: the naming scheme, the pairing check, what to do with old folders, the test and
+  `--verify-run` changes, the doc corrections, and the blast radius.
+  Ritun: approved as proposed, with no migration command, an explicit `--stats` instead, and
+  the three additions recorded above.
+- Asked (mid-item, by Ritun): add (d) `evaluate --verify` and (e) the full gate, before the doc
+  edits.
+  Both run; results above.
+
+Spec corrections proposed and applied in this turn, all from the text Ritun approved in advance:
+§5.3 (per-checkpoint naming, the pairing relation, the tolerance with the simulated-versus-real
+drift note), §8 P2.12 and §8 P2.13 (what was actually implemented), the new §8 P2.16 entry, and
+After Phase 2 step 8 (**requires P2.16**). `docs/RL_GYM_PHASE2_RESULTS.md` carries a visible
+correction note rather than a silent rewrite; no P2.15 figure changed.
+
+**Stopping here.** No commits made (§0).
+

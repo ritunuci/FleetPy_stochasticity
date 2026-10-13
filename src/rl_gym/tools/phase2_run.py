@@ -11,7 +11,12 @@ each, for the trained checkpoint and for stock greedy on the same pairs.
     # either half on its own
     caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p215 --skip-harness
     caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p215 --harness-only \
-        --checkpoint runs/p215/checkpoints/model_ep00048.zip
+        --checkpoint runs/p215/checkpoints/model_ep00047.zip
+    # a run folder written before P2.16, whose checkpoints share one vecnormalize.pkl: name it
+    # explicitly. It is pairing-checked, so it is refused for every checkpoint but its own.
+    caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p216_check \
+        --harness-only --checkpoint runs/p215/checkpoints/model_ep00047.zip \
+        --stats runs/p215/checkpoints/vecnormalize.pkl
 
 `caffeinate` is macOS-only; drop it elsewhere. Prints a `PASS`/`FAIL` line per pass criterion
 and exits non-zero if any failed, so Ritun can re-run it independently (§0) -- the same
@@ -353,7 +358,8 @@ def run_training(out_dir: str, base_seed: int = BASE_SEED,
 # -------------------------------------------------------------------------- #
 
 def run_harness(checkpoint: str, out_dir: str, greedy_processes: int = 4,
-                rl_workers: int = 5, verbose: bool = True) -> Dict[str, Any]:
+                rl_workers: int = 5, verbose: bool = True,
+                stats_path: Optional[str] = None) -> Dict[str, Any]:
     """P2.14's harness on the 10 pairs, both policies, then its KPI table.
 
     The functions are called in process rather than through the `evaluate` CLI only so the rows
@@ -363,10 +369,19 @@ def run_harness(checkpoint: str, out_dir: str, greedy_processes: int = 4,
         python -m src.rl_gym.evaluate --greedy --rl --checkpoint <ckpt> \
             --days <the five> --seeds 2 --processes 4 --workers 5 --out <report>
     """
+    import train_sdpdp
     from src.rl_gym import evaluate
+
+    # First, before the ten stock-greedy simulations: the checkpoint must have the statistics
+    # it was trained under, or be given them explicitly (P2.16). A mispairing found after the
+    # greedy half would cost three minutes to say what this says in a second.
+    stats_file = train_sdpdp.verify_statistics_pairing(checkpoint, stats_path)
 
     pairs = evaluate.pairs_from_seed_file(days=list(HARNESS_DAYS),
                                           n_seeds=HARNESS_SEEDS_PER_DAY)
+    if verbose:
+        print(f"-- statistics: {os.path.basename(stats_file)}, paired with "
+              f"{os.path.basename(checkpoint)}", flush=True)
     if verbose:
         print(f"-- harness: {len(pairs)} pair(s), stock greedy on "
               f"{greedy_processes} process(es) then the checkpoint on {rl_workers} worker(s)",
@@ -375,7 +390,8 @@ def run_harness(checkpoint: str, out_dir: str, greedy_processes: int = 4,
     greedy_runs = evaluate.run_greedy_pairs(pairs, processes=greedy_processes)
     t_greedy = time.perf_counter() - t0
     t1 = time.perf_counter()
-    rl_runs = evaluate.run_rl_pairs(pairs, checkpoint, n_workers=rl_workers)
+    rl_runs = evaluate.run_rl_pairs(pairs, checkpoint, n_workers=rl_workers,
+                                    stats_path=stats_path)
     t_rl = time.perf_counter() - t1
 
     rows = evaluate.kpi_rows(greedy_runs + rl_runs)
@@ -537,6 +553,11 @@ def check_training(result: Dict[str, Any], checker: Checker) -> Dict[str, Any]:
     models = sorted(f for f in os.listdir(ckpt_dir) if f.endswith(".zip"))
     checker.check("sizing: at least two checkpoints were written", len(models) >= 2,
                   f"{len(models)}: {models}")
+    # P2.16: per checkpoint, not per folder, and each paired with its own model. Before P2.16
+    # the four checkpoints here shared one vecnormalize.pkl that each save overwrote.
+    stats_ok, stats_detail = train_sdpdp.check_checkpoint_statistics(ckpt_dir)
+    checker.check("sizing: every checkpoint has its own statistics, paired with it",
+                  stats_ok, stats_detail)
     meta = cb.load_run_metadata(ckpt_dir)
     checker.check("sizing: the metadata records the base_seed, weights and hyperparameters",
                   meta.get("base_seeds") == [cfg["base_seed"]]
@@ -757,6 +778,11 @@ def main() -> int:
                         help="criterion 7 only; needs --checkpoint")
     parser.add_argument("--checkpoint", default=None,
                         help="--harness-only: the .zip to evaluate")
+    parser.add_argument("--stats", default=None,
+                        help="an explicit VecNormalize statistics file, for a run folder "
+                             "written before P2.16 whose checkpoints share one "
+                             "vecnormalize.pkl. Pairing-checked, so it is refused for every "
+                             "checkpoint but the one it belongs to")
     parser.add_argument("--processes", type=int, default=4,
                         help="parallel stock-greedy simulations in the harness")
     parser.add_argument("--rl-workers", type=int, default=5,
@@ -787,7 +813,7 @@ def main() -> int:
         if not checkpoint:
             parser.error("--harness-only needs --checkpoint")
         harness = run_harness(checkpoint, args.out_dir, greedy_processes=args.processes,
-                              rl_workers=args.rl_workers)
+                              rl_workers=args.rl_workers, stats_path=args.stats)
         print("-- criterion 7, from the harness --", flush=True)
         check_harness(harness, checker)
 

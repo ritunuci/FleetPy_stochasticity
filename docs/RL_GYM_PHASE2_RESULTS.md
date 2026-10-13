@@ -43,13 +43,26 @@ git-ignored (added in P2.15), so the tables below are reproduced in full rather 
 | output | `skip_output = True`, `log_level = warning` for training; output on for the harness |
 | evaluation callback | 4 pairs over 2 workers (2 each), `eval_freq = 1,700` → evaluations at timesteps 6,800 / 13,600 / 20,400 |
 | callback pairs | the **first** seed of four harness days, from `docs/RL_GYM_EVAL_SEEDS.csv`: (2024-01-11, 1620816), (2024-03-19, 408699), (2024-06-20, 2071786), (2024-08-13, 1881929) |
-| checkpoints | every 12 episodes → 4: `model_ep00012/24/36/47.zip`, each with its `vecnormalize.pkl` and run metadata |
+| checkpoints | every 12 episodes → 4: `model_ep00012/24/36/47.zip` and run metadata **(see the correction below)** |
 | final harness | 5 days × the first 2 seeds of each (10 pairs), both policies: stock greedy on 4 processes, the `model_ep00047` checkpoint on 5 workers |
 
 2024-10-01 is in the harness but deliberately **not** in the callback: at 545 greedy steps it is
 the longest of the five days, and leaving it out keeps three evaluations at ~4 minutes instead of
 ~6. Four pairs over two workers also gives each worker a 2-pair slice, which is what exercises
 P2.13's rotation argument — a 1-pair slice cannot rotate.
+
+> **Correction — P2.16.** The checkpoints row originally read "each with its `vecnormalize.pkl`".
+> That was wrong: all four checkpoints shared **one** statistics file, which each save
+> overwrote, so only `model_ep00047.zip` kept the statistics it was trained under and the other
+> three lost theirs. **No figure in this report is affected.** The harness evaluated
+> `model_ep00047.zip`, and the shared file is that checkpoint's own — `ret_rms.count`
+> 22,528.0001 against its `num_timesteps` 22,528, and P2.16's gate run produced a
+> `model_ep00047_vecnormalize.pkl` **byte-identical** to it. The KPI md5
+> `db34f5aea5f8cd59437fb2628c9534e0` stands, and P2.16 reproduced it twice under the new code:
+> once through `--harness-only` on this very checkpoint with the shared file passed explicitly,
+> and once from a full re-run of the gate at the same `base_seed`. What was lost is the ability
+> to evaluate ep12, ep24 or ep36 from these artifacts; their statistics are gone, and the loader
+> now says so instead of silently substituting ep47's.
 
 ### Machine conditions
 
