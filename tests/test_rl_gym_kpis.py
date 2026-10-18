@@ -23,7 +23,7 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.rl_gym import evaluate, kpis  # noqa: E402
+from src.rl_gym import corpus, evaluate, kpis  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 BASELINE_USER_STATS = os.path.join(ROOT, "docs", "baseline_user_stats.csv")
@@ -255,7 +255,7 @@ class TestEvalSeedFile(unittest.TestCase):
     def test_shape_and_bounds(self):
         rows = evaluate.read_seed_file()
         days = sorted({d for d, _, _ in rows})
-        self.assertEqual(len(days), 26, "26 evaluation days (§2.9)")
+        self.assertEqual(len(days), 26, "26 held-out days: 12 validation + 14 test (§2.9)")
         self.assertEqual(len(rows), 26 * evaluate.DEFAULT_SEEDS_PER_DAY)
         for _day, _index, seed in rows:
             self.assertTrue(0 <= seed <= evaluate.MAX_EPISODE_SEED)
@@ -270,7 +270,7 @@ class TestEvalSeedFile(unittest.TestCase):
                 self.assertEqual(len(seeds), len(set(seeds)))
 
     def test_derivation_is_deterministic(self):
-        days = evaluate.evaluation_days()
+        days = evaluate.held_out_days()
         self.assertEqual(evaluate.derive_eval_seeds(days, 10),
                          evaluate.derive_eval_seeds(days, 10))
 
@@ -282,7 +282,7 @@ class TestEvalSeedFile(unittest.TestCase):
         which order had produced the committed seeds.
         """
         import numpy as np
-        days = evaluate.evaluation_days()
+        days = evaluate.held_out_days()
         rng = np.random.default_rng(np.random.SeedSequence(evaluate.EVAL_SEED_ROOT))
         draws = [int(v) for v in
                  rng.integers(0, evaluate.MAX_EPISODE_SEED + 1, size=len(days) * 10)]
@@ -323,6 +323,205 @@ class TestEvalSeedFile(unittest.TestCase):
             self.assertIn("--derive-seeds", str(ctx.exception))
 
 
+class TestHeldOutSplit(unittest.TestCase):
+    """P2.17's validation / test split of the 26 held-out days (§2.9).
+
+    The split is frozen like §2.9's own 26-day list: these literals are the decision, and the
+    assertions bind them to the directories, to the committed `day,split` record and to the
+    seed file that must not have moved.
+    """
+
+    #: the 12 validation days, drawn at seed 20261018 by §2.9's rule (P2.17)
+    VALIDATION = [
+        "2024-01-11", "2024-02-07", "2024-02-27", "2024-03-19", "2024-04-17", "2024-05-23",
+        "2024-06-20", "2024-07-31", "2024-08-13", "2024-08-15", "2024-09-04", "2024-10-01",
+    ]
+    #: the 14 test days -- the final-results half, read once
+    TEST = [
+        "2024-01-30", "2024-02-08", "2024-03-20", "2024-04-09", "2024-04-11", "2024-05-07",
+        "2024-05-15", "2024-06-12", "2024-07-09", "2024-07-25", "2024-08-28", "2024-09-12",
+        "2024-10-09", "2024-10-24",
+    ]
+    #: md5 of the seed file's three columns, header included, LF-terminated. **This is the
+    #: guarantee that P2.17 redrew nothing**: the whole-file md5
+    #: `559b836e7c61fb7dadd2e7bd9bc8891d` is checked too, and holds because the split labels
+    #: went into a separate file -- but this one survives any later annotation and still fails
+    #: on a single changed seed.
+    SEED_COLUMNS_MD5 = "36599d9aeb886dc4b1055d777565069d"
+    SEEDS_FILE_MD5 = "559b836e7c61fb7dadd2e7bd9bc8891d"
+
+    def test_the_two_halves_are_the_committed_lists(self):
+        self.assertEqual(corpus.validation_days(), self.VALIDATION)
+        self.assertEqual(corpus.test_days(), self.TEST)
+
+    def test_the_halves_are_disjoint_and_cover_the_seed_file(self):
+        """A day in both halves is the copy-instead-of-move failure; a day in neither is lost."""
+        self.assertEqual(set(self.VALIDATION) & set(self.TEST), set())
+        self.assertEqual(corpus.held_out_days(), sorted(self.VALIDATION + self.TEST))
+        self.assertEqual(corpus.held_out_days(),
+                         sorted({d for d, _i, _s in evaluate.read_seed_file()}))
+
+    def test_sizes_and_weekday_balance(self):
+        """4/4/4 and 4/5/5 -- the best the 8/9/9 pool allows, and the rule's stated property."""
+        import datetime as dt
+        names = ("Tue", "Wed", "Thu")
+
+        def counts(days):
+            out = {n: 0 for n in names}
+            for day in days:
+                out[names[dt.date.fromisoformat(day).weekday() - 1]] += 1
+            return out
+
+        self.assertEqual(len(self.VALIDATION), 12)
+        self.assertEqual(len(self.TEST), 14)
+        self.assertEqual(counts(self.VALIDATION), {"Tue": 4, "Wed": 4, "Thu": 4})
+        self.assertEqual(counts(self.TEST), {"Tue": 4, "Wed": 5, "Thu": 5})
+
+    def test_every_month_is_in_both_halves(self):
+        val_months = {int(d[5:7]) for d in self.VALIDATION}
+        test_months = {int(d[5:7]) for d in self.TEST}
+        self.assertEqual(val_months, set(range(1, 11)))
+        self.assertEqual(test_months, set(range(1, 11)))
+
+    def test_the_five_already_run_days_are_validation_days(self):
+        """P2.15 and P2.16 evaluated a trained policy on these, so they cannot be test days."""
+        for day in ("2024-01-11", "2024-03-19", "2024-06-20", "2024-08-13", "2024-10-01"):
+            with self.subTest(day):
+                self.assertEqual(corpus.split_of_day(day), "val")
+
+    def test_the_seed_file_was_not_regenerated(self):
+        """The three seed columns, pinned. P2.17 moved no seed -- this is what says so."""
+        import hashlib
+        rows = evaluate.read_seed_file()
+        projection = "day,seed_index,seed\n" + "".join(f"{d},{i},{s}\n" for d, i, s in rows)
+        self.assertEqual(hashlib.md5(projection.encode()).hexdigest(),
+                         self.SEED_COLUMNS_MD5)
+        with open(SEEDS_FILE, "rb") as fh:
+            self.assertEqual(hashlib.md5(fh.read()).hexdigest(), self.SEEDS_FILE_MD5,
+                             "the seed file must stay byte-frozen: the split labels live in "
+                             "docs/RL_GYM_HELDOUT_SPLIT.csv")
+
+    def test_the_seed_file_still_matches_its_derivation_over_both_halves(self):
+        self.assertEqual(evaluate.check_seed_file(), [])
+
+    def test_committed_labels_agree_with_the_directories(self):
+        """G4. A stale label cannot misroute a run, but it would misreport a filed KPI table."""
+        self.assertEqual(corpus.check_split_file(), [])
+        labelled = dict(corpus.read_split_file())
+        self.assertEqual(len(labelled), 26)
+        for day in self.VALIDATION:
+            self.assertEqual(labelled[day], "val")
+        for day in self.TEST:
+            self.assertEqual(labelled[day], "test")
+
+    def test_split_of_day_refuses_a_training_day_and_an_unknown_day(self):
+        for day in ("2024-01-18", "2024-06-21", "1999-01-01"):
+            with self.subTest(day), self.assertRaises(ValueError) as ctx:
+                corpus.split_of_day(day)
+            self.assertIn("not a held-out day", str(ctx.exception))
+
+    def test_a_day_in_both_halves_raises_rather_than_picking_one(self):
+        """The copy-instead-of-move failure: the day would be selected on and reported on."""
+        with tempfile.TemporaryDirectory() as tmp:
+            val, test = os.path.join(tmp, "val"), os.path.join(tmp, "test")
+            os.makedirs(val)
+            os.makedirs(test)
+            for d in (val, test):
+                with open(os.path.join(d, "2024-06-20.csv"), "w") as fh:
+                    fh.write("x\n")
+            with self.assertRaises(ValueError) as ctx:
+                corpus.split_of_day("2024-06-20", val, test)
+            self.assertIn("both", str(ctx.exception))
+
+    def test_day_dir_for_refuses_the_wrong_half_in_both_directions(self):
+        """G3, symmetric. One failing direction with the other passing is how this rots."""
+        val_day, test_day = self.VALIDATION[0], self.TEST[0]
+        self.assertEqual(corpus.day_dir_for(val_day, "val"), "corpus_val")
+        self.assertEqual(corpus.day_dir_for(test_day, "test"), "corpus_eval")
+        with self.assertRaises(ValueError) as ctx:
+            corpus.day_dir_for(val_day, "test")
+        self.assertIn("**val** day", str(ctx.exception))
+        with self.assertRaises(ValueError) as ctx:
+            corpus.day_dir_for(test_day, "val")
+        self.assertIn("**test** day", str(ctx.exception))
+
+    def test_an_unrecognised_split_raises(self):
+        for bad in ("validation", "final", "", "VAL"):
+            with self.subTest(bad), self.assertRaises(ValueError):
+                corpus.day_dir_for(self.VALIDATION[0], bad)
+
+
+class TestSplitGuardsOnTheRunPaths(unittest.TestCase):
+    """The guards where a command actually starts a run (G1-G3, P2.17). No simulation."""
+
+    VAL_DAY = "2024-06-20"
+    TEST_DAY = "2024-01-30"
+
+    def test_greedy_parameters_resolve_each_half_and_refuse_the_other(self):
+        from src.misc.globals import G_DAY_DIR
+        for day, split, expected in ((self.VAL_DAY, "val", "corpus_val"),
+                                     (self.TEST_DAY, "test", "corpus_eval")):
+            with self.subTest(day):
+                params = evaluate.build_greedy_scenario_parameters(day, 1, split=split)
+                self.assertEqual(params[G_DAY_DIR], expected)
+        with self.assertRaises(ValueError):
+            evaluate.build_greedy_scenario_parameters(self.VAL_DAY, 1, split="test")
+        with self.assertRaises(ValueError):
+            evaluate.build_greedy_scenario_parameters(self.TEST_DAY, 1, split="val")
+
+    def test_a_training_day_is_unreachable_from_the_greedy_path(self):
+        """`corpus/` and `corpus_excluded/` cannot be named: the day decides (G2)."""
+        for day in ("2024-01-18", "2024-07-04"):
+            with self.subTest(day), self.assertRaises(ValueError):
+                evaluate.build_greedy_scenario_parameters(day, 1)
+
+    def test_pairs_from_seed_file_selects_a_half_when_no_days_are_given(self):
+        val = evaluate.pairs_from_seed_file(split="val")
+        test = evaluate.pairs_from_seed_file(split="test")
+        self.assertEqual(len(val), 12 * evaluate.DEFAULT_SEEDS_PER_DAY)
+        self.assertEqual(len(test), 14 * evaluate.DEFAULT_SEEDS_PER_DAY)
+        self.assertEqual(sorted({d for d, _s in val}), corpus.validation_days())
+        self.assertEqual(sorted({d for d, _s in test}), corpus.test_days())
+        # and together they are still every pair the file holds -- nothing was dropped
+        self.assertEqual(len(val) + len(test), len(evaluate.pairs_from_seed_file()))
+
+    def test_pairs_from_seed_file_checks_named_days_against_the_half(self):
+        """A named day list must not be able to smuggle a test day into a validation run."""
+        with self.assertRaises(ValueError):
+            evaluate.pairs_from_seed_file(days=[self.TEST_DAY], split="val")
+        with self.assertRaises(ValueError):
+            evaluate.pairs_from_seed_file(days=[self.VAL_DAY], split="test")
+        # mixed, which is the realistic typo
+        with self.assertRaises(ValueError):
+            evaluate.pairs_from_seed_file(days=[self.VAL_DAY, self.TEST_DAY], split="val")
+
+    def test_resolve_pairs_split_refuses_a_pair_list_spanning_both_halves(self):
+        self.assertEqual(
+            evaluate.resolve_pairs_split([(self.VAL_DAY, 1), ("2024-08-13", 2)]), "corpus_val")
+        self.assertEqual(
+            evaluate.resolve_pairs_split([(self.TEST_DAY, 1)]), "corpus_eval")
+        with self.assertRaises(ValueError) as ctx:
+            evaluate.resolve_pairs_split([(self.VAL_DAY, 1), (self.TEST_DAY, 2)])
+        self.assertIn("spans both halves", str(ctx.exception))
+
+    def test_the_report_header_names_the_half(self):
+        val = evaluate.report_header("val", [self.VAL_DAY])
+        test = evaluate.report_header("test", [self.TEST_DAY], checkpoint="runs/x/ep1.zip")
+        self.assertIn("half: **val**", val)
+        self.assertIn("half: **test**", test)
+        self.assertIn("FINAL RESULTS", test)
+        self.assertIn("ep1.zip", test)
+        self.assertIn("## Provenance", val)
+
+    def test_the_gate_harness_runs_on_the_validation_half(self):
+        """P2.15's five days are all validation days, and its driver says so (P2.17)."""
+        from src.rl_gym.tools import phase2_run
+        self.assertEqual(phase2_run.HARNESS_SPLIT, "val")
+        for day in phase2_run.HARNESS_DAYS + phase2_run.CALLBACK_DAYS:
+            with self.subTest(day):
+                self.assertEqual(corpus.split_of_day(day), "val")
+
+
 class TestPairSelection(unittest.TestCase):
 
     def test_first_n_seeds_of_named_days(self):
@@ -361,7 +560,10 @@ class TestGreedyScenarioParameters(unittest.TestCase):
         from src.misc.globals import (G_DAY_DIR, G_OP_MODULE, G_RANDOM_SEED, G_RQ_FILE,
                                       G_SCENARIO_NAME, G_SIM_ENV)
         params = evaluate.build_greedy_scenario_parameters("2024-08-13", 123)
-        self.assertEqual(params[G_DAY_DIR], "corpus_eval")
+        # 2024-08-13 is a **validation** day (P2.17), and the directory is resolved from the
+        # day rather than passed in -- that is G2, and it is why this assertion is on
+        # corpus_val and not on whatever default the function happens to carry
+        self.assertEqual(params[G_DAY_DIR], "corpus_val")
         self.assertEqual(params[G_RQ_FILE], "2024-08-13.csv")
         self.assertEqual(params[G_RANDOM_SEED], 123)
         self.assertEqual(params[G_SCENARIO_NAME], "greedy_2024-08-13_s123")

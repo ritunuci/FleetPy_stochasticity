@@ -1,7 +1,8 @@
 """Corpus sanity sweep: the scripted greedy policy on every kept demand day (P2.4).
 
 Every Phase 1 figure comes from one day. This runs the P1.10 greedy driver through the Gym API
-on each of the 127 kept days -- `corpus/` (101 training) plus `corpus_eval/` (26 evaluation),
+on each of the 127 kept days -- `corpus/` (101 training) plus the 26 held-out days, which P2.17
+split across `corpus_val/` (12) and `corpus_eval/` (14),
 never `corpus_excluded/` -- in fixed-day mode with `base_seed` absent, so every day runs at the
 scenario row's seed 42. It changes nothing in the env or the simulation.
 
@@ -53,7 +54,11 @@ REPORT = os.path.join(ROOT, "docs", "RL_GYM_CORPUS_SWEEP.md")
 
 K = 8
 MAX_PROCESSES = 4                 # sized for a 16 GB laptop at ~0.4 GB per worker
-SWEEP_DIRS = ("corpus", "corpus_eval")        # never corpus_excluded (§2.9)
+#: never corpus_excluded (§2.9). `corpus_val` joined in P2.17, which split the 26 held-out days
+#: into 12 validation and 14 test: without it this sweep would find 115 days and the CLI's
+#: `expected 127 kept days` check would refuse to run at all. The sweep covers every kept day
+#: whatever half it is in -- it is a property measurement of the demand, not an evaluation.
+SWEEP_DIRS = ("corpus", "corpus_val", "corpus_eval")
 
 #: `record_remaining_assignments` runs until every vehicle finishes its route, then gives up:
 #: `if c_time > self.end_time + 2 * 7200: break` (`FleetSimulationBase.py` ~625 -- written as
@@ -475,7 +480,9 @@ def format_report(rows: List[Dict[str, Any]], processes: int, wall: float,
                 f"| {r['pickups']} | {r['served']} | {r['declined']} | {r['cancelled']} "
                 f"| {r['no_show']} | {r['unserved_at_horizon']} | {r['wall_seconds']:.1f} |")
         L.append("")
-        L.append("`dir`: `c` = `corpus` (training), `c_eval` = `corpus_eval` (held out).\n")
+        L.append("`dir`: `c` = `corpus` (training), `c_val` = `corpus_val` (held-out "
+                 "validation), `c_eval` = `corpus_eval` (held-out test). The committed report "
+                 "predates P2.17's split and shows the 26 held-out days as `c_eval`.\n")
         L.append("**The demand loader applies two filters, in this order** "
                  "(`demand.py` ~103-105): `file` is\nrows in the CSV; `window` keeps "
                  "`rq_time` in `[start_time, end_time)`; `o=d drop` is how many of\nthose are "

@@ -1,8 +1,16 @@
 """Evaluation harness: the stock-greedy baseline, the RL policy, and the KPI table (P2.14).
 
 **The RL result is meaningless without the greedy baseline on the same held-out days.** This
-module runs both on the same `(day, seed)` pairs out of `corpus_eval/` and tabulates them
-through `kpis.py`, which reads only output directories and so treats the two identically.
+module runs both on the same `(day, seed)` pairs and tabulates them through `kpis.py`, which
+reads only output directories and so treats the two identically.
+
+**Two halves, and a run must say which it means** (P2.17). The 26 held-out days are split 12
+validation (`corpus_val/`) and 14 test (`corpus_eval/`): every choice -- which checkpoint, which
+reward weights, when to stop -- is made on the validation half, and the test half is read once,
+by the final evaluation. So `--greedy` and `--rl` require exactly one of `--validation` or
+`--final-test`; there is no default, because a default is what gets used by accident. Each day's
+directory is then resolved from the day itself through `corpus.day_dir_for`, which raises if the
+day belongs to the other half -- in both directions, on one code path.
 
     # once, and never again -- the seed file is an unregenerable artifact
     python -m src.rl_gym.evaluate --derive-seeds
@@ -11,10 +19,14 @@ through `kpis.py`, which reads only output directories and so treats the two ide
     # the committed verification of this work item
     python -m src.rl_gym.evaluate --verify
 
-    # a real comparison: stock greedy and a trained checkpoint on the same pairs
-    python -m src.rl_gym.evaluate --greedy --days 2024-06-20,2024-08-13 --seeds 2
-    python -m src.rl_gym.evaluate --rl --checkpoint runs/sdpdp/ep8.zip \
+    # choosing between checkpoints: the validation half, as often as you like
+    python -m src.rl_gym.evaluate --validation --greedy --days 2024-06-20,2024-08-13 --seeds 2
+    python -m src.rl_gym.evaluate --validation --rl --checkpoint runs/sdpdp/ep8.zip \
         --days 2024-06-20,2024-08-13 --seeds 2
+
+    # the final figures: the 14 test days, once, after everything is settled
+    python -m src.rl_gym.evaluate --final-test --greedy --rl \
+        --checkpoint runs/sdpdp/model_ep07000.zip --out docs/final_kpis.txt
 
 The baseline is **stock FleetPy** (D9): `run_examples.run_single_simulation` on
 `scenario_parameters` built exactly as `run_scenarios` builds them, with four overrides. P1.10
@@ -67,7 +79,19 @@ from src.misc.globals import (  # noqa: E402
     get_directory_dict,
 )
 from src.rl_gym import kpis  # noqa: E402
-from src.rl_gym.corpus import training_day_files  # noqa: E402
+from src.rl_gym.corpus import (  # noqa: E402
+    DEFAULT_SPLIT_FILE,
+    HELD_OUT_DIRS,
+    TEST_DAY_DIR,
+    VAL_DAY_DIR,
+    check_split_file,
+    day_dir_for,
+    held_out_days,
+    read_split_file,
+    split_of_day,
+    test_days,
+    validation_days,
+)
 from src.rl_gym.gym_env import MAX_EPISODE_SEED, derive_study_name  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -75,12 +99,15 @@ SCS = os.path.join(ROOT, "studies", "example_study", "scenarios")
 DEFAULT_CONSTANT_CFG = os.path.join(SCS, "constant_config_depot_cali_sc_1.csv")
 DEFAULT_SCENARIO_CFG = os.path.join(SCS, "example_depot_cali_sc_1.csv")
 
-#: the held-out split (§2.9). Never `corpus/`, never `corpus_excluded/`.
-EVAL_DAY_DIR = "corpus_eval"
-EVAL_DEMAND_DIR = os.path.join(ROOT, "data", "demand", "example_demand", "matched",
-                               "example_network", EVAL_DAY_DIR)
+#: the two halves of the held-out split (§2.9, P2.17). Never `corpus/`, never
+#: `corpus_excluded/`. A day's own directory decides its half -- `corpus.split_of_day` -- so
+#: these names are here for messages and for the venv config, never to pick a day's directory.
+VALIDATION_MODE = "val"
+TEST_MODE = "test"
 
-#: the unregenerable seed file and its layout
+#: the unregenerable seed file and its layout. **Unchanged by P2.17**: the split labels went
+#: into `docs/RL_GYM_HELDOUT_SPLIT.csv` instead, so this file stays byte-identical at md5
+#: `559b836e7c61fb7dadd2e7bd9bc8891d` and every citation of it in P2.14 to P2.16 still holds.
 SEEDS_FILE = os.path.join(ROOT, "docs", "RL_GYM_EVAL_SEEDS.csv")
 SEEDS_COLUMNS = ("day", "seed_index", "seed")
 
@@ -104,16 +131,12 @@ REFERENCE_SEED = 42
 # -------------------------------------------------------------------------- #
 # the seed file -- written once, never regenerated
 # -------------------------------------------------------------------------- #
-
-def evaluation_days(demand_dir: str = EVAL_DEMAND_DIR) -> List[str]:
-    """Sorted filename stems of the evaluation days, `*.csv` only (§2.9).
-
-    Delegates to `corpus.training_day_files`, which despite its name is the single `*.csv`
-    directory lister in the project (P2.9). Reusing it is what keeps a `.DS_Store` from ever
-    reading as a demand day here, in the artifact that can never be regenerated.
-    """
-    return training_day_files(demand_dir)
-
+#
+# `held_out_days`, `validation_days`, `test_days`, `split_of_day` and `day_dir_for` are imported
+# from `corpus` rather than wrapped here. P2.17 renamed this module's `evaluation_days` to
+# `held_out_days` and moved it there: "evaluation day" now means a **test** day specifically,
+# while the seed file covers both halves, and a wrapper would have been a second definition of
+# the one thing §2.9 says must have only one (trap 13).
 
 def derive_eval_seeds(days: Sequence[str], seeds_per_day: int = DEFAULT_SEEDS_PER_DAY,
                       seed_root: int = EVAL_SEED_ROOT) -> List[Tuple[str, int, int]]:
@@ -197,35 +220,64 @@ def read_seed_file(path: str = SEEDS_FILE) -> List[Tuple[str, int, int]]:
 
 def check_seed_file(path: str = SEEDS_FILE,
                     seeds_per_day: int = DEFAULT_SEEDS_PER_DAY,
-                    demand_dir: str = EVAL_DEMAND_DIR) -> List[str]:
+                    days: Optional[Sequence[str]] = None,
+                    check_split: bool = True) -> List[str]:
     """Re-derive the seeds and compare against the file. Returns a list of differences.
 
     Writes nothing, which is the whole point: it is how the file's reproducibility can be
     confirmed without the write path ever being taken a second time.
+
+    **Re-derives over both halves** (P2.17). The days come from `held_out_days()`, the sorted
+    union of `corpus_val/` and `corpus_eval/`, which is exactly the 26-day list the seeds were
+    drawn against -- so the split left all 260 rows identical. Reading one directory would have
+    derived 14 days against 260 stored rows and failed, which is how P2.17 found this.
+
+    Also reports **G4**: every label in `docs/RL_GYM_HELDOUT_SPLIT.csv` must equal the half the
+    day's file actually sits in. The guards that refuse a cross-half run resolve the half from
+    the filesystem, so a stale label could not misroute a run -- but it could misreport which
+    half a committed KPI table came from, and a record nobody checks is not a record.
     """
     problems: List[str] = []
     stored = read_seed_file(path)
-    derived = derive_eval_seeds(evaluation_days(demand_dir), seeds_per_day)
+    derived = derive_eval_seeds(held_out_days() if days is None else days, seeds_per_day)
     if len(stored) != len(derived):
         problems.append(f"row count {len(stored)} != derived {len(derived)}")
     for i, (a, b) in enumerate(zip(stored, derived)):
         if a != b:
             problems.append(f"row {i}: stored {a} != derived {b}")
+    if check_split:
+        problems += [f"{os.path.basename(DEFAULT_SPLIT_FILE)}: {p}"
+                     for p in check_split_file()]
     return problems
 
 
 def pairs_from_seed_file(days: Optional[Sequence[str]] = None, n_seeds: Optional[int] = None,
-                         path: str = SEEDS_FILE) -> List[Tuple[str, int]]:
+                         path: str = SEEDS_FILE,
+                         split: Optional[str] = None) -> List[Tuple[str, int]]:
     """`(day, seed)` pairs from the seed file, optionally narrowed.
 
     :param days: days to keep, in the order given; `None` keeps every day in file order.
     :param n_seeds: keep the **first** `n_seeds` of each day, by `seed_index`. P2.15 takes the
         first 2 of five named days this way.
+    :param split: `"val"` or `"test"` (P2.17). With `days` given it **checks** them -- a day of
+        the other half raises through `day_dir_for`, which is G3 and the reason a named day
+        list cannot smuggle a test day into a validation run. With `days` omitted it
+        **selects**: every day of that half, which is how `--final-test` means "the 14".
+        `None` keeps the function a pure reader of the file, which is what the seed-file tests
+        need.
     """
     rows = read_seed_file(path)
     by_day: Dict[str, List[Tuple[int, int]]] = {}
     for day, index, seed in rows:
         by_day.setdefault(day, []).append((index, seed))
+    if split is not None and split not in HELD_OUT_DIRS:
+        # an unrecognised split must not fall through to "the test days" by `else`
+        raise ValueError(f"split must be one of {sorted(HELD_OUT_DIRS)}, got {split!r}")
+    if days is None and split is not None:
+        days = validation_days() if split == VALIDATION_MODE else test_days()
+    if days is not None and split is not None:
+        for day in days:
+            day_dir_for(day, split)          # raises on a day from the other half (G3)
     order = list(days) if days is not None else list(dict.fromkeys(d for d, _, _ in rows))
     pairs: List[Tuple[str, int]] = []
     for day in order:
@@ -320,7 +372,7 @@ def build_greedy_scenario_parameters(day: str, seed: int,
                                      constant_cfg_path: str = DEFAULT_CONSTANT_CFG,
                                      scenario_cfg_path: str = DEFAULT_SCENARIO_CFG,
                                      scenario_row: int = 0,
-                                     day_dir: str = EVAL_DAY_DIR):
+                                     split: Optional[str] = None):
     """Stock-greedy `scenario_parameters` for one `(day, seed)`.
 
     Four overrides on top of `_base_scenario_parameters`, per §8 P2.14: the demand directory,
@@ -328,10 +380,17 @@ def build_greedy_scenario_parameters(day: str, seed: int,
     environment are left as the row and the constant config have them --- and asserted to be the
     **stock** ones, because a baseline that quietly ran `RLPoolingIRSOnly` would make D9's
     comparison compare the RL path with itself.
+
+    **The demand directory is derived from the day, never passed in** (G2, P2.17): `day_dir_for`
+    resolves it from where the day's file actually sits, so `corpus/` and `corpus_excluded/` are
+    unreachable from here and a day cannot be run against the wrong half's directory. `split`,
+    when given, additionally requires the day to belong to that half -- that is G3, and it is
+    what makes `--final-test` unable to touch a validation day and `--validation` unable to
+    touch a test day.
     """
     params = _base_scenario_parameters(constant_cfg_path, scenario_cfg_path, scenario_row)
     row_scenario_name = params[G_SCENARIO_NAME]
-    params[G_DAY_DIR] = day_dir
+    params[G_DAY_DIR] = day_dir_for(day, split)
     params[G_RQ_FILE] = f"{day}.csv"
     params[G_RANDOM_SEED] = int(seed)
     params[G_SCENARIO_NAME] = f"{GREEDY_PREFIX}_{day}_s{int(seed)}"
@@ -348,37 +407,51 @@ def build_greedy_scenario_parameters(day: str, seed: int,
     return params
 
 
-def run_greedy_pair(task: Tuple[str, int]) -> Dict[str, Any]:
+def run_greedy_pair(task: Sequence[Any]) -> Dict[str, Any]:
     """One stock-greedy run. Picklable, so it can be the body of a `Pool` task.
 
     The parameters are built **inside** the worker, so nothing that holds a routing engine or a
     file handle crosses the process boundary.
+
+    :param task: `(day, seed)` or `(day, seed, split)`. The split travels with the task rather
+        than being bound once in the parent, so each worker re-checks the half it is running
+        (P2.17) -- the check costs two `isfile` calls and means a mixed pair list cannot have
+        one element slip through.
     """
-    day, seed = task[0], int(task[1])
-    params = build_greedy_scenario_parameters(day, seed)
+    day, seed = str(task[0]), int(task[1])
+    split = task[2] if len(task) > 2 else None
+    params = build_greedy_scenario_parameters(day, seed, split=split)
     out_dir = get_directory_dict(dict(params))[G_DIR_OUTPUT]
     t0 = time.perf_counter()
     import run_examples
     run_examples.run_single_simulation(params)
     return {"policy": "greedy", "day": day, "seed": seed, "output_dir": out_dir,
-            "wall_seconds": time.perf_counter() - t0}
+            "split": split_of_day(day), "wall_seconds": time.perf_counter() - t0}
 
 
-def run_greedy_pairs(pairs: Sequence[Tuple[str, int]],
-                     processes: int = 1) -> List[Dict[str, Any]]:
+def run_greedy_pairs(pairs: Sequence[Tuple[str, int]], processes: int = 1,
+                     split: Optional[str] = None) -> List[Dict[str, Any]]:
     """Stock greedy on every pair, one simulation per process.
 
     `maxtasksperchild=1` so each run gets a **fresh** process. That is what §8 P2.14's "one
     process per run" asks for, and it matters: `FleetSimulationBase.__init__` seeds the global
     RNG and reconfigures process-global logging, so a reused interpreter is a shared-state risk
     in the one place a byte comparison is the arbiter.
+
+    `split` is checked for **every** pair before the first simulation starts (P2.17), so a
+    cross-half day costs no simulation time -- the same principle as P2.16's pre-flight pairing
+    check.
     """
     pairs = [(str(d), int(s)) for d, s in pairs]
+    if split is not None:
+        for day, _seed in pairs:
+            day_dir_for(day, split)
+    tasks = [(d, s, split) for d, s in pairs]
     if processes <= 1:
-        return [run_greedy_pair(p) for p in pairs]
+        return [run_greedy_pair(t) for t in tasks]
     from multiprocessing import Pool
     with Pool(processes=processes, maxtasksperchild=1) as pool:
-        return pool.map(run_greedy_pair, pairs)
+        return pool.map(run_greedy_pair, tasks)
 
 
 # -------------------------------------------------------------------------- #
@@ -386,7 +459,7 @@ def run_greedy_pairs(pairs: Sequence[Tuple[str, int]],
 # -------------------------------------------------------------------------- #
 
 def run_env_greedy_pair(day: str, seed: int, cfg: Optional[Dict[str, Any]] = None,
-                        day_dir: str = EVAL_DAY_DIR) -> Dict[str, Any]:
+                        split: Optional[str] = None) -> Dict[str, Any]:
     """The scripted greedy policy through the Gym API on one pair, output on.
 
     This exists to test **D9's premise** -- that env-driven greedy and stock greedy give the
@@ -397,6 +470,10 @@ def run_env_greedy_pair(day: str, seed: int, cfg: Optional[Dict[str, Any]] = Non
     each `delta_cfv` slot is scaled by its own running statistics, so an argmin across slots
     would compare z-scores from different distributions. `greedy_action`'s `is_valid` check
     refuses such a vector outright (P2.8), which is why no wrapper appears here.
+
+    The day's directory is resolved from the day (G2) and checked against `split` when given
+    (G3), exactly as on the stock-greedy path -- the two policies must never differ in which
+    half they read.
     """
     from src.rl_gym.gym_env import SDPDPAssignmentEnv
     from src.rl_gym.policies import greedy_action
@@ -407,7 +484,7 @@ def run_env_greedy_pair(day: str, seed: int, cfg: Optional[Dict[str, Any]] = Non
         "K": 8,
         "skip_output": False,
         "env_id": 0,
-        "day_dir": day_dir,
+        "day_dir": day_dir_for(day, split),
         "day": str(day),
         "episode_seed": int(seed),
         **(cfg or {}),
@@ -427,6 +504,7 @@ def run_env_greedy_pair(day: str, seed: int, cfg: Optional[Dict[str, Any]] = Non
     env.close()
     return {"policy": "env_greedy", "day": str(day), "seed": int(seed),
             "output_dir": output_dir_for(scenario_name), "steps": steps,
+            "split": split_of_day(day),
             "summary": summary, "wall_seconds": time.perf_counter() - t0}
 
 
@@ -434,9 +512,33 @@ def run_env_greedy_pair(day: str, seed: int, cfg: Optional[Dict[str, Any]] = Non
 # the trained policy
 # -------------------------------------------------------------------------- #
 
+def resolve_pairs_split(pairs: Sequence[Tuple[str, int]],
+                        split: Optional[str] = None) -> str:
+    """The one half every pair belongs to, raising if they disagree (G2/G3, P2.17).
+
+    The RL path runs all its pairs through one `SubprocVecEnv` with a single `day_dir`, so a
+    mixed pair list has no valid answer -- and silently reading one directory would make half
+    the pairs fail deep inside `load_demand_file`. With `split` given, every pair is checked
+    against it; without, the half is derived from the days and must be unanimous.
+    """
+    if not pairs:
+        raise ValueError("no (day, seed) pairs")
+    found = {day_dir_for(day, split) for day, _seed in pairs}
+    if len(found) > 1:
+        halves = {d: sorted({day for day, _s in pairs
+                             if day_dir_for(day) == d}) for d in sorted(found)}
+        raise ValueError(
+            f"the pair list spans both halves of the held-out split, which cannot run in one "
+            f"evaluation: " + "; ".join(f"{d} -> {', '.join(days)}"
+                                        for d, days in halves.items())
+            + ". Choose validation or test and pass only that half's days (P2.17)."
+        )
+    return found.pop()
+
+
 def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
                  cfg: Optional[Dict[str, Any]] = None, n_workers: int = 1,
-                 day_dir: str = EVAL_DAY_DIR,
+                 split: Optional[str] = None,
                  stats_path: Optional[str] = None) -> List[Dict[str, Any]]:
     """The trained policy on every pair: deterministic actions, output on.
 
@@ -456,6 +558,10 @@ def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
     accepted for the checkpoint it belongs to and refused for the rest. **The pair is verified
     before the workers are built**, so a refusal costs no simulation and orphans nothing.
 
+    `split` names the half (P2.17). The single `day_dir` the venv gets is resolved from the
+    pairs themselves, so it cannot be aimed at a directory the days are not in, and a pair list
+    spanning both halves raises rather than half-failing inside `load_demand_file`.
+
     Each episode's output directory is found through `episode_summary()["scenario_name"]`, which
     the env records for exactly this purpose (P2.14).
     """
@@ -472,8 +578,10 @@ def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
     if n_workers > len(pairs):
         raise ValueError(f"n_workers {n_workers} exceeds the {len(pairs)} pair(s): a worker "
                          f"with no pair has nothing to run")
-    # before anything is constructed: a mispaired or missing statistics file must not cost a
-    # SubprocVecEnv whose workers the raise would then orphan (P2.16)
+    # before anything is constructed, in this order: the half (P2.17) and then the statistics
+    # pairing (P2.16). Neither a cross-half day nor a mispaired statistics file may cost a
+    # SubprocVecEnv whose workers the raise would then orphan.
+    day_dir = resolve_pairs_split(pairs, split)
     train_sdpdp.verify_statistics_pairing(checkpoint, stats_path)
 
     env_cfg = {
@@ -519,6 +627,7 @@ def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
                     "policy": "rl", "day": summary.get("day"),
                     "seed": summary.get("random_seed"),
                     "output_dir": output_dir_for(summary["scenario_name"]),
+                    "split": split_of_day(summary["day"]),
                     "summary": summary,
                 })
     finally:
@@ -546,9 +655,37 @@ def kpi_rows(runs: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                          seed=r.get("seed")) for r in runs]
 
 
-def format_report(rows: Sequence[Dict[str, Any]]) -> str:
+def report_header(split: Optional[str], days: Sequence[str],
+                  checkpoint: Optional[str] = None,
+                  stats_file: Optional[str] = None) -> str:
+    """One provenance block naming the half a KPI table came from (P2.17).
+
+    A table of numbers does not say which days produced it, and the whole point of the split is
+    that validation and test figures must never be mistaken for each other afterwards. So the
+    half, the day list and the checkpoint go **in the report**, not only in the console
+    scrollback that produced it.
+    """
+    lines = ["## Provenance", ""]
+    if split is None:
+        lines.append("- half: **not stated** (no split mode given)")
+    else:
+        lines.append(f"- half: **{split}** "
+                     f"({HELD_OUT_DIRS[split]}/, "
+                     f"{'every choice is made here' if split == VALIDATION_MODE else 'FINAL RESULTS -- read once'})")
+    lines.append(f"- days ({len(days)}): {', '.join(days)}")
+    if checkpoint:
+        lines.append(f"- checkpoint: {os.path.basename(checkpoint)}")
+    if stats_file:
+        lines.append(f"- statistics: {os.path.basename(stats_file)}")
+    lines.append(f"- seed file: {os.path.basename(SEEDS_FILE)}; "
+                 f"split record: {os.path.basename(DEFAULT_SPLIT_FILE)}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def format_report(rows: Sequence[Dict[str, Any]], header: str = "") -> str:
     """The per-run table plus the three aggregations, per policy."""
-    out = ["## Per run", "", kpis.format_per_run_table(rows), ""]
+    out = ([header] if header else []) + ["## Per run", "", kpis.format_per_run_table(rows), ""]
     policies = list(dict.fromkeys(r.get("policy") for r in rows))
     for level in ("day", "month", "overall"):
         out.append(f"## By {level}")
@@ -580,6 +717,12 @@ def verify(keep: bool = False, verbose: bool = True) -> int:
 
     Prints a `PASS`/`FAIL` line per check and returns the number of failures, so the CLI can
     exit non-zero. Needs no torch: every check here is greedy, stock or env-driven.
+
+    **15 checks since P2.17** (13 before): the split's guards refusing in both directions, and
+    the committed labels agreeing with the directories. The reference pair 2024-06-20 and the
+    second pair 2024-08-13 are both **validation** days now, so six of the original checks read
+    their demand out of `corpus_val/` -- with identical expected results, since a move changes a
+    file's directory and not its bytes, and no KPI reads the directory name.
     """
     checks: List[Tuple[bool, str]] = []
 
@@ -608,6 +751,34 @@ def verify(keep: bool = False, verbose: bool = True) -> int:
         except FileExistsError:
             record(True, "write_seed_file refuses to overwrite the committed file")
 
+        # 1b. P2.17's G4: the committed labels agree with the directories the files are in
+        split_problems = check_split_file()
+        record(not split_problems,
+               f"the {len(read_split_file())} committed split labels agree with the two "
+               f"directories"
+               f"{'' if not split_problems else f' -- differs: {split_problems[:3]}'}")
+
+        # 1c. P2.17's G3, in **both** directions. A final-evaluation command must not be able
+        # to reach a validation day, and a validation command must not be able to reach a test
+        # day; one failing direction with the other passing is the shape this would rot into.
+        val_day, test_day = validation_days()[0], test_days()[0]
+        both_ways = []
+        for day, wrong, right in ((val_day, TEST_MODE, VALIDATION_MODE),
+                                  (test_day, VALIDATION_MODE, TEST_MODE)):
+            try:
+                build_greedy_scenario_parameters(day, 1, split=wrong)
+                both_ways.append(f"{day} was accepted in {wrong!r} mode")
+            except ValueError:
+                pass
+            try:
+                build_greedy_scenario_parameters(day, 1, split=right)
+            except ValueError as exc:
+                both_ways.append(f"{day} was refused in its own {right!r} mode: {exc}")
+        record(not both_ways,
+               f"G3: {val_day} refused in test mode and {test_day} in validation mode, each "
+               f"accepted in its own"
+               f"{'' if not both_ways else f' -- {both_ways}'}")
+
         # 2. the trap-1 guard fires on the row's own scenario_name
         params = _base_scenario_parameters()
         row_name = params[G_SCENARIO_NAME]
@@ -617,8 +788,10 @@ def verify(keep: bool = False, verbose: bool = True) -> int:
         except RuntimeError:
             record(True, "guard_output_dir refuses the reference scenario_name")
 
-        # 3. stock greedy on the reference pair, byte for byte against both baselines
-        stock = run_greedy_pair((REFERENCE_DAY, REFERENCE_SEED))
+        # 3. stock greedy on the reference pair, byte for byte against both baselines.
+        # The reference day is a **validation** day since P2.17, so this reads corpus_val/ --
+        # the split is passed explicitly so the run states which half it means.
+        stock = run_greedy_pair((REFERENCE_DAY, REFERENCE_SEED, VALIDATION_MODE))
         created.append(stock["output_dir"])
         record(_same_bytes(os.path.join(stock["output_dir"], kpis.USER_STATS_FILE),
                            BASELINE_USER_STATS),
@@ -630,8 +803,9 @@ def verify(keep: bool = False, verbose: bool = True) -> int:
                f"== docs/baseline_op_stats.csv")
 
         # 4. a second baseline run on a different pair leaves both directories intact
-        other_day, other_seed = pairs_from_seed_file(days=["2024-08-13"], n_seeds=1)[0]
-        second = run_greedy_pair((other_day, other_seed))
+        other_day, other_seed = pairs_from_seed_file(days=["2024-08-13"], n_seeds=1,
+                                                     split=VALIDATION_MODE)[0]
+        second = run_greedy_pair((other_day, other_seed, VALIDATION_MODE))
         created.append(second["output_dir"])
         record(os.path.isfile(os.path.join(stock["output_dir"], kpis.USER_STATS_FILE))
                and os.path.isfile(os.path.join(second["output_dir"], kpis.USER_STATS_FILE)),
@@ -650,7 +824,7 @@ def verify(keep: bool = False, verbose: bool = True) -> int:
                f"{'' if not mismatch else f' -- differs: {mismatch}'}")
 
         # 6. D9's premise: env-driven greedy gives an identical KPI row
-        env_run = run_env_greedy_pair(REFERENCE_DAY, REFERENCE_SEED)
+        env_run = run_env_greedy_pair(REFERENCE_DAY, REFERENCE_SEED, split=VALIDATION_MODE)
         created.append(env_run["output_dir"])
         env_row = kpis.kpi_row(env_run["output_dir"], policy="env_greedy", day=REFERENCE_DAY,
                                seed=REFERENCE_SEED)
@@ -677,11 +851,13 @@ def verify(keep: bool = False, verbose: bool = True) -> int:
                                                    kpis.EPISODE_SUMMARY_FILE)),
                "rl_episode_summary.json written by the env run only")
 
-        # 9. the table renders at all three levels
+        # 9. the table renders at all three levels, and carries the half it came from (P2.17)
         rows = [stock_row, env_row]
-        report = format_report(rows)
-        record(all(level in report for level in ("## By day", "## By month", "## By overall")),
-               "KPI report renders per run, per day, per month and overall")
+        report = format_report(rows, header=report_header(
+            VALIDATION_MODE, [REFERENCE_DAY, other_day]))
+        record(all(level in report for level in ("## By day", "## By month", "## By overall"))
+               and "## Provenance" in report and "half: **val**" in report,
+               "KPI report renders per run, per day, per month and overall, with its half")
         if verbose:
             print()
             print(kpis.format_per_run_table(rows))
@@ -714,11 +890,21 @@ def main() -> int:
     parser.add_argument("--derive-seeds", action="store_true",
                         help="write docs/RL_GYM_EVAL_SEEDS.csv; refuses if it exists")
     parser.add_argument("--check-seeds", action="store_true",
-                        help="re-derive the seeds and compare against the file; writes nothing")
+                        help="re-derive the seeds and compare against the file, and check the "
+                             "split labels against the two directories; writes nothing")
     parser.add_argument("--verify", action="store_true",
                         help="run this work item's verification; exits non-zero on any failure")
     parser.add_argument("--greedy", action="store_true", help="run the stock greedy baseline")
     parser.add_argument("--rl", action="store_true", help="run a trained checkpoint")
+    half = parser.add_mutually_exclusive_group()
+    half.add_argument("--validation", action="store_true",
+                      help="run on the 12 validation days (corpus_val/). Every choice -- "
+                           "checkpoint, reward weights, when to stop -- is made here")
+    half.add_argument("--final-test", action="store_true", dest="final_test",
+                      help="run on the 14 TEST days (corpus_eval/): the final results, read "
+                           "once, after everything is settled. Named in full on purpose -- "
+                           "there is no --test, so this cannot be typed while meaning "
+                           "--validation")
     parser.add_argument("--checkpoint", help="the .zip to load for --rl")
     parser.add_argument("--stats",
                         help="--rl only: an explicit VecNormalize statistics file, for a run "
@@ -739,7 +925,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.derive_seeds:
-        days = evaluation_days()
+        days = held_out_days()
         rows = derive_eval_seeds(days, args.seeds_per_day)
         try:
             path = write_seed_file(rows)
@@ -759,7 +945,10 @@ def main() -> int:
                 print(f"  {problem}")
             return 1
         print(f"{SEEDS_FILE} matches its derivation "
-              f"({len(read_seed_file())} rows, seed root {EVAL_SEED_ROOT})")
+              f"({len(read_seed_file())} rows, seed root {EVAL_SEED_ROOT}, "
+              f"{len(held_out_days())} held-out days)")
+        print(f"{DEFAULT_SPLIT_FILE} agrees with the directories "
+              f"({len(validation_days())} validation + {len(test_days())} test)")
         return 0
 
     if args.verify:
@@ -769,21 +958,40 @@ def main() -> int:
         parser.error("nothing to do: pass --derive-seeds, --check-seeds, --verify, "
                      "--greedy or --rl")
 
+    # G1: exactly one half, and no default. A default is what gets used by accident, and the
+    # accident this guards against -- reading the 14 test days while choosing a checkpoint --
+    # cannot be undone afterwards, because the days have then been looked at (P2.17).
+    if not (args.validation or args.final_test):
+        parser.error(
+            "a run must say which half of the held-out split it is on: --validation for the "
+            "12 validation days (corpus_val/), where every choice is made, or --final-test "
+            "for the 14 test days (corpus_eval/), the final results. There is no default: "
+            "choosing a checkpoint or a weight setting on the test days spends them, and "
+            "nothing can put that back.")
+    split = TEST_MODE if args.final_test else VALIDATION_MODE
+
     days = [d.strip() for d in args.days.split(",")] if args.days else None
-    pairs = pairs_from_seed_file(days=days, n_seeds=args.seeds)
-    print(f"{len(pairs)} (day, seed) pair(s)")
+    # with --days given the split **checks** them; without, it **selects** that half's days
+    pairs = pairs_from_seed_file(days=days, n_seeds=args.seeds, split=split)
+    run_days = list(dict.fromkeys(d for d, _s in pairs))
+    print(f"half: {split} ({HELD_OUT_DIRS[split]}/); "
+          f"{len(run_days)} day(s), {len(pairs)} (day, seed) pair(s)")
+    if split == TEST_MODE:
+        print("*** FINAL TEST RUN: these 14 days are the held-back half (P2.17) ***")
 
     runs: List[Dict[str, Any]] = []
     if args.greedy:
-        runs += run_greedy_pairs(pairs, processes=args.processes)
+        runs += run_greedy_pairs(pairs, processes=args.processes, split=split)
     if args.rl:
         if not args.checkpoint:
             parser.error("--rl needs --checkpoint")
         runs += run_rl_pairs(pairs, args.checkpoint, n_workers=args.workers,
-                             stats_path=args.stats)
+                             split=split, stats_path=args.stats)
 
     rows = kpi_rows(runs)
-    report = format_report(rows)
+    report = format_report(rows, header=report_header(
+        split, run_days, checkpoint=args.checkpoint if args.rl else None,
+        stats_file=args.stats))
     print(report)
     if args.out:
         with open(args.out, "w") as fh:

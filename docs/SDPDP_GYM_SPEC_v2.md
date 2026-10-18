@@ -405,13 +405,14 @@ the output directory is recoverable; it is still not a licence to delete it (tra
 
 ### 2.9 The demand corpus — frozen
 
-Training and evaluation days live in three sibling directories under
+Training, validation and test days live in **four** sibling directories under
 `data/demand/example_demand/matched/example_network/`:
 
 | Directory | Days | Role |
 |---|---|---|
 | `corpus/` | 101 | training |
-| `corpus_eval/` | 26 | held-out evaluation |
+| `corpus_val/` | 12 | held-out validation — every choice (P2.17) |
+| `corpus_eval/` | 14 | held-out test — the final results only (P2.17) |
 | `corpus_excluded/` | 5 | kept on record, never read |
 
 That is 132 demand days, 2 Jan – 31 Oct 2024, exactly 44 each of Tuesday, Wednesday and
@@ -459,11 +460,13 @@ starts at 0:
 3. For each chosen weekday, in that order, the day is `pool[rng.integers(len(pool))]`, where
    `pool` is that month's kept days of that weekday, sorted; then add 1 to its running count.
 
-This reproduces the list below exactly (checked). Result: 26 evaluation days (Tue 8, Wed 9,
+This reproduces the list below exactly (checked). Result: 26 held-out days (Tue 8, Wed 9,
 Thu 9) and 101 training days (Tue 35, Wed 33, Thu 33); every month appears in both splits, with
-9–12 training days each.
+9–12 training days each. **P2.17 later split those 26 into 12 validation and 14 test** — see
+the block after the list; it moved files between the two held-out directories and changed
+nothing about `corpus/`.
 
-**Evaluation days (26):**
+**Held-out days (26):**
 2024-01-11, 2024-01-30, 2024-02-07, 2024-02-08, 2024-02-27, 2024-03-19, 2024-03-20,
 2024-04-09, 2024-04-11, 2024-04-17, 2024-05-07, 2024-05-15, 2024-05-23, 2024-06-12,
 2024-06-20, 2024-07-09, 2024-07-25, 2024-07-31, 2024-08-13, 2024-08-15, 2024-08-28,
@@ -472,18 +475,93 @@ Thu 9) and 101 training days (Tue 35, Wed 33, Thu 33); every month appears in bo
 The training days are the remaining 101. Files are **moved, not copied** — no day can sit in
 two splits.
 
+**Validation / test split of the held-out days (P2.17).** The 26 are split 12 / 14. The **12
+validation days** are what every choice is made on — which checkpoint, which reward weights,
+when to stop, the training-time callback. The **14 test days** are read once, by the final
+evaluation. Separate directories, `corpus_val/` and `corpus_eval/`, so a run's day source names
+the half it is drawing from.
+
+One generator, `rng = numpy.random.default_rng(20261018)`, used throughout. The five days a
+trained policy had already run on under P2.15 and P2.16 — 2024-01-11, 2024-03-19, 2024-06-20,
+2024-08-13, 2024-10-01 — are validation days by decision, not by draw: a day a policy has been
+evaluated on cannot be held back afterwards. Running validation weekday counts therefore start
+at Tue 3, Wed 0, Thu 2, and the rest of the rule is §2.9's own shape — **the running count
+decides and the random key only breaks ties**, so balance is produced rather than hoped for:
+
+1. **One validation day per month.** For each month with no preset day, in calendar order (Feb,
+   Apr, May, Jul, Sep): draw `keys = rng.random(k)`, one per weekday present in that month's
+   held-out days, in Tue, Wed, Thu order; take the weekday minimising `(running count, key)`;
+   that month's held-out day of that weekday becomes validation; increment its count. → 10.
+2. **Two more.** `order = rng.permutation(6)` over the six months with 3 held-out days (Feb,
+   Apr, May, Jul, Aug, Oct) in calendar order; its first two entries are the months contributing
+   a second validation day. For each, in calendar order, draw `keys = rng.random(k)` over that
+   month's weekdays **not already validation**, in Tue, Wed, Thu order, and take the min by
+   `(running count, key)`. The draw picked **Feb and Aug**. → 12.
+3. Everything else is test. → 14.
+
+**Every month has at most one held-out day per weekday**, a consequence of §2.9's held-out
+selection rule taking weekdays in Tue/Wed/Thu order — which is what makes "pick a weekday" name
+a unique day inside a month. Checked, and load-bearing: without it steps 1 and 2 would be
+ambiguous.
+
+**Validation (12), `corpus_val/`:** 2024-01-11 (Thu), 2024-02-07 (Wed), 2024-02-27 (Tue),
+2024-03-19 (Tue), 2024-04-17 (Wed), 2024-05-23 (Thu), 2024-06-20 (Thu), 2024-07-31 (Wed),
+2024-08-13 (Tue), 2024-08-15 (Thu), 2024-09-04 (Wed), 2024-10-01 (Tue)
+
+**Test (14), `corpus_eval/`:** 2024-01-30 (Tue), 2024-02-08 (Thu), 2024-03-20 (Wed),
+2024-04-09 (Tue), 2024-04-11 (Thu), 2024-05-07 (Tue), 2024-05-15 (Wed), 2024-06-12 (Wed),
+2024-07-09 (Tue), 2024-07-25 (Thu), 2024-08-28 (Wed), 2024-09-12 (Thu), 2024-10-09 (Wed),
+2024-10-24 (Thu)
+
+| | Tue | Wed | Thu | total |
+|---|---|---|---|---|
+| validation | 4 | 4 | 4 | 12 |
+| test | 4 | 5 | 5 | 14 |
+
+Perfectly balanced, and the best the 8/9/9 pool allows — proportional targets are Tue 3.69 /
+Wed 4.15 / Thu 4.15. Per month, validation holds 1 day in every month and 2 in Feb and Aug; test
+holds 1 in every month and 2 in Apr, May, Jul and Oct. **Every month appears in both halves by
+construction**, since only a 3-day month can give a second validation day.
+
+**Nothing was chosen by its results.** Recorded as an observation and not a criterion: loaded
+request counts come out validation mean 457.8 (median 442, range 389–586) against test 474.5
+(median 465.5, range 391–561), and October's three days split 1 validation / 2 test, so §2.9's
+post-24-Sep demand level is present in both halves.
+
+**Files are moved, not copied** (§2.9's rule, enforced in code): `corpus.split_of_day` raises
+when a day is in **both** directories, because a day in two places would be selected on and
+reported on at once. Measured across the move: all 12 checksums unchanged, 101 / 12 / 14 with
+the three directories pairwise disjoint.
+
+**The seed file was not regenerated, and no seed moved.** `docs/RL_GYM_EVAL_SEEDS.csv` stays
+byte-identical at md5 `559b836e7c61fb7dadd2e7bd9bc8891d`: P2.14's draw is one bulk call consumed
+row-major over the days **in sorted order**, and the union of the two directories sorts to
+exactly the original 26-day list, so re-deriving over `corpus.held_out_days()` reproduces all
+260 rows. A test pins that md5 and also the md5 of the three seed columns,
+`36599d9aeb886dc4b1055d777565069d`, which survives any later annotation and still fails on a
+single changed seed. The split labels live in a separate committed record,
+**`docs/RL_GYM_HELDOUT_SPLIT.csv`** (26 rows of `day,split`): the directories are the runtime
+truth about where a day's data is, that file is the frozen record of the decision, and
+`corpus.check_split_file` binds them so neither can drift.
+
+**The reference path is outside all of this.** `thursday/2024-06-20.csv` does not move and the
+P1.10 gate builds its env with no `day_dir`, so it reads the scenario row's
+`day_dir_name = thursday` and never enumerates a corpus directory. Both byte baselines are
+therefore structurally unaffected, not incidentally so.
+
 **The reference scenario is not part of this.** `thursday/2024-06-20.csv` stays exactly where
 it is, and `constant_config_depot_cali_sc_1.csv` keeps `day_dir_name = thursday`. The
 byte-for-byte gates compare against a baseline generated from that path, and nothing about the
-corpus may be able to affect them. 2024-06-20 happens to fall in the evaluation split, so its
-corpus copy lives in `corpus_eval/`. The two files have identical content but different line
+corpus may be able to affect them. 2024-06-20 happens to fall in the held-out split, so its
+corpus copy lives in **`corpus_val/`** (it is a validation day under P2.17; it was in
+`corpus_eval/` from P2.2 until then). The two files have identical content but different line
 endings, so their checksums differ — compare them with pandas, not md5.
 
 `thursday/` also holds **`2024-01-18.csv`**, which is **byte-identical** to its corpus copy
 (same md5, 426 rows) rather than a line-ending twin. No scenario reads it —
 `constant_config_depot_cali_sc_1.csv` names `rq_file = 2024-06-20.csv` — and 2024-01-18 is not
-in the evaluation split, so it stays a **training** day in `corpus/`. Recorded so that a later
-reader checking "no day sits in two places" does not mistake it for a split error: the three
+in the held-out split, so it stays a **training** day in `corpus/`. Recorded so that a later
+reader checking "no day sits in two places" does not mistake it for a split error: the four
 corpus directories are disjoint, and `thursday/` sits outside the split system by design.
 
 **List demand days by `*.csv` only.** Every reader of the corpus directories enumerates days by
@@ -2087,7 +2165,7 @@ against the stated corners, not against the hull. Under the old value the longit
 
 **Files:** the demand directories named in §2.9 only.
 
-Create `corpus_eval/` and `corpus_excluded/` beside `corpus/`, and move the 26 evaluation files
+Create `corpus_eval/` and `corpus_excluded/` beside `corpus/`, and move the 26 held-out files
 and the 5 excluded files per §2.9's lists. Filesystem moves only — no git commands (§0); Ritun
 commits, and git records the moves as renames. **The 26 days listed in §2.9 are authoritative:
 move exactly those.** As a cross-check, re-derive the list with §2.9's algorithm before moving
@@ -2114,7 +2192,8 @@ P1.9 deferred this here. The env writes the demand directory and file into
 index)` — no FleetPy import, no env state — so a pass over several workers is a millisecond
 unit test instead of one real episode per position. New config keys:
 
-- `day_dir` — demand directory name: `corpus` for training, `corpus_eval` for evaluation.
+- `day_dir` — demand directory name: `corpus` for training, `corpus_val` for validation and
+  `corpus_eval` for test (P2.17 split the held-out days; `corpus_eval` meant all 26 before it).
   **Absent → the scenario's own `day_dir_name` / `rq_file` are used unchanged**, which is the
   reference path the gates need.
 - `day` — optional fixed day (filename stem). When set, every episode runs that day. Used by
@@ -2161,7 +2240,7 @@ component caches the demand path before construction. *(Checked in P2.3: `G_DAY_
 
 **How Ritun verifies:**
 1. With `day_dir` absent, the P1.10 gate, byte for byte.
-2. With `day_dir = "corpus_eval"`, `day = "2024-06-20"` and `base_seed` absent, the scripted
+2. With `day_dir = "corpus_val"`, `day = "2024-06-20"` and `base_seed` absent, the scripted
    greedy run's `1_user-stats.csv` is byte-identical to `baseline_user_stats.csv`. The input
    differs from `thursday/` only in line endings, which the demand loader does not see.
 3. A unit test with 3 workers and a 10-day list, each worker run through its own share of every
@@ -2169,7 +2248,7 @@ component caches the demand path before construction. *(Checked in P2.3: `G_DAY_
    exactly twice across the workers; each worker's day sequence is deterministic given
    `base_seed`; episode seeds still differ from episode to episode; and pass `p`'s permutation
    comes from `SeedSequence([base_seed, 1010, p + 1])` (D10).
-4. With `day_dir = "corpus_eval"`, `day = "2024-06-20"` and `episode_seed = 42`, the output is
+4. With `day_dir = "corpus_val"`, `day = "2024-06-20"` and `episode_seed = 42`, the output is
    byte-identical to `baseline_user_stats.csv` (42 is the row's seed); with `episode_seed = 43`
    it differs. Setting both `episode_seed` and `base_seed` raises.
 5. A unit test: `eval_pairs` runs its pairs in order and wraps around; each episode's
@@ -2679,9 +2758,16 @@ guards — are unit tests in `tests/test_rl_gym_train.py`.
 - Hyperparameters are config keys with these defaults: `gamma = 0.999` (§6.5),
   `gae_lambda = 0.95`, `learning_rate = 3e-4`, `n_steps = 1024` per env, `batch_size = 256`,
   `n_epochs = 10`, `clip_range = 0.2`, `ent_coef = 0.0`, `net_arch = [256, 256]`.
-- `MaskableEvalCallback` on a separate evaluation `SubprocVecEnv` (D8) over `corpus_eval` in
+- `MaskableEvalCallback` on a separate evaluation `SubprocVecEnv` (D8) over **`corpus_val`** in
   `eval_pairs` mode (P2.3), sharing the training `VecNormalize` statistics (synced,
   `training = False`). The pairs are a config list (P2.15 takes them from P2.14's seed file).
+
+  *(`corpus_eval` until P2.17, which split the held-out days: a training-time callback reading
+  the test half would make those 14 days a selection criterion, which is the one thing holding
+  them back is for. `build_eval_venv`'s default is the only control `train()` has over this
+  directory, so that default is the guard; `train()` additionally refuses any `eval_pairs` day
+  that is not a validation day, **before either venv is built**, so the default and the pairs
+  cannot disagree and a refusal orphans no workers.)*
   Each evaluation must run every pair exactly once: VERIFY how SB3 spreads `n_eval_episodes`
   across the evaluation envs, split the pairs to match, and log the (day, seed) of every
   evaluation episode. Its size and frequency are config keys and small by default.
@@ -2800,7 +2886,8 @@ it needs no `torch`.)*
   takes only file paths and cannot accept overrides. Build `scenario_parameters` exactly as
   `run_scenarios` does for the reference scenario's active row (constant config plus row,
   `study_name`, `n_cpu_per_sim = 1`, and `evaluate`, `log_level` and `keep_old` as
-  `run_scenarios` sets them), then override `day_dir_name = "corpus_eval"`,
+  `run_scenarios` sets them), then override `day_dir_name` to the day's own half —
+  `corpus_val` or `corpus_eval`, resolved from the day by `corpus.day_dir_for` since P2.17 —
   `rq_file = "<day>.csv"`, `random_seed = <seed>` and
   `scenario_name = f"greedy_{day}_s{seed}"`. The unique name is required: every run otherwise
   inherits the row's `example_depot_time_pool_irsonly_rs_42`, and `create_or_empty_dir` would
@@ -2826,7 +2913,7 @@ it needs no `torch`.)*
   directory is about 1.2 MB, so a full 26-day × 10-seed sweep of both policies is roughly
   600 MB inside a OneDrive-synced folder. Ignored by git, but it will sync — which is why the
   CLI takes an explicit `--days` / `--seeds` pair list rather than defaulting to all 260.
-- **RL policy.** The env with `day_dir = "corpus_eval"`, `day` and `episode_seed` (P2.3) set to
+- **RL policy.** The env with `day_dir` the day's own half (P2.17), `day` and `episode_seed` (P2.3) set to
   the pair, `skip_output = False`, the checkpoint and its `VecNormalize` statistics
   (`training = False`), deterministic actions. Keep the log level at `warning` (the P1.11
   logging caveat). When output is on, the env also writes `rl_episode_summary.json` — the
@@ -2898,7 +2985,8 @@ himself (§0). Measured: **13/13**, about 3 minutes. It records the reference di
 if either moved.
 
 **D9's premise holds, and the one differing column is outside the KPI set.** Measured in P2.14
-on (2024-06-20, 42) out of `corpus_eval/`: env-driven greedy and stock greedy agree on **every**
+on (2024-06-20, 42) out of the held-out corpus (`corpus_eval/` then, `corpus_val/` since
+P2.17, the same bytes either way): env-driven greedy and stock greedy agree on **every**
 KPI and count — served 288, mean wait 588.70 s, detour ratio 1.3701, decline rate 0.2706,
 cancellation rate 0.0881, no-show rate 0.0063, 0 rejections, 9 no-candidate requests, VKT
 2568.96 km — and their `1_user-stats.csv` and `2-0_op-stats.csv` are byte-identical to the two
@@ -2939,7 +3027,7 @@ performance test, and not a learning test.** It is sized to exercise every compo
 times, nothing more: about 20–25 minutes on the M4 MacBook.
 
 Setup: §6.1's Phase 2 weights (`w_decline = 0.1`); 4 workers; 12 episodes per worker, 48 in
-total — about half of pass 0 over the 101 training days (D10); P2.13's default hyperparameters except `n_steps = 256` for this run only, so the update path runs about 20 times instead of about 5; an evaluation callback that fires at least 3 times; checkpoints at least twice. At the end, P2.14's harness on 5 evaluation days — 2024-01-11, 2024-03-19, 2024-06-20, 2024-08-13, 2024-10-01 — × the first 2 seeds of each from `docs/RL_GYM_EVAL_SEEDS.csv`, for the trained
+total — about half of pass 0 over the 101 training days (D10); P2.13's default hyperparameters except `n_steps = 256` for this run only, so the update path runs about 20 times instead of about 5; an evaluation callback that fires at least 3 times; checkpoints at least twice. At the end, P2.14's harness on 5 held-out days — 2024-01-11, 2024-03-19, 2024-06-20, 2024-08-13, 2024-10-01, all five **validation** days under P2.17 — × the first 2 seeds of each from `docs/RL_GYM_EVAL_SEEDS.csv`, for the trained
 checkpoint and for stock greedy on the same pairs. All 26 days and the full `eval_seeds_per_day` belong to real training runs.
 
 **Pass criteria:**
@@ -3046,6 +3134,94 @@ four **distinct** statistics files and the same KPI md5, since training is uncha
 
 ---
 
+### P2.17 — Validation / test split of the held-out days
+
+**Files:** `src/rl_gym/corpus.py`, `src/rl_gym/evaluate.py`, `train_sdpdp.py`,
+`src/rl_gym/tools/phase2_run.py`, `src/rl_gym/tools/corpus_sweep.py`,
+`docs/RL_GYM_HELDOUT_SPLIT.csv` (new), `tests/test_rl_gym_kpis.py`, `tests/test_rl_gym_env.py`,
+`tests/test_rl_gym_train.py`, the 12 moved demand files; `docs/SDPDP_GYM_SPEC_v2.md`,
+`docs/RL_GYM_PHASE2_RESULTS.md`, `docs/RL_GYM_PROGRESS.md`
+
+**Why this item exists.** After Phase 2 step 2 needs validation days to score the weight sweep
+on, and until P2.17 there was one held-out set of 26 serving both that job and the final results.
+Choosing weights, checkpoints or a stopping point on the days the final figures come from makes
+those figures a selection criterion — and nothing downstream would show it. §2.9's split rule
+and seed are in the spec, so the same rule extends to the held-out days. The split and both lists
+are in §2.9; this entry is the machinery.
+
+**`corpus/` is untouched.** 101 training days, same files, same `corpus_hash`. The arrival
+baseline, `corpus_manifest.json` and `baseline_hash` are all computed over `corpus/` alone, so
+moving a held-out file is invisible to them and no trained policy is invalidated (trap 16).
+
+- **One definition of the half.** `corpus.split_of_day(day)` resolves `"val"` / `"test"` **from
+  the filesystem** — which directory the day's demand file sits in — and
+  `corpus.day_dir_for(day, split)` is the only way a run gets a `day_dir`. So `corpus/` and
+  `corpus_excluded/` are unreachable from any evaluation path, and a day cannot be aimed at the
+  wrong half's directory even when it is named explicitly. It lives in `corpus.py`, beside
+  `training_day_files`, so `train_sdpdp.py` and `phase2_run.py` reach it without importing the
+  harness; `corpus` imports nothing heavier than csv/hashlib/json, so this costs no torch (§8a).
+  `evaluate.evaluation_days` **became** `corpus.held_out_days` rather than being wrapped:
+  "evaluation day" now means a test day specifically, and a wrapper would have been a second
+  definition of the one thing §2.9 says must have only one (trap 13).
+- **Four guards, each in one place.** **G1**: `--greedy` / `--rl` require exactly one of
+  `--validation` or `--final-test`, with **no default** — a default is what gets used by
+  accident, and reading the test days while choosing a checkpoint cannot be undone. The flag is
+  spelled `--final-test` and there is no `--test`, so it cannot be typed while meaning the other.
+  **G2**: the directory is derived from the day, never passed in. **G3**:
+  `day_dir_for(day, split)` raises when the day is in the other half, **in both directions on
+  one code path** — one failing direction with the other passing is the shape this would rot
+  into. **G4**: every label in `docs/RL_GYM_HELDOUT_SPLIT.csv` must equal `split_of_day` for that
+  day, checked by `--check-seeds`, by `evaluate --verify` and by a unit test; a stale label could
+  not misroute a run, but it could misreport which half a filed KPI table came from, and a record
+  nobody checks is not a record.
+- **The training side.** `build_eval_venv`'s `eval_day_dir` default moves from `corpus_eval` to
+  `corpus_val`; it is `train()`'s only control over that directory, so the default *is* the
+  guard, and a test pins it by signature. `train()` additionally calls `check_eval_pairs_split`
+  **before `build_venv`** — the training `SubprocVecEnv` is already up by the time
+  `build_eval_venv` runs, so a refusal there would orphan workers, which is P2.16's ordering
+  lesson. A test patches `build_venv` to fail loudly, so the check's position is measured rather
+  than asserted.
+- **A KPI table says which half it came from.** `evaluate`'s reports carry a Provenance block
+  naming the half, the days, the checkpoint and its statistics file. `phase2_run`'s
+  `kpi_report.txt` deliberately does **not**: its md5 is a pinned artifact across P2.15, P2.16
+  and P2.17, and a header would have retired that check silently. The half goes to the console
+  and into `p215_figures.json` instead. The asymmetry is commented at both ends.
+- **Two latent breaks found by inspection.** `corpus_sweep.SWEEP_DIRS` was
+  `("corpus", "corpus_eval")`, which would have found 115 days against the CLI's `expected 127
+  kept days` and refused to start — a guard failing loudly, but **no test covered it**, so it
+  would have surfaced only when someone re-ran P2.4. And `_check_reload_determinism` pinned
+  `day_dir = "corpus_eval"` with `day = "2024-06-20"`, which would have failed `--verify-run`'s
+  reload check at construction; it now resolves the directory from the day.
+- **The comment-only fix folded in.** The `STATS_PAIRING_TOL` comment and
+  `check_statistics_pairing`'s docstring claimed the pairing relation holds with zero drift. It
+  holds exactly in arithmetic but not in floating point: P2.16's own gate run measured
+  `model_ep00024` at `ret_rms.count 11900.000100000001`, **1.8e-12** off, which a strict equality
+  would have rejected on a correctly paired checkpoint. Both now say so. No behaviour change.
+
+P2.17 touches no env, tracker or observation code, so it is not in this section's list of items
+that re-run the P1.10 gate; the gate runs anyway inside the full suite. The gate is structurally
+outside the split in any case — it builds its env with no `day_dir` and reads `thursday/`.
+
+**How Ritun verifies:** the full suite; `python train_sdpdp.py --verify-run`;
+`python -m src.rl_gym.evaluate --verify`, now **15 checks**, which must show both byte
+comparisons holding with the reference day read out of `corpus_val/` plus the two new split
+checks; one `--validation` greedy run, whose report must carry `half: **val**`; and the harness
+half on P2.16's final checkpoint into a fresh `--out-dir` —
+
+    mkdir -p runs/p217_ritun && caffeinate -i python -m src.rl_gym.tools.phase2_run \
+        --harness-only --checkpoint runs/p216_gate/checkpoints/model_ep00047.zip \
+        --out-dir runs/p217_ritun 2>&1 | tee runs/p217_ritun/console.log
+
+— which must give `kpi_report.txt` md5 **`db34f5aea5f8cd59437fb2628c9534e0`**, P2.15's published
+figure, while leaving `runs/p216_gate/` and both reference CSVs byte-unchanged. Plus the data
+checks: all 12 moved files' checksums unchanged, 101 / 12 / 14 with the directories disjoint,
+`verify_corpus(corpus/)` passing, `thursday/` untouched, and `docs/RL_GYM_EVAL_SEEDS.csv` still
+md5 `559b836e7c61fb7dadd2e7bd9bc8891d`.
+
+**Commit:** `RL-GYM: split the held-out days into validation and test`
+
+---
+
 ### After Phase 2 — Ritun's steps, not work items
 
 In this order:
@@ -3056,9 +3232,14 @@ In this order:
    P2.4's sweep, and run a short training on the corrected simulator to size the weight sweep.
 2. **Reward weight sweep** over `w_pickup`, `w_wait`, `w_reject`, `w_cancel` and `w_decline`,
    with repositioning off, to set the weights for full-length training. Its design — the rule
-   for choosing a winner, validation days carved out of the training split (never the
-   evaluation days), the per-point budget from a short training run on the simulator as it will be trained, 
-   since P2.15 is too short to size it — is settled then. Only ratios to `w_pickup` affect the optimal policy,
+   for choosing a winner, the validation days being `corpus_val/`'s 12 (P2.17), never the 14
+   test days, the per-point budget from a short training run on the simulator as it will be trained, 
+   since P2.15 is too short to size it — is settled then.
+   *(Corrected in P2.17. This line said the validation days were "carved out of the training
+   split (never the evaluation days)", which Ritun's P2.17 decision reverses: the validation
+   days come out of the **held-out** 26, so the weight sweep is scored on days no policy has
+   trained on. Training days could not serve: a weight setting chosen on days the policy
+   trained on is chosen on memorised sample paths.)* Only ratios to `w_pickup` affect the optimal policy,
    and `VecNormalize` rescales rewards anyway.
 3. **Planner stop duration.** Ritun may change `op_const_boarding_time` from 300 s to 40–60 s.
    This is his decision; Claude Code does not touch it (§10).

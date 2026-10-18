@@ -395,6 +395,78 @@ class TestForkserverPreload(unittest.TestCase):
             venv.close()
 
 
+class TestTrainingTimeEvaluationStaysOnValidation(unittest.TestCase):
+    """The training side of P2.17's split. No training happens here.
+
+    A callback that evaluated on the 14 test days would make them a selection criterion, and
+    nothing downstream would show it -- the KPI table, the scalars and the checkpoints would
+    all look normal. So the guard is a refusal, and it has to fire **before** anything is
+    built.
+    """
+
+    def test_the_eval_venv_default_directory_is_the_validation_half(self):
+        """This default is the guard: it is `train()`'s only control over the directory."""
+        import inspect
+        default = inspect.signature(train_sdpdp.build_eval_venv).parameters[
+            "eval_day_dir"].default
+        self.assertEqual(default, "corpus_val")
+        self.assertEqual(train_sdpdp.VAL_DAY_DIR, "corpus_val")
+        self.assertEqual(train_sdpdp.TEST_DAY_DIR, "corpus_eval")
+
+    def test_the_verification_runs_pairs_are_all_validation_days(self):
+        from src.rl_gym.corpus import split_of_day
+        for day, _seed in train_sdpdp.VERIFY_EVAL_PAIRS:
+            with self.subTest(day):
+                self.assertEqual(split_of_day(day), "val")
+
+    def test_validation_pairs_pass_the_preflight(self):
+        self.assertIsNone(train_sdpdp.check_eval_pairs_split(
+            train_sdpdp.VERIFY_EVAL_PAIRS))
+        self.assertIsNone(train_sdpdp.check_eval_pairs_split(None))
+        self.assertIsNone(train_sdpdp.check_eval_pairs_split([]))
+
+    def test_a_test_day_in_the_callback_pairs_is_refused(self):
+        with self.assertRaises(ValueError) as ctx:
+            train_sdpdp.check_eval_pairs_split([("2024-01-11", 11), ("2024-01-30", 12)])
+        message = str(ctx.exception)
+        self.assertIn("2024-01-30", message)
+        self.assertIn("not validation days", message)
+        # only the offending day is named -- the message says what to fix, not what it saw
+        self.assertNotIn("2024-01-11", message)
+
+    def test_a_training_day_in_the_callback_pairs_is_refused(self):
+        with self.assertRaises(ValueError) as ctx:
+            train_sdpdp.check_eval_pairs_split([("2024-01-18", 11)])
+        self.assertIn("2024-01-18", str(ctx.exception))
+
+    def test_pointing_the_callback_at_the_test_directory_is_refused_by_name(self):
+        with self.assertRaises(ValueError) as ctx:
+            train_sdpdp.check_eval_pairs_split([("2024-01-11", 11)],
+                                               eval_day_dir="corpus_eval")
+        self.assertIn("selection criterion", str(ctx.exception))
+
+    def test_the_preflight_runs_before_any_venv_is_built(self):
+        """`train()` must refuse without constructing a SubprocVecEnv (P2.16's ordering).
+
+        Patching `build_venv` to fail loudly is what makes this a measurement: if the check
+        ever moves after it, the test fails with that sentinel instead of the split error.
+        """
+        def exploding_build_venv(*_a, **_kw):
+            raise AssertionError("build_venv was reached before the split check")
+
+        cfg = {**train_sdpdp.DEFAULT_CFG, "base_seed": 7,
+               "reward_weights": dict(train_sdpdp.PHASE2_REWARD_WEIGHTS)}
+        original = train_sdpdp.build_venv
+        train_sdpdp.build_venv = exploding_build_venv
+        try:
+            with self.assertRaises(ValueError) as ctx:
+                train_sdpdp.train(cfg, n_workers=1, total_timesteps=1,
+                                  eval_pairs=[("2024-01-30", 1)], verbose=False)
+            self.assertIn("2024-01-30", str(ctx.exception))
+        finally:
+            train_sdpdp.build_venv = original
+
+
 class TestEvalPairPartitioning(unittest.TestCase):
     """The pairs must be split the way `evaluate_policy` spreads episodes (P2.13).
 

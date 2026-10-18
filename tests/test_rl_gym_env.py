@@ -667,7 +667,22 @@ class TestDayRotation(unittest.TestCase):
         days = training_days(os.path.join(CORPUS_ROOT, "corpus"))
         self.assertEqual(len(days), 101)
         self.assertEqual(days, sorted(days))
-        self.assertNotIn("2024-06-20", days, "an evaluation day must not be in corpus/")
+        self.assertNotIn("2024-06-20", days, "a held-out day must not be in corpus/")
+
+    def test_the_corpus_is_unchanged_by_the_held_out_split(self):
+        """P2.17 moved files between the two held-out directories and nothing else (§2.9).
+
+        `corpus/` is what the arrival baseline and `corpus_manifest.json` were computed over,
+        so a day arriving in or leaving it would invalidate every trained policy (trap 16).
+        The three directories must also stay disjoint and still total 127 kept days.
+        """
+        train = training_days(os.path.join(CORPUS_ROOT, "corpus"))
+        val = training_days(os.path.join(CORPUS_ROOT, "corpus_val"))
+        test = training_days(os.path.join(CORPUS_ROOT, "corpus_eval"))
+        self.assertEqual((len(train), len(val), len(test)), (101, 12, 14))
+        self.assertEqual(len(set(train) | set(val) | set(test)), 127)
+        for a, b in ((train, val), (train, test), (val, test)):
+            self.assertEqual(set(a) & set(b), set())
 
 
 class TestDaySourceConfig(unittest.TestCase):
@@ -707,7 +722,7 @@ class TestDaySourceConfig(unittest.TestCase):
     def test_eval_pairs_rejects_the_keys_it_subsumes(self):
         for extra in ({"day": "2024-06-20"}, {"episode_seed": 42}, {"base_seed": 7}):
             with self.assertRaises(ValueError):
-                SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval",
+                SDPDPAssignmentEnv(make_cfg(day_dir="corpus_val",
                                             eval_pairs=[("2024-06-20", 42)], **extra))
 
     def test_eval_pairs_requires_day_dir(self):
@@ -717,11 +732,11 @@ class TestDaySourceConfig(unittest.TestCase):
 
     def test_eval_pairs_empty_raises(self):
         with self.assertRaises(ValueError):
-            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval", eval_pairs=[]))
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_val", eval_pairs=[]))
 
     def test_eval_pairs_seed_out_of_range_raises(self):
         with self.assertRaises(ValueError):
-            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval",
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_val",
                                         eval_pairs=[("2024-06-20", MAX_EPISODE_SEED + 1)]))
 
     def test_unknown_day_raises_at_construction(self):
@@ -731,18 +746,33 @@ class TestDaySourceConfig(unittest.TestCase):
         self.assertIn("2024-06-21", str(cm.exception))
 
     def test_unknown_day_in_eval_pairs_raises(self):
-        with self.assertRaises(ValueError):
-            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval",
+        # the known day is first and in this directory, so the raise can only come from the
+        # unknown one -- otherwise this would pass for the wrong reason
+        with self.assertRaises(ValueError) as cm:
+            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_val",
                                         eval_pairs=[("2024-06-20", 42), ("1999-01-01", 7)]))
+        self.assertIn("1999-01-01", str(cm.exception))
 
     def test_unknown_day_dir_raises(self):
         with self.assertRaises(ValueError):
             SDPDPAssignmentEnv(make_cfg(day_dir="corpus_nope", day="2024-06-20"))
 
-    def test_training_day_is_rejected_from_corpus_eval(self):
-        # a day that exists but in the other split: the directory is what decides
-        with self.assertRaises(ValueError):
-            SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval", day="2024-01-18"))
+    def test_a_day_from_the_other_split_is_rejected(self):
+        """The directory is what decides a day's half (§2.9, P2.17), not the config's wish.
+
+        Three directions: a training day asked for out of either held-out directory, and a
+        validation day asked for out of the test directory -- the last is the one P2.17 added,
+        and it is what makes a final-evaluation env unable to read a validation day even if the
+        day is named explicitly.
+        """
+        for day_dir, day in (("corpus_eval", "2024-01-18"),
+                             ("corpus_val", "2024-01-18"),
+                             ("corpus_eval", "2024-06-20"),
+                             ("corpus_val", "2024-01-30")):
+            with self.subTest(day_dir=day_dir, day=day):
+                with self.assertRaises(ValueError) as cm:
+                    SDPDPAssignmentEnv(make_cfg(day_dir=day_dir, day=day))
+                self.assertIn(day, str(cm.exception))
 
 
 class TestDayStemParsing(unittest.TestCase):
@@ -764,10 +794,11 @@ class TestDayStemParsing(unittest.TestCase):
 class TestEvalPairsRotation(unittest.TestCase):
     """`eval_pairs` cycling, exercised through reset() without stepping (P2.3 item 5)."""
 
+    #: all three are **validation** days (P2.17), so they live in `corpus_val/`
     PAIRS = [("2024-06-20", 42), ("2024-01-11", 7), ("2024-10-01", 1234)]
 
     def test_pairs_run_in_order_and_wrap_around(self):
-        env = SDPDPAssignmentEnv(make_cfg(day_dir="corpus_eval", eval_pairs=self.PAIRS))
+        env = SDPDPAssignmentEnv(make_cfg(day_dir="corpus_val", eval_pairs=self.PAIRS))
         try:
             for i in range(len(self.PAIRS) * 2 + 1):
                 env.reset()
@@ -775,7 +806,7 @@ class TestEvalPairsRotation(unittest.TestCase):
                 s = env.episode_summary()
                 self.assertEqual(s["day"], want_day, f"episode {i + 1}")
                 self.assertEqual(s["random_seed"], want_seed, f"episode {i + 1}")
-                self.assertEqual(s["day_dir"], "corpus_eval")
+                self.assertEqual(s["day_dir"], "corpus_val")
         finally:
             env.close()
 

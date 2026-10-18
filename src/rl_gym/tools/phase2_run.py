@@ -80,8 +80,15 @@ CALLBACK_DAYS = ("2024-01-11", "2024-03-19", "2024-06-20", "2024-08-13")
 
 #: §8 P2.15's five evaluation days, x the first 2 seeds of each from P2.14's seed file. All 26
 #: days and the full `eval_seeds_per_day` belong to real training runs, not to this gate.
+#: **All five are validation days** under P2.17's split, so the gate never reads the test half;
+#: their demand files moved to `corpus_val/` and are byte-unchanged, which is why this run still
+#: reproduces P2.15's `kpi_report.txt` md5.
 HARNESS_DAYS = ("2024-01-11", "2024-03-19", "2024-06-20", "2024-08-13", "2024-10-01")
 HARNESS_SEEDS_PER_DAY = 2
+
+#: the half this gate runs on, end to end (P2.17). A gate that could be pointed at the test
+#: days would spend them on a machinery check.
+HARNESS_SPLIT = "val"
 
 #: §6.4's branch-7 indicator: the cap on `record_remaining_assignments`, written `2 * 7200` at
 #: `FleetSimulationBase.py` ~625. Greedy's longest tail anywhere in the corpus is 1,950 s (P2.4)
@@ -378,23 +385,31 @@ def run_harness(checkpoint: str, out_dir: str, greedy_processes: int = 4,
     stats_file = train_sdpdp.verify_statistics_pairing(checkpoint, stats_path)
 
     pairs = evaluate.pairs_from_seed_file(days=list(HARNESS_DAYS),
-                                          n_seeds=HARNESS_SEEDS_PER_DAY)
+                                          n_seeds=HARNESS_SEEDS_PER_DAY,
+                                          split=HARNESS_SPLIT)
     if verbose:
         print(f"-- statistics: {os.path.basename(stats_file)}, paired with "
               f"{os.path.basename(checkpoint)}", flush=True)
     if verbose:
-        print(f"-- harness: {len(pairs)} pair(s), stock greedy on "
+        print(f"-- harness: {len(pairs)} pair(s) on the {HARNESS_SPLIT} half, stock greedy on "
               f"{greedy_processes} process(es) then the checkpoint on {rl_workers} worker(s)",
               flush=True)
     t0 = time.perf_counter()
-    greedy_runs = evaluate.run_greedy_pairs(pairs, processes=greedy_processes)
+    greedy_runs = evaluate.run_greedy_pairs(pairs, processes=greedy_processes,
+                                            split=HARNESS_SPLIT)
     t_greedy = time.perf_counter() - t0
     t1 = time.perf_counter()
     rl_runs = evaluate.run_rl_pairs(pairs, checkpoint, n_workers=rl_workers,
-                                    stats_path=stats_path)
+                                    split=HARNESS_SPLIT, stats_path=stats_path)
     t_rl = time.perf_counter() - t1
 
     rows = evaluate.kpi_rows(greedy_runs + rl_runs)
+    # **Deliberately without P2.17's provenance header.** `kpi_report.txt` md5
+    # `db34f5aea5f8cd59437fb2628c9534e0` is the pinned artifact P2.15 published and P2.16 and
+    # P2.17 re-verify against; adding a header here would change those bytes and silently retire
+    # a check three work items rely on. The half is printed to the console above and recorded in
+    # `p215_figures.json`. `evaluate`'s own CLI reports do carry the header -- those are the ones
+    # that get filed and read later, and none of them is a pinned hash.
     report = evaluate.format_report(rows)
     report_path = os.path.join(out_dir, KPI_REPORT_FILE)
     with open(report_path, "w") as fh:
@@ -404,6 +419,7 @@ def run_harness(checkpoint: str, out_dir: str, greedy_processes: int = 4,
         print(f"wrote {report_path}", flush=True)
     return {
         "pairs": pairs, "rows": rows, "report": report, "report_path": report_path,
+        "split": HARNESS_SPLIT,
         "greedy_seconds": t_greedy, "rl_seconds": t_rl,
         "greedy_runs": greedy_runs, "rl_runs": rl_runs,
         "orphans_after_harness": live_children(),
@@ -755,6 +771,9 @@ def collect_figures(result: Dict[str, Any], extra: Dict[str, Any],
     if harness is not None:
         figures["harness"] = {
             "pairs": harness["pairs"],
+            # which half the figures came from (P2.17) -- `kpi_report.txt` deliberately carries
+            # no header, so this is where it is recorded
+            "split": harness.get("split"),
             "greedy_minutes": round(harness["greedy_seconds"] / 60, 2),
             "rl_minutes": round(harness["rl_seconds"] / 60, 2),
             "rows": harness["rows"],

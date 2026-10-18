@@ -62,6 +62,14 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# the held-out split (P2.17), from the one module that defines it. `corpus` imports nothing
+# heavier than csv/hashlib/json, so this costs no torch and respects §8a's ordering.
+from src.rl_gym.corpus import (  # noqa: E402
+    TEST_DAY_DIR,
+    VAL_DAY_DIR,
+    day_dir_for,
+)
+
 SCS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                    "studies", "example_study", "scenarios")
 
@@ -98,11 +106,14 @@ VECNORMALIZE_SUFFIX = "_vecnormalize.pkl"
 STATS_COUNT_EPSILON = 1e-4
 
 #: Tolerance for the pairing check, and it is float safety only, not semantic slack.
-#: `ret_rms.count - STATS_COUNT_EPSILON == num_timesteps` holds **exactly**: `_update_reward` is
-#: gated on `training` alone and adds one row per env per step iteration, `reset()` never touches
-#: `ret_rms`, and `num_timesteps` advances by `n_envs` on the same iteration. Simulated
-#: accumulation -- not real training runs -- shows zero drift at 22,528, 3.2M and 8M timesteps,
-#: and the real P2.15 artifact matches to 0.0. The smallest *real* mismatch is one rollout.
+#: `ret_rms.count - STATS_COUNT_EPSILON == num_timesteps` holds exactly **in arithmetic**:
+#: `_update_reward` is gated on `training` alone and adds one row per env per step iteration,
+#: `reset()` never touches `ret_rms`, and `num_timesteps` advances by `n_envs` on the same
+#: iteration. **In floating point it does not, and the tolerance is not decorative**: a
+#: *simulated* accumulation showed zero drift at 22,528, 3.2M and 8M timesteps, but P2.16's gate
+#: run's own `model_ep00024` came out **1.8e-12** off (`ret_rms.count 11900.000100000001`
+#: against 11,900 timesteps), which a strict equality would have rejected on a correctly paired
+#: checkpoint. The smallest *real* mismatch is one rollout, orders of magnitude above this.
 STATS_PAIRING_TOL = 1e-6
 
 #: §5.3's settings. `clip_obs = 10.0` is what bounds the unbounded Box the env declares;
@@ -268,7 +279,9 @@ def checkpoint_timesteps(checkpoint_path):
 def check_statistics_pairing(stats, checkpoint_path, stats_file=None):
     """Raise unless `stats` are the statistics `checkpoint_path` was trained under (P2.16).
 
-    The test is `ret_rms.count - 1e-4 == num_timesteps`, exactly (see `STATS_PAIRING_TOL`).
+    The test is `ret_rms.count - 1e-4 == num_timesteps` within `STATS_PAIRING_TOL`. The relation
+    is exact in arithmetic; real artifacts drift by about 1e-12 (P2.16 measured 1.8e-12 at
+    11,900 timesteps), which is why it is a tolerance and not an equality.
     `obs_rms.count` is **not** tested -- it carries an extra `n_envs` per `learn()` call, from
     `reset()`, and that count is not recoverable from the checkpoint -- but it is reported,
     because it is useful when diagnosing a mismatch.
@@ -445,8 +458,55 @@ def check_checkpoint_statistics(checkpoint_dir):
     return True, f"{len(models)} checkpoint(s), each with its own statistics, each paired"
 
 
-def build_eval_venv(cfg, pairs, n_workers, eval_day_dir="corpus_eval"):
+def check_eval_pairs_split(eval_pairs, eval_day_dir=VAL_DAY_DIR):
+    """Raise unless every training-time evaluation day is a **validation** day (P2.17).
+
+    The callback evaluates during training, and whatever it reports is what a run is judged and
+    checkpointed on. Pointing it at the 14 test days would turn them into a selection criterion
+    -- the one use holding them back is meant to prevent -- and nothing downstream would show
+    it: the KPI table, the TensorBoard scalars and the checkpoints would all look normal.
+
+    **Called before `build_venv`**, so a refusal costs no simulation and orphans no workers.
+    Inside `build_eval_venv` it would already be too late: the training `SubprocVecEnv` is up by
+    then, and P2.16 made exactly this ordering mistake unrepeatable for the statistics check.
+
+    `eval_day_dir` is accepted so the caller's directory and the pairs are checked against each
+    other rather than independently; a non-default directory is only ever the test half, which
+    this refuses by name.
+    """
+    if not eval_pairs:
+        return
+    if eval_day_dir != VAL_DAY_DIR:
+        raise ValueError(
+            f"a training-time evaluation callback must read {VAL_DAY_DIR}/, not "
+            f"{eval_day_dir!r}. The {TEST_DAY_DIR}/ days are the final-results half (P2.17): "
+            f"evaluating on them during training makes them a selection criterion, which is "
+            f"what holding them back exists to prevent."
+        )
+    wrong = []
+    for day, _seed in eval_pairs:
+        try:
+            day_dir_for(day, "val")
+        except ValueError as exc:
+            wrong.append(f"{day}: {str(exc).splitlines()[0]}")
+    if wrong:
+        raise ValueError(
+            f"{len(wrong)} training-time evaluation day(s) are not validation days (P2.17): "
+            + "; ".join(wrong)
+            + f". The callback reads {VAL_DAY_DIR}/, and every choice a run makes -- which "
+              f"checkpoint, which weights -- has to be made on that half alone."
+        )
+
+
+def build_eval_venv(cfg, pairs, n_workers, eval_day_dir=VAL_DAY_DIR):
     """The evaluation venv: one worker per slice of the (day, seed) pairs (§8 P2.13).
+
+    **`corpus_val`, not `corpus_eval`** (P2.17). This default is the training side's guard: it
+    is `train()`'s only control over the directory the callback reads, and a training-time
+    callback on the test half would make those 14 days a selection criterion -- which is the one
+    thing holding them back is for. `train()` additionally refuses any `eval_pairs` day that is
+    not a validation day, before either venv is built, so the default and the pairs cannot
+    disagree.
 
     Each worker gets **its own** slice, because `evaluate_policy` gives worker `i` a target of
     `(n_eval_episodes + i) // n_envs` episodes and each env cycles through the pairs it was
@@ -584,6 +644,7 @@ def train(cfg, n_workers=4, total_timesteps=10_000, out_dir="runs/sdpdp",
     from src.rl_gym import callbacks as cb
 
     check_config(cfg)
+    check_eval_pairs_split(eval_pairs)
     os.makedirs(out_dir, exist_ok=True)
     tb_dir = os.path.join(out_dir, "tb")
 
@@ -995,8 +1056,10 @@ def _check_reload_determinism(model_path, cfg):
     from src.rl_gym.gym_env import SDPDPAssignmentEnv
 
     pinned = {k: v for k, v in cfg.items() if k not in ("base_seed", "eval_pairs")}
-    pinned.update({"day_dir": "corpus_eval", "day": "2024-06-20", "episode_seed": 42,
-                   "env_id": 0})
+    # 2024-06-20 is a **validation** day since P2.17, so its demand file lives in corpus_val/.
+    # Resolved rather than named, so this cannot be the thing left behind by a later re-split.
+    pinned.update({"day_dir": day_dir_for("2024-06-20", "val"), "day": "2024-06-20",
+                   "episode_seed": 42, "env_id": 0})
 
     def rollout():
         from stable_baselines3.common.vec_env import DummyVecEnv

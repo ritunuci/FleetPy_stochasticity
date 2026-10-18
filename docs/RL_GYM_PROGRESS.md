@@ -3865,3 +3865,206 @@ correction note rather than a silent rewrite; no P2.15 figure changed.
 
 **Stopping here.** No commits made (§0).
 
+## P2.17 — STARTED 2026-10-18 (session start)
+Files I will touch: src/rl_gym/corpus.py, src/rl_gym/evaluate.py, train_sdpdp.py,
+src/rl_gym/tools/phase2_run.py, src/rl_gym/tools/corpus_sweep.py,
+docs/RL_GYM_HELDOUT_SPLIT.csv (new), tests/test_rl_gym_kpis.py, tests/test_rl_gym_env.py,
+tests/test_rl_gym_baseline.py, the 12 moved demand files; then
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md, docs/RL_GYM_PHASE2_RESULTS.md.
+
+Resume state: P2.16 committed (`b86360c`), tree clean, 615 tests passing as of P2.16.
+
+This STARTED entry is written before the work per §0's interruption protocol; every other doc
+edit waits until the verification passes, as Ritun directed.
+
+Ritun's decisions on the proposal:
+- **Split rule and seed `20261018` approved**, both lists; he reproduced the 12/14 independently.
+- **No `split` column.** `docs/RL_GYM_EVAL_SEEDS.csv` stays byte-frozen (md5
+  `559b836e7c61fb7dadd2e7bd9bc8891d`) because P2.14-P2.16 cite it as the frozen record. The
+  labels go in a separate committed `docs/RL_GYM_HELDOUT_SPLIT.csv` (26 rows, `day,split`), and
+  G4 applies to that file instead.
+- `--final-test` approved; G1-G4 approved; `train()`'s pre-flight before `build_venv`; the
+  report header line.
+- `evaluation_days` -> `held_out_days` approved.
+- **The file move is mine to do with plain `mv`, no git commands**; Ritun stages the two
+  directories himself.
+- **No full `phase2_run` gate.** The harness half only, on P2.16's final checkpoint, into a
+  fresh out-dir; `kpi_report.txt` must be md5 `db34f5aea5f8cd59437fb2628c9534e0`.
+  `--verify-run` covers the training-side changes.
+- Spec (a), (c) and (e) approved, including the After Phase 2 step 2 contradiction; (b) and (d)
+  to be shown as final prose before being written.
+- The comment-only fix approved as part of P2.17, with the exact proposed text.
+- Order: code and tests, then the move, then the five verifications, then the docs.
+
+## P2.17 — DONE 2026-10-18 — awaiting Ritun's verification
+
+Files changed:
+- `src/rl_gym/corpus.py` — the split resolver, beside `training_day_files`: `VAL_DAY_DIR` /
+  `TEST_DAY_DIR` / `TRAIN_DAY_DIR`, `HELD_OUT_DIRS` (**the one definition of the half -> directory
+  map**), `validation_days`, `test_days`, `held_out_days`, `split_of_day` (resolved from the
+  filesystem; raises on neither **and on both**), `day_dir_for` (G3, both directions on one code
+  path), `read_split_file` / `check_split_file` (G4). Here rather than in `evaluate.py` so
+  `train_sdpdp.py` and `phase2_run.py` reach it without importing the harness, and because
+  `corpus` imports nothing heavier than csv/hashlib/json.
+- `docs/RL_GYM_HELDOUT_SPLIT.csv` — **new**, 26 rows of `day,split`, 12 `val` + 14 `test`. The
+  committed record of the decision; the directories stay the runtime truth, and G4 binds them.
+- `src/rl_gym/evaluate.py` — `evaluation_days` **removed**, `held_out_days` imported from
+  `corpus` instead of wrapped (a wrapper would be a second definition); `check_seed_file`
+  re-derives over both halves and reports G4; `pairs_from_seed_file(split=)` (checks named days,
+  selects when none are given); `build_greedy_scenario_parameters(split=)` with the directory
+  **derived from the day**; `run_greedy_pair` takes the split in its task tuple;
+  `run_greedy_pairs(split=)` checks every pair before the first simulation;
+  `run_env_greedy_pair(split=)`; `resolve_pairs_split` (new) and `run_rl_pairs(split=)` replacing
+  `day_dir=`; `report_header` (provenance); `format_report(header=)`; `--validation` /
+  `--final-test` mutually exclusive and required (G1); `verify()` now **15 checks**.
+- `train_sdpdp.py` — `check_eval_pairs_split` (new), called from `train()` **before
+  `build_venv`**; `build_eval_venv`'s `eval_day_dir` default `corpus_eval` -> `corpus_val`;
+  `_check_reload_determinism` resolves 2024-06-20's directory rather than naming it; the
+  `corpus` import. Plus the **comment-only fix**: the `STATS_PAIRING_TOL` comment and
+  `check_statistics_pairing`'s docstring no longer claim the pairing holds with zero drift, and
+  both now carry P2.16's measured 1.8e-12 at 11,900 timesteps.
+- `src/rl_gym/tools/phase2_run.py` — `HARNESS_SPLIT = "val"`, threaded through
+  `pairs_from_seed_file`, `run_greedy_pairs` and `run_rl_pairs`; the half in the console line and
+  in `p215_figures.json`. **`kpi_report.txt` deliberately keeps no provenance header**, with a
+  comment saying why: its md5 is a pinned artifact across P2.15, P2.16 and P2.17.
+- `src/rl_gym/tools/corpus_sweep.py` — `SWEEP_DIRS` gains `corpus_val`, the `dir` legend gains
+  `c_val`. Without this the sweep CLI would have refused to start (`expected 127 kept days`, it
+  would have found 115), and **no test covered it** — it would have surfaced only when someone
+  re-ran P2.4.
+- `tests/test_rl_gym_kpis.py` — `TestHeldOutSplit` (12) and `TestSplitGuardsOnTheRunPaths` (7);
+  the two `evaluation_days()` call sites renamed; 2024-08-13's expected `day_dir` is now
+  `corpus_val`.
+- `tests/test_rl_gym_env.py` — `test_a_day_from_the_other_split_is_rejected` (4 sub-cases,
+  replacing `test_training_day_is_rejected_from_corpus_eval`);
+  `test_the_corpus_is_unchanged_by_the_held_out_split` (new); `TestEvalPairsRotation` and four
+  config tests moved to `corpus_val`; `test_unknown_day_in_eval_pairs_raises` now asserts the
+  **unknown** day is named, so it can no longer pass for the wrong reason.
+- `tests/test_rl_gym_train.py` — `TestTrainingTimeEvaluationStaysOnValidation` (7), including one
+  that patches `build_venv` to fail loudly, so the pre-flight's position is measured rather than
+  asserted.
+- The 12 demand files, moved `corpus_eval/` -> `corpus_val/` with plain `mv` (§0, P2.2's
+  precedent); Ritun stages the two directories.
+- `docs/SDPDP_GYM_SPEC_v2.md`, `docs/RL_GYM_PHASE2_RESULTS.md`, `docs/RL_GYM_PROGRESS.md`.
+
+The split, at seed **20261018**: validation 2024-01-11, 02-07, 02-27, 03-19, 04-17, 05-23,
+06-20, 07-31, 08-13, 08-15, 09-04, 10-01 (Tue 4 / Wed 4 / Thu 4); test 2024-01-30, 02-08,
+03-20, 04-09, 04-11, 05-07, 05-15, 06-12, 07-09, 07-25, 08-28, 09-12, 10-09, 10-24
+(Tue 4 / Wed 5 / Thu 5). Every month in both halves. Ritun reproduced both lists independently
+before approving.
+
+Verification — all five passed, in the order Ritun set:
+
+1. **The full suite: 642 tests, 211.6 s, OK** (615 before; +27). **The P1.10 gate 8/8**, both
+   byte comparisons, run separately to report it. Re-run after the late `evaluate.py` import fix
+   below — the first pass (216.4 s, also OK) predated it, which is P2.15's lesson applied.
+2. **`python train_sdpdp.py --verify-run` -> 24/24 in 8.3 min**, exit 0. The three evaluations
+   each covered all four `VERIFY_EVAL_PAIRS` out of `corpus_val/`, the second in the rotated
+   order; the reloaded checkpoint reproduced its 15 deterministic actions on (2024-06-20, 42)
+   now read from `corpus_val/`.
+3. **`python -m src.rl_gym.evaluate --verify` -> 15/15**, exit 0 (13 before). Both byte
+   comparisons hold with the reference day read out of `corpus_val/`:
+   `1_user-stats.csv` == `docs/baseline_user_stats.csv` and `2-0_op-stats.csv` ==
+   `docs/baseline_op_stats.csv`, for stock **and** env-driven greedy, and D9's premise with no
+   differing KPI column. The two new checks: the 26 committed labels agree with the directories,
+   and G3 refuses in both directions. The reference directory was
+   `53879ea79cf211d700f670dee1173dd5` / `ded74ef39a274397c921c29f128f6950` before and after.
+4. **One `--validation` greedy run**, exit 0: `--validation --greedy --days 2024-09-04
+   --seeds 1` printed `half: val (corpus_val/)` and wrote a report whose Provenance block reads
+   `half: **val** (corpus_val/, every choice is made here)`. Its output directory was removed
+   afterwards through `output_dir_for`, asserting first that the path is not the reference run's
+   and that the basename starts with `greedy_` (trap 1). The three guards were also exercised
+   from the CLI: no half given -> argparse error naming both options; 2024-06-20 under
+   `--final-test` -> refused, naming it a **val** day; 2024-01-30 under `--validation` ->
+   refused, naming it a **test** day.
+5. **The harness check -> `kpi_report.txt` md5 `db34f5aea5f8cd59437fb2628c9534e0`**, 3/3 in
+   7.2 min, exit 0, into `runs/p217_check` — P2.15's published figure, byte for byte, on
+   P2.16's `model_ep00047.zip`. Nothing was altered: all nine files in
+   `runs/p216_gate/checkpoints/` plus both reference CSVs have **identical md5s before and
+   after** (11 compared, 0 changes), and `runs/p215/` and `runs/p215b/` still carry
+   `vecnormalize.pkl` `9cee9181d8a6df6b24595b4e6efd966d`. `p215_figures.json` is not written in
+   `--harness-only` mode (pre-existing), so the half is in `runs/p217_check/console.log`:
+   `10 pair(s) on the val half`.
+
+Data checks run before and after the move:
+- **The 12 files' md5s are identical before and after** (12 compared, 0 changes) — the move
+  changed each file's directory and nothing else.
+- **101 / 12 / 14, 127 kept days, the three directories pairwise disjoint** — now a unit test.
+- **`verify_corpus(corpus/)` still passes**, `corpus_hash` `6b232cf105d05ad3…` unchanged, so
+  the arrival baseline, `corpus_manifest.json` and `baseline_hash` are untouched and trap 16
+  does not fire. The manifest records training files only, which is why a held-out move is
+  invisible to it.
+- **`thursday/` untouched**: `2024-06-20.csv` `2ad73f37ce40dac2eade120470bf7e8e`,
+  `2024-01-18.csv` `bd18ecf3e024e67878c564961972e067`.
+- **`docs/RL_GYM_EVAL_SEEDS.csv` is byte-frozen** at md5 `559b836e7c61fb7dadd2e7bd9bc8891d`,
+  and all 260 rows re-derive identically over `held_out_days()`. A test pins both that md5 and
+  the md5 of the three seed columns, `36599d9aeb886dc4b1055d777565069d` — the second survives
+  any later annotation and still fails on a single changed seed.
+
+VERIFY findings: **P2.17 carries no `VERIFY` markers.** The claims it rests on were checked
+before being relied on:
+- **The seed file survives the split: checked by running it**, not reasoned about. Re-deriving
+  over the sorted union of the two halves reproduces all 260 rows, because `derive_eval_seeds`
+  consumes one bulk draw row-major over `days` **in sorted order** and a union of the two
+  directories sorts to exactly the original 26-day list.
+- **Every month's held-out days have distinct weekdays: matched**, and it is load-bearing —
+  it is what makes "pick a weekday" name a unique day inside a month. A consequence of §2.9's
+  own rule taking weekdays in Tue/Wed/Thu order.
+- **The P1.10 gate never reads a corpus directory: matched.** `tests/test_rl_gym.py` builds the
+  env with **no `day_dir`**, so it reads the scenario row's `day_dir_name = thursday` /
+  `rq_file = 2024-06-20.csv` (`constant_config_depot_cali_sc_1.csv:9-10`). So the gate and both
+  byte baselines are structurally outside the split, not incidentally unaffected.
+- **No KPI reads a day's directory: matched.** `kpis.kpi_row`'s fields and
+  `format_per_run_table`'s columns are `policy, day, seed`, `METRICS` and `unclassified`. That
+  is why `kpi_report.txt`'s md5 could be expected to hold, and it did.
+- **`build_eval_venv`'s default is `train()`'s only control over the callback's directory:
+  matched** — `train()` calls it as `build_eval_venv(cfg, eval_pairs, n_eval_workers)` with no
+  directory argument, so changing the default is sufficient, and a test pins the default by
+  signature rather than by behaviour.
+- **`train()` builds the training venv before `build_eval_venv`: matched**
+  (`build_venv` at the top, `build_eval_venv` inside the `eval_pairs` branch), which is why the
+  pre-flight is beside `check_config` and not inside `build_eval_venv` — a raise there would
+  orphan the training workers.
+
+**One defect of my own, found by the verification and not by the tests.** `verify()` called
+`read_split_file` without importing it into `evaluate.py`, so `evaluate --verify` died with a
+`NameError` at check 3 after two checks had passed. The unit tests did not catch it because they
+call `corpus.read_split_file` directly and **`verify()` has no unit test** — it is the committed
+command, which is exactly why §0 has it re-run. Fixed by adding the import. I then wrote a short
+AST pass over all five edited modules looking for the same class of error — a loaded name that is
+not local, global, imported or a builtin — and it reports nothing but `__file__` in each. Worth
+recording: the `finally` block still printed its reference-directory check on the raise path, so
+the trap-1 guard held even while the command was failing.
+
+Two things worth carrying:
+- **The gate report keeps no provenance header, deliberately.** `evaluate`'s CLI reports gain
+  one, because those are the tables that get filed and read later; `phase2_run`'s
+  `kpi_report.txt` does not, because its md5 is pinned by three work items and a header would
+  have retired that check silently. The asymmetry is commented at both ends.
+- **`corpus_sweep` was the one place with no test to catch the split.** Its CLI asserts 127
+  kept days, so it would have refused to run rather than produce a wrong report — a guard that
+  fails loudly, which is the good case, but it was found by grep rather than by the suite.
+
+Decisions:
+- Asked: the split rule, the seed, the data change, where each half is used, the guards, the
+  tests, and spec text (a)-(e).
+  Ritun: approved, with one change — **no `split` column**: `docs/RL_GYM_EVAL_SEEDS.csv` stays
+  byte-frozen because P2.14-P2.16 cite it as the frozen record, and the labels go in a separate
+  `docs/RL_GYM_HELDOUT_SPLIT.csv` with G4 applied to it. Also: `--final-test` approved; the move
+  by plain `mv` with him staging; **no full gate re-run**, the harness half only against
+  P2.16's final checkpoint; and (b) and (d) to be shown as prose before being written.
+
+Spec corrections proposed and applied in this turn, all from text Ritun approved: §2.9's
+preamble and table (four directories, 12 and 14), the "Held-out days (26)" heading and the
+pointer to the split block, 2024-06-20's corpus copy now in `corpus_val/`, "the four corpus
+directories are disjoint"; §8 P2.2's "26 held-out files"; §8 P2.3's `day_dir` note and its
+verification steps 2 and 4; §8 P2.13's `corpus_val` with the reason; §8 P2.14's two `day_dir`
+overrides and D9's result line; §8 P2.15's five days marked validation; §8 After Phase 2 step 2
+(**the contradiction fixed**: validation days come out of the held-out 26, not the training
+split). `docs/RL_GYM_PHASE2_RESULTS.md` criterion 6 carries a note rather than a rewrite; no
+P2.15 figure changed.
+
+**Still to write, held for Ritun's sign-off:** §2.9's split block **(b)** and the §8 P2.17 entry
+**(d)**, shown as final prose in this turn's report. Everything else is applied.
+
+**Stopping here.** No commits made (§0).
+
