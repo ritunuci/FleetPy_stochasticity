@@ -26,6 +26,22 @@ Artifacts live under `runs/p215b/` — checkpoints, TensorBoard event files, `kp
 `p215_figures.json`, the machine-readable source of every figure quoted here. `runs/` is
 git-ignored (added in P2.15), so the tables below are reproduced in full rather than referenced.
 
+> **Not reproducible from P2.18 on, and the figures still stand.** P2.18 conditioned the arrival
+> baseline on weekday instead of month, which **re-defined four of the 139 observation features**
+> — `arrivals_expected_30/60` and `arrivals_z_30/60` — without changing any feature's name,
+> width or position. Every figure in this report was measured under the month-conditioned
+> baseline and is the record of what P2.15 and P2.16 verified when they ran; none of it is a
+> prediction about the current code.
+>
+> The commands above no longer reproduce it, in two independent ways. The `--harness-only` forms
+> are **refused** by P2.18's observation-contract guard: `runs/p215/`, `runs/p215b/` and
+> `runs/p216_gate/` carry no record of what their features meant, so nothing can say whether
+> those policies are being read correctly, and there is no override. A full re-run would train
+> against the new baseline and produce its own figures, so the KPI md5
+> `db34f5aea5f8cd59437fb2628c9534e0` — pinned by P2.15, P2.16 and P2.17 — is **retired**, not
+> merely unverified. P2.19 changes the observation again, so no replacement figure is pinned
+> until after it.
+
 ---
 
 ## 1. What was run

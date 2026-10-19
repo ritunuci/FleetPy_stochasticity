@@ -1086,8 +1086,8 @@ Definitions:
 |---|---|
 | `time_sin`, `time_cos`, `day_progress`, `idle_fraction` | unchanged from §5.1 |
 | `arrivals_30`, `arrivals_60` | fleet-wide arrivals in the window — also the anomaly's "observed" |
-| `arrivals_expected_30`, `arrivals_expected_60` | P2.6 baseline mean for this month at this minute of day |
-| `arrivals_z_30`, `arrivals_z_60` | `(observed − expected) / max(sd, 1.0)`, `sd` from P2.6 |
+| `arrivals_expected_30`, `arrivals_expected_60` | P2.6 baseline mean for this **weekday** at this minute of day (month through P2.17; P2.18) |
+| `arrivals_z_30`, `arrivals_z_60` | `(observed − expected) / max(sd, 1.0)`, `sd` from P2.6 — the spread about that weekday's own curve |
 | `declines_30`, `declines_60` | fleet-wide rider declines |
 | `cancels_30`, `cancels_60` | fleet-wide post-match cancellations |
 | `wait_gap_30`, `wait_gap_60` | mean of (realized wait − quoted wait) over riders picked up in the window; 0.0 if none; ÷ `wait_normalizer_s` |
@@ -1117,9 +1117,13 @@ Definitions:
   because the reference file's first row is exactly `start_time`.)* The fleet is
   `default_vehtype:12` and the schedule is the same on every day, so these are a deterministic
   function of clock time, included as an explicit signal.
-- **The baseline's `sd` is pooled across months**, so a lookup may take it from any month's row.
-  *(VERIFIED in P2.11 against the committed artifact: exactly one distinct `sd` per
-  `(t_seconds, window_s)` over all ten months, as P2.6's definition requires.)*
+- **The baseline's `sd` is pooled across weekdays**, so a lookup may take it from any weekday's
+  row. *(VERIFIED in P2.11 against the then-committed month table: exactly one distinct `sd` per
+  `(t_seconds, window_s)` over all ten months. Re-checked in P2.18 over the three weekdays.)*
+  **It is centred on the weekday curve, not a month curve** (P2.18): `sd(t, W)` is the spread of
+  `c_d(t, W)` about `mean(weekday(d), t, W)`, pooled over all 101 training days. Re-centring with
+  the mean is what stops the Tue/Wed/Thu spread being divided into `z` as if it were noise — at
+  t = 55440 the sd is 7.620 rather than the month table's 10.148 at `W = 30`.
 - **Two construction-time guards, added in P2.11**, because every failure they catch would
   otherwise surface as a `KeyError` or a silent zero mid-episode:
   - the observer's windows and the scenario's `[start_time, end_time)` are checked against the
@@ -1129,8 +1133,10 @@ Definitions:
     to P2.9's `corpus_hash` check (trap 16). P2.11 is the first item that reads the baseline at
     runtime, so it is the first that can check it.
 - **The anomaly's two per-episode dependencies are injected, not discovered**, as P2.9 does for
-  the request block: the rolling-stats tracker and the episode's month. An unknown month —
-  `None` included, which is what a non-ISO demand filename yields — **raises at `reset()`**.
+  the request block: the rolling-stats tracker and the episode's **weekday** (P2.18; the month
+  through P2.17). An unknown weekday **raises at `reset()`** — `None`, which is what a non-ISO
+  demand filename yields, and a name like `Sat`, which is what an ISO date outside the corpus's
+  three weekdays yields.
   Both the baseline and the schedule are **required** constructor arguments: an absent one could
   only mean zeros for 10 of the 19 features, and a feature that silently reads 0.0 is the
   failure this design keeps engineering out.
@@ -2343,45 +2349,80 @@ buckets at `W = 30` and 300 at `W = 60` by up to 0.11 arrivals. Small, but one-s
 avoid — and comparability is the whole reason this window definition is shared with §5.2.
 *(Corrected in P2.6; the original definition named only the time filter.)*
 
-- `mean(m, t, W)` = mean of `c_d(t, W)` over the training days of month `m`.
+- `mean(wd, t, W)` = mean of `c_d(t, W)` over the training days of weekday `wd` — Tue 35,
+  Wed 33, Thu 33.
 - `sd(t, W)` = sample standard deviation, over **all** training days, of
-  `c_d(t, W) − mean(month(d), t, W)`. Pooled across months, because 9–12 days per month are too
-  few to estimate spread.
+  `c_d(t, W) − mean(weekday(d), t, W)`. Pooled across weekdays, so it depends only on the minute
+  and the window.
 
-Online (P2.11): `expected = mean(month, t, W)` and `z = (observed − expected) / max(sd, 1.0)`,
+Online (P2.11): `expected = mean(weekday, t, W)` and `z = (observed − expected) / max(sd, 1.0)`,
 with `t` = `sim_time` floored to the minute.
 
-**Why month, not weekday.** Month explains **56%** of the variance in daily request totals;
-weekday explains **0.2%** — Tue, Wed and Thu average **463.4, 468.8 and 465.6** over the 101
-training days, within 5.4 requests of each other against a between-day SD of 50–64. Against a
-weekday baseline, October days read **+0.69 SD** high on average (+0.58 at 10:00, +0.84 at
-15:30), so the feature would mostly report "it is October", which the month one-hot already
-says. Weekday does matter around the 15:00–16:00 peak — in the window ending 15:30, Tuesdays
-average **21.7** arrivals per 30 min and **Wednesdays 37.3**, against 27.2 overall — and the
-weekday one-hot stays in the observation for that. Averaged over the day, the typical residual
-spread is **4.75** with the month baseline, **5.20** with weekday, **5.45** with none; a weekday
-shape scaled by month level gives **4.91**. (In-sample, and month carries 10 parameters against
-weekday's 3, so read the gap as a direction rather than a fit comparison; the direction is what
-the choice rests on.) September's mean blends 7 training days before the level shift with 3
-after it (§2.9); accepted.
+**Why weekday, not month.** *(P2.6 shipped a month-conditioned baseline; **P2.18 replaced it
+with a weekday-conditioned one**. This is the rewritten justification, not a patch of the
+original: the original argued the opposite case, and a reader needs the decision that holds
+rather than the one it replaced. The measurements are facts about the corpus and are unchanged;
+what changed is which of them the decision rests on.)*
 
-**Known bias of the month-only baseline, accepted deliberately:** because weekday is not
-conditioned on, the afternoon peak is systematically mis-predicted by weekday — against this
-baseline Wednesdays read **+1.07 SD** in the window ending 15:30 (worst +1.09 at 15:25) while
-Tuesdays read −0.58 and Thursdays −0.45, so `arrivals_z_*` is reliably positive on Wednesday
-afternoons and negative on the other two for a reason the policy cannot act on. Averaged over
-the whole day the weekday bias is negligible (−0.02, +0.02, +0.01), which is why month-only is
-sound overall and the defect is confined to the 15:00–16:00 band (+0.62 SD for Wednesday across
-it). The weekday one-hot gives the policy the information needed to discount it. A
-weekday-by-time adjustment is an option to consider before full-length training (§8, After
-Phase 2), not a Phase 2 change.
+**What this feature is for.** `arrivals_z_*` answers "busier than usual for this weekday and
+time" (§5.2). That is not the same objective as predicting a day's arrival count, and the two
+disagree here — see the validation figures below. The baseline's job is to define *usual* for
+the day the policy is in, so that a deviation from it is something the policy can act on.
 
-*All nine figures above were re-measured in P2.6. The five that had been carried from drafting
-were each a little off — 50% for month, "453–454" for the weekday means, 4.9 / 5.3 / 5.6 / 5.07
-for the spreads — because they predate the October days landing in the corpus (`6eeb05e`), and
-October runs 507–600 against about 450 earlier (§2.9). **The ordering and the conclusion are
-unchanged, and the month-over-weekday gap is slightly wider than the original figures showed**
-(0.45 against 0.40).*
+**Month is a level; weekday is a shape.** Month explains **56%** of the variance in daily
+request totals and weekday **0.2%** — Tue, Wed and Thu average **463.4, 468.8 and 465.6** over
+the 101 training days, within 5.4 requests of each other against a between-day SD of 50–64. But
+the level is already in the observation, unlabelled and twice over: `arrivals_30` and
+`arrivals_60` are the raw observed counts, so a busy day reads as busy with no calendar term at
+all. What the raw counts cannot say is whether 38 arrivals in the last half hour is a lot, and
+that depends on the weekday: in the window ending 15:24 the weekday means are Tue **20.63**,
+Wed **38.79** and Thu **23.21** — an 18-arrival spread, and the largest systematic structure
+anywhere on the grid.
+
+**A month-conditioned baseline is itself a month code.** Each month carries its own expected
+curve, so `arrivals_expected_30/60` encodes the month in two continuous features whatever the
+request block does. Dropping the `month_*` one-hot — P2.19 — would therefore **not** have
+removed month from the observation while the baseline stayed month-conditioned: it would have
+left a month code the policy could still read and the spec no longer named. That is the argument
+this change turns on.
+
+**What the re-centring buys, measured.** `sd(t, W)` becomes the spread of `c_d(t, W)` about each
+day's **own weekday** curve, pooled over all 101 days, so it stops carrying the weekday spread
+as if it were noise. At t = 55440 (15:24) it falls from **10.148 to 7.620** at `W = 30` — the
+month table's own maximum, at the minute where the Tue/Wed/Thu spread is widest — so a genuinely
+unusual Wednesday afternoon registers instead of being divided by a spread that was mostly
+Tuesday-against-Wednesday. Over the whole grid the sd *rises*, 4.750 → 5.198 at `W = 30` and
+7.042 → 8.158 at `W = 60`, which is the same fact from the other side: 3 parameters against 10
+leave more unexplained on average, and the average is not where this feature does its work. The
+peak falls on both windows (10.148 → 9.192, 13.616 → 12.796), and the minutes with `sd < 1.0`
+drop from 6 to 2 and from 5 to 2 — one of the survivors being the structural zero at t = 25200,
+where the trailing window lies entirely before the day and the SD floor is what covers it.
+
+**The bias removed, and the one accepted in its place.** Month-only mis-predicted the afternoon
+peak by weekday: in the window ending 15:30, Wednesdays read **+1.07 SD**, Tuesdays −0.58 and
+Thursdays −0.45 — reliably, for about an hour of every day. That is gone by construction. In
+exchange the new table carries a standing month bias: averaged over the grid at `W = 30`,
+October reads **+0.69 SD** and August **−0.35**, the ten months spanning 1.03 SD (Oct +0.69,
+Jun +0.25, Sep +0.14, May +0.09, Mar −0.09, Jul −0.15, Jan −0.23, Apr −0.24, Feb −0.25,
+Aug −0.35). That is §2.9's post-24-Sep level shift, now spread across all three weekday curves
+rather than concentrated in two month curves — which is also why September's 7-before /
+3-after blend stops being a special case. **The trade is explicit: a standing offset for whole
+months, against an hour-a-day offset on every day.** It is taken because the second is a
+within-day pattern this feature exists to describe, and the first is a level the raw arrival
+counts already carry.
+
+**Prediction accuracy goes the other way, and is recorded rather than optimised.** Out of sample
+on the 12 validation days, with all three baselines fitted on `corpus/` alone — rms residual
+over every day-minute: one pooled curve **5.731**, weekday **5.698**, month **5.294** at
+`W = 30`; **9.015 / 9.003 / 7.922** at `W = 60`. **Month predicts better on both windows**, and
+weekday barely improves on no conditioning at all, which is what month explaining the level and
+the validation days inheriting it looks like. Recorded because it is true and a later reader
+will measure it; not the criterion, for the reason the first paragraph gives.
+
+*All figures here were re-measured in P2.18 over `corpus/` and `corpus_val/` only —
+`corpus_eval/`'s 14 test days were not read, in code or by hand. (P2.6 had already re-measured
+the nine figures carried from drafting, five of which were a little off because they predate the
+October days landing in the corpus, `6eeb05e`.)*
 
 **Manifest:** `files` — every training file, sorted by filename, with the SHA-256 of its bytes;
 `corpus_hash`; `baseline_hash`; the month vocabulary (Jan–Oct); the weekday vocabulary
@@ -2402,8 +2443,11 @@ table a bare `pd.read_csv` can read; a metadata or comment line there would brea
 
 **How Ritun verifies:** for 3 random training days and 3 random minutes, `c_d` recomputed by
 hand from the CSV matches — **pick them from `corpus/`, since obvious-looking dates like
-2024-05-15 are evaluation days**; `mean(m, t, 30)` per month puts October above the rest; the
-manifest hash matches the directory.
+2024-05-15 are evaluation days**; `mean(wd, t, 30)` per weekday puts Wednesday well above the
+other two across the 15:00–16:00 band (20.63 / 38.79 / 23.21 at 15:24); the manifest hash
+matches the directory. *(Through P2.17 the second check was `mean(m, t, 30)` per month putting
+October above the rest — a real property of the data, and still true of the counts, but no
+longer of the committed table, which holds no month rows.)*
 
 **Commit:** `RL-GYM: add month-conditioned arrival baseline and corpus manifest`
 
@@ -2671,7 +2715,8 @@ hand computation; across the reference day `active_now` × 12 steps 8 → 11 at 
 10:00 and 12 → 11 at 17:00, with `active_30` and `active_60` leading by 30 and 60 min; total
 observation length 139 at `K = 8`. Plus, for the guards: an edited baseline makes construction
 raise and names `baseline_hash`; a window or scenario window outside the baseline's grid raises
-at construction; an unknown month raises at `reset()`; and after the `corpus.py` move the
+at construction; an unknown weekday raises at `reset()` (an unknown *month* through P2.17,
+which P2.18 replaced); and after the `corpus.py` move the
 committed `corpus_hash` and `baseline_hash` are unchanged and
 `build_arrival_baseline --check` still passes.
 
@@ -3130,6 +3175,12 @@ against P2.15's committed result — `phase2_run --harness-only` on
 full gate at `base_seed 20261015` into a fresh `--out-dir`, which must give four checkpoints with
 four **distinct** statistics files and the same KPI md5, since training is unchanged.
 
+*(**Both md5 checks in this entry are retired from P2.18 on**, which re-defined four
+observation features and added a guard that refuses a checkpoint with no recorded
+observation contract. The commands above now stop with that refusal, which is the
+intended behaviour; the figures they produced stand as the record of what this item
+verified when it ran. No replacement md5 is pinned until after P2.19.)*
+
 **Commit:** `RL-GYM: one VecNormalize statistics file per checkpoint, with a pairing check`
 
 ---
@@ -3213,12 +3264,153 @@ half on P2.16's final checkpoint into a fresh `--out-dir` —
         --out-dir runs/p217_ritun 2>&1 | tee runs/p217_ritun/console.log
 
 — which must give `kpi_report.txt` md5 **`db34f5aea5f8cd59437fb2628c9534e0`**, P2.15's published
-figure, while leaving `runs/p216_gate/` and both reference CSVs byte-unchanged. Plus the data
+figure, while leaving `runs/p216_gate/` and both reference CSVs byte-unchanged. **From P2.18 on
+this command is refused** by the observation-contract guard: `runs/p216_gate/` predates it and
+carries no record of what its features meant. The figure stands as what P2.17 verified. Plus the
+data
 checks: all 12 moved files' checksums unchanged, 101 / 12 / 14 with the directories disjoint,
 `verify_corpus(corpus/)` passing, `thursday/` untouched, and `docs/RL_GYM_EVAL_SEEDS.csv` still
 md5 `559b836e7c61fb7dadd2e7bd9bc8891d`.
 
 **Commit:** `RL-GYM: split the held-out days into validation and test`
+
+---
+
+### P2.18 — Weekday-conditioned arrival baseline, and a checkpoint artifact guard
+
+**Files:** `src/rl_gym/offline/build_arrival_baseline.py`, `src/rl_gym/corpus.py`,
+`src/rl_gym/observers.py`, `src/rl_gym/gym_env.py`, `train_sdpdp.py`,
+`src/rl_gym/evaluate.py`, `src/rl_gym/tools/phase2_run.py`, `src/rl_gym/callbacks.py`
+(docstring); `data/rl_gym/example_network/arrival_baseline.csv` and
+`data/rl_gym/example_network/corpus_manifest.json` (both regenerated);
+`tests/test_rl_gym_baseline.py`, `tests/test_rl_gym_observers.py`,
+`tests/test_rl_gym_env.py`, `tests/test_rl_gym_train.py`; `docs/SDPDP_GYM_SPEC_v2.md`,
+`docs/RL_GYM_PROGRESS.md`, `docs/RL_GYM_PHASE2_RESULTS.md`
+
+P2.6's baseline conditions on month. This item conditions it on weekday instead. The reasoning
+is §8 P2.6's rewritten *"Why weekday, not month"*; this entry is the machinery. **P2.19 drops
+the `month_*` one-hot and is a separate item** — month stays in the request block and in the
+manifest here.
+
+- **One mean per (weekday, minute, window)**, over that weekday's training days: Tue 35, Wed 33,
+  Thu 33.
+- **One sd per (minute, window)**, the sample standard deviation of
+  `c_d(t, W) − mean(weekday(d), t, W)`, pooled over all 101 training days. **Re-centring the sd
+  is the substance of the change, and nothing that exists today would catch getting it wrong.**
+  A weekday mean paired with a month-centred sd **passes `--check`** — which compares a fresh
+  build against the committed pair, so it would be comparing the defect with itself — and passes
+  `test_sd_is_pooled_so_it_does_not_vary_by_weekday`, since a month-centred sd replicated across
+  three weekday rows is still one sd per `(minute, window)`. It would give a wrong `z` at every
+  decision of every episode. A test therefore pins the centring directly: the committed sd equals
+  the residual spread about each day's own weekday curve, and at t = 55440, `W = 30` it is
+  **7.6205** and not the month-centred **10.1478**.
+- **The first column becomes the weekday, stored as its name** (`Tue` / `Wed` / `Thu`).
+  `BASELINE_COLUMNS`, `canonical_baseline_text` and `read_baseline` carry a string there.
+  **The file is written in Tue/Wed/Thu order while `canonical_baseline_text` sorts lexically for
+  hashing only**, so the artifact stays readable and the hash function keeps needing nothing but
+  the rows — folding the vocabulary order into it would make `baseline_hash` move silently if the
+  vocabulary were ever edited. A lexical sort of the *file* would have read Thu, Tue, Wed, which
+  looks like a defect and is not; this avoids a reader "fixing" it and changing the hash.
+  `test_rows_are_sorted` becomes "in (weekday-vocabulary, minute, window) order".
+- `ArrivalBaseline`'s keys, `self.months` → `self.weekdays`, and `expected` / `z` take a weekday.
+  `GlobalStateObserver.set_episode_month` → `set_episode_weekday`, still **raising at `reset()`**
+  for a weekday outside the table — `None`, which `parse_day_stem` returns for a non-ISO demand
+  filename, and a name like `Sat`, which it returns for an ISO date outside the corpus's three
+  weekdays. The env passes `self._episode_weekday`, which P2.9 already computes.
+- **4,482 rows** (3 × 747 × 2), from 14,940. `baseline_hash` and `baseline_rows` change;
+  **`corpus_hash` does not** — `corpus/` is untouched — and `month_vocab` stays in the manifest,
+  so `--check`'s key comparison is unchanged.
+- **`parse_day_stem`, `_episode_month` and `episode_summary()["month"]` all stay.** Not because
+  `kpis.month_of` needs them: that is `str(day)[:7]`, pure string slicing on the `day` column,
+  and it would survive their removal. What needs them is the request block's `month_*` one-hot —
+  10 of the 139 features, until P2.19 — plus `tools/corpus_sweep.py`'s report column and the test
+  that pins the summary field. *(An earlier draft of this item gave `kpis.month_of` as the
+  reason; it was wrong, and the reasons above are stronger.)*
+
+**The checkpoint guard.** This item keeps **139 features and changes what 4 of them mean**, so a
+pre-P2.18 checkpoint would load, run, and silently read `arrivals_expected_30/60` and
+`arrivals_z_30/60` on a scale it never trained under — the same class of silent failure as
+P2.16's shared statistics file, on the same path that produces the KPI table. `verify_corpus` and
+`verify_baseline` do not cover it: they check that the two artifacts agree **with each other**,
+not that they are the pair a checkpoint was trained against.
+
+- **What is recorded**, in `run_metadata.json` as an `observation_contract` block at checkpoint
+  time: `baseline_hash`; `obs_layout_fingerprint`, the SHA-256 of `<name>:<length>` lines over
+  the observation layout in order; `observation_length`; `position_encoding`; and the **resolved**
+  `wait_normalizer_s`. The last two change what features mean without changing any name or width,
+  so a checkpoint trained with `latlon` cannot be evaluated with `relative`. `version`
+  distinguishes "no record" from a future format change.
+- **Scalars get their own fields; only the layout is hashed.** A hash cannot be reversed to say
+  which component moved, and every refusal must name the field. The layout is the one thing that
+  cannot be reported field by field — 44 names — which is why it alone is a hash, and why
+  `observation_length` is recorded beside it so the commonest future refusal (P2.19's 139 → 129)
+  names a number rather than two hashes. `K` is covered by both and is deliberately not a field
+  of its own.
+- **Which half catches what.** The layout fingerprint **does not move** in this item: same names,
+  same widths. `baseline_hash` alone catches P2.18. The fingerprint earns its keep at P2.19. Both
+  are recorded now, because recording them later makes P2.19's checkpoints the first that can be
+  checked at all.
+- **`observation_contract` is per run, not per checkpoint**, and that is not a repeat of P2.16's
+  defect: unlike `VecNormalize` statistics these values cannot change within a run, and
+  `--resume-from` is itself guarded. One file per folder is the right shape for a constant.
+- **Every refusal names the field that differs, its recorded and current values, and the
+  checkpoint path**, and distinguishes three cases: a mismatch; a checkpoint whose metadata
+  carries no `observation_contract` (everything before this item), whose message says which
+  features were redefined and why an old policy cannot be read against the new table; and no
+  metadata file at all. **There is no escape hatch and no `--force`** — the same rule as P2.14's
+  `write_seed_file` and P2.16's "never falls back". **`runs/p215/`, `runs/p215b/` and
+  `runs/p216_gate/` therefore become unevaluable and unresumable under this code**, by decision,
+  which is what the guard is for.
+- **The pre-flight costs no workers.** `SDPDPAssignmentEnv.__init__` builds **no simulation** —
+  measured at 67 ms, no routing engine, since `load_simulation_environment` is in `reset()` — so
+  `verify_artifact_contract` constructs an env in process, reads the live values from the same
+  code the workers run, and raises before any `SubprocVecEnv` exists. It sits beside
+  `verify_statistics_pairing` in `evaluate.run_rl_pairs`, in `phase2_run`, and in `train()`'s
+  `--resume-from` branch next to `check_resume_base_seed`. The values written at checkpoint time
+  come off worker 0 through `venv.get_attr`, so they are the env the run actually used rather
+  than a second derivation (trap 13).
+
+**`kpi_report.txt` md5 `db34f5aea5f8cd59437fb2628c9534e0` is retired here.** §8 P2.15, P2.16 and
+P2.17 pin it as a re-runnable check against `runs/p216_gate/checkpoints/model_ep00047.zip`; from
+this item that command is **refused**. The number would have moved regardless — the policy sees
+four re-defined features, so its actions and the KPI table change — so the guard is what turns a
+silently different table into a refusal rather than what retires the check. **No replacement
+figure is pinned in this item:** P2.19 changes the observation again, so a pin created now would
+be retired immediately. New reference figures are produced and pinned once, after P2.19.
+
+**Figures, all measured over `corpus/` and `corpus_val/` only — `corpus_eval/` was not read:**
+
+| | month (P2.6) | weekday (P2.18) |
+|---|---|---|
+| baseline rows | 14,940 | **4,482** |
+| days per group | 9–12 per month | Tue 35, Wed 33, Thu 33 |
+| sd mean over the grid, `W = 30` / `60` | 4.750 / 7.042 | **5.198 / 8.158** |
+| sd max over the grid, `W = 30` / `60` | 10.148 / 13.616 | **9.192 / 12.796** |
+| sd at t = 55440, `W = 30` | 10.148 | **7.620** |
+| minutes with sd < 1.0, `W = 30` / `60` | 6 / 5 | **2 / 2** |
+| standing z by group, `W = 30` | Tue −0.02, Wed +0.02, Thu +0.01 | Oct **+0.69** … Aug **−0.35** |
+| validation rms residual, `W = 30` / `60` | 5.294 / 7.922 | 5.698 / 9.003 |
+| observation length | 139 | **139** |
+
+The sd < 1.0 counts are **grid minutes**, not CSV rows: one sd serves all three weekday rows of
+a minute, so as rows it is 60 → 6 and 50 → 6. One sd is exactly 0, at t = 25200, in both tables
+and both windows.
+
+**How Ritun verifies:**
+- the full suite, including the new re-centring test (sd at t = 55440, `W = 30` is 7.6205, not
+  10.1478);
+- `python -m src.rl_gym.offline.build_arrival_baseline --check` on the regenerated pair;
+- the old `baseline_hash` no longer verifies against the new table;
+- an unknown weekday — `None` and `Sat` — raises at `reset()`, not at the first decision;
+- **the P1.10 gate, byte for byte.** The gate reads `thursday/2024-06-20.csv`, a Thursday, so it
+  exercises the new lookup; greedy reads only `delta_cfv` and `is_valid`, so a passing gate is
+  what says the redefined features perturbed no simulation output (trap 14);
+- `python -m src.rl_gym.evaluate --verify`;
+- `python train_sdpdp.py --verify-run`;
+- the guard refusing `runs/p216_gate/checkpoints/model_ep00047.zip`, naming the field, both values
+  and the path.
+
+**Commit:** `RL-GYM: condition the arrival baseline on weekday`
 
 ---
 
@@ -3243,43 +3435,42 @@ In this order:
    and `VecNormalize` rescales rewards anyway.
 3. **Planner stop duration.** Ritun may change `op_const_boarding_time` from 300 s to 40–60 s.
    This is his decision; Claude Code does not touch it (§10).
-4. **Additive weekday-by-time term in the arrival baseline — an option to consider, not a
-   decision taken.** P2.6's baseline conditions on month alone, which leaves a known weekday
-   bias at the afternoon peak: against it, Wednesdays read +1.07 SD in the window ending 15:30,
-   Tuesdays −0.58, Thursdays −0.45, while the whole-day bias is negligible (§8 P2.6).
-   `arrivals_z_*` is therefore reliably wrong by about an SD for an hour a day, in a direction
-   the weekday one-hot lets the policy discount but the anomaly feature itself cannot express.
+4. **The arrival baseline's conditioning — settled in P2.18, and this step is closed.**
+   *(Rewritten in P2.18. This step was "additive weekday-by-time term — an option to consider,
+   not a decision taken", and it is no longer an open option: the conditioning moved, but not
+   to the form named here.)*
 
-   The form to consider is **additive, with no weekday×month cells and no smoothing**:
+   **What was done instead.** P2.18 **replaced** month with weekday — one mean per
+   `(weekday, minute, window)`, and the `sd` re-centred on the weekday curve — rather than
+   adding a weekday term on top of a month one. §8 P2.6's "Why weekday, not month" is the
+   reasoning.
+
+   **Why the additive form was rejected rather than adopted.** The form considered here was
 
        expected(m, wd, t, W) = mean(m, t, W) + δ(wd, t, W)
 
-   where `δ(wd, t, W)` is the mean, over **all** training days of that weekday — 33–35 days,
-   pooled across months — of `c_d(t, W) − mean(month(d), t, W)`. Pooling across months is what
-   keeps the sample size usable: a per-(weekday, month) cell would hold only 3–4 days, but `δ`
-   holds 33–35.
+   with `δ(wd, t, W)` the mean over all 33–35 training days of that weekday of
+   `c_d(t, W) − mean(month(d), t, W)`, pooled across months to keep the sample size usable. It
+   predicts better than either single-factor baseline — by leave-one-training-day-out, refitting
+   on the other 100 days, rms residual month-only → additive was 5.50 → **5.18** whole day and
+   7.08 → **6.10** in the 14:00–17:00 band at `W = 30`; 8.15 → **7.72** and 10.69 → **9.32** at
+   `W = 60`. **It keeps month in the expected curve**, and that is why it was not taken: a
+   month-conditioned expectation is itself a month code in two continuous features, so P2.19's
+   removal of the `month_*` one-hot would not have removed month from the observation. Prediction
+   accuracy is not this feature's objective (§8 P2.6); it would have bought accuracy at the cost
+   of the thing P2.18 and P2.19 exist to do.
 
-   **Measured by leave-one-training-day-out, refitting everything on the other 100 days, it is
-   better out of sample** — rms residual, month-only → additive:
+   **The weaker variant, recorded so it is not re-proposed.** A **weekday shape scaled by month
+   level** improves on month-only by the same leave-one-out rms (5.26 whole day, 6.38 in the band
+   at `W = 30`) but by less than the additive term, and on the in-sample per-minute-SD metric it
+   is *worse* than month-only (4.91 against 4.75). It also keeps month. **Those two metrics are
+   not comparable to each other** — one is an rms over every day-minute residual, the other a
+   per-minute SD averaged over the day — so do not read 5.18 against 4.75.
 
-   | | whole day | 14:00–17:00 |
-   |---|---|---|
-   | `W = 30` | 5.50 → **5.18** | 7.08 → **6.10** |
-   | `W = 60` | 8.15 → **7.72** | 10.69 → **9.32** |
-
-   The alternative of a **weekday shape scaled by month level is the weaker variant** and the
-   two metrics disagree about it: on the same leave-one-out rms it does improve on month-only
-   (5.26 whole day, 6.38 in the band at `W = 30`) but by less than the additive term, while on
-   the in-sample per-minute-SD metric used elsewhere in P2.6 it is *worse* than month-only
-   (4.91 against 4.75). The additive term wins on both metrics, which is why it is the form
-   named here. **Those two metrics are not comparable to each other** — one is an rms over every
-   day-minute residual, the other a per-minute SD averaged over the day — so do not read 5.18
-   against 4.75.
-
-   If it is adopted, `arrival_baseline.csv` gains a weekday dimension, both it and
-   `corpus_manifest.json` are rebuilt, `baseline_hash` changes, and anything trained against the
-   old baseline is invalidated (trap 16) — which is why this belongs before full-length training
-   rather than during it.
+   P2.18 rebuilt `arrival_baseline.csv` and `corpus_manifest.json`, changed `baseline_hash`, and
+   invalidated everything trained against the old baseline (trap 16) — which is why it was done
+   before full-length training rather than during it, and why it carries the checkpoint guard
+   that refuses an older policy outright.
 5. **Turn on stock repositioning.** It needs a FleetPy zone system and forecast inputs.
 6. **Regenerate both baselines**: the two byte-gate files — keeping the current ones under new names,
    so the repositioning-off configuration stays testable — and the stock-greedy KPI runs. A
@@ -3514,7 +3705,15 @@ decision point can be added without touching `SDPDPAssignmentEnv`.
 - **`h3` as a dependency of anything under `src/`.** Neighbour relations come from P2.5's table.
 - **Registering H3 as a FleetPy zone system.** The zones are an RL-internal lookup. A FleetPy
   zone system becomes relevant only when repositioning goes on, after Phase 2.
-- **Repositioning, `op_const_boarding_time`, the reward weight sweep, and the additive
-  weekday-by-time term in the arrival baseline.** All four are Ritun's steps after Phase 2
-  (§8), not work items. Stock repositioning stays off throughout Phase 2, and P2.6's baseline
-  stays month-only — do not add the weekday term, and do not add a config key for it.
+- **Repositioning, `op_const_boarding_time`, and the reward weight sweep.** All three are
+  Ritun's steps after Phase 2 (§8), not work items. Stock repositioning stays off throughout
+  Phase 2.
+- **The arrival baseline's conditioning is settled and is not open to variants.** It conditions
+  on **weekday** (P2.18), one mean per `(weekday, minute, window)` with the `sd` re-centred on
+  the weekday curve. Do not add a month term back, do not add an additive month+weekday form —
+  rejected in P2.18 because it keeps month in the expected curve (§8, After Phase 2 step 4) —
+  do not add weekday×month cells, do not add smoothing, and **do not make the conditioning a
+  config key**: two baselines reachable from one config is two sets of trained policies that
+  look alike. *(Through P2.17 this bullet said the opposite — "P2.6's baseline stays month-only
+  — do not add the weekday term". P2.18 reversed the decision, on Ritun's direction, and
+  rewrote both this bullet and step 4.)*

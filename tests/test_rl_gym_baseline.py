@@ -32,6 +32,7 @@ from src.rl_gym.offline.build_arrival_baseline import (  # noqa: E402
     START_TIME,
     WEEKDAY_VOCAB,
     WINDOWS_S,
+    _WEEKDAY_OF,
     baseline_hash,
     canonical_baseline_text,
     compute_baseline,
@@ -47,7 +48,18 @@ from src.rl_gym.offline.build_arrival_baseline import (  # noqa: E402
 
 N_TRAINING_DAYS = 101
 N_MINUTES = 747                       # multiples of 60 in [25200, 70000)
-N_ROWS = N_MINUTES * len(MONTH_VOCAB) * len(WINDOWS_S)       # 14_940
+#: 4,482 = 3 x 747 x 2 since P2.18, which conditions the baseline on weekday; it was
+#: 14,940 = 10 x 747 x 2 while it was conditioned on month.
+N_ROWS = N_MINUTES * len(WEEKDAY_VOCAB) * len(WINDOWS_S)     # 4_482
+
+#: P2.18's figures, asserted where the re-centring of the sd is what they pin.
+#: 15:24, the minute where the Tue/Wed/Thu spread is widest and the month table's own sd
+#: maximum at W = 30 -- which is what makes it the sharpest single check that the sd is taken
+#: about the weekday curve and not a month curve.
+RECENTRE_PROBE_T = 55440
+SD_AT_PROBE_W30 = 7.6205              # weekday-centred; month-centred was 10.1478
+SD_MONTH_CENTRED_AT_PROBE_W30 = 10.1478
+DAYS_PER_WEEKDAY = {"Tue": 35, "Wed": 33, "Thu": 33}
 
 #: the five training days carrying one `start == end` row each (P2.4), with that row's rq_time
 SAME_NODE_TRAINING_DAYS = {
@@ -83,43 +95,57 @@ class TestCommittedBaseline(unittest.TestCase):
 
     def test_row_count_and_keys(self):
         self.assertEqual(len(self.rows), N_ROWS)
-        keys = {(m, t, w) for m, t, w, _mean, _sd in self.rows}
-        self.assertEqual(len(keys), N_ROWS, "every (month, minute, window) appears once")
-        self.assertEqual({m for m, *_ in self.rows}, set(MONTH_VOCAB))
-        self.assertEqual({w for _m, _t, w, *_ in self.rows}, set(WINDOWS_S))
-        self.assertEqual({t for _m, t, *_ in self.rows}, set(minute_grid()))
+        keys = {(w, t, win) for w, t, win, _mean, _sd in self.rows}
+        self.assertEqual(len(keys), N_ROWS, "every (weekday, minute, window) appears once")
+        self.assertEqual({w for w, *_ in self.rows}, set(WEEKDAY_VOCAB))
+        self.assertEqual({win for _w, _t, win, *_ in self.rows}, set(WINDOWS_S))
+        self.assertEqual({t for _w, t, *_ in self.rows}, set(minute_grid()))
+
+    def test_the_weekday_column_holds_names_not_numbers(self):
+        # P2.18 stores the weekday as its name, so the artifact reads without a lookup table
+        for w, *_rest in self.rows:
+            self.assertIsInstance(w, str)
+            self.assertIn(w, WEEKDAY_VOCAB)
 
     def test_all_values_finite_and_non_negative(self):
-        for m, t, w, mean, sd in self.rows:
-            self.assertTrue(np.isfinite(mean) and np.isfinite(sd), (m, t, w))
+        for w, t, win, mean, sd in self.rows:
+            self.assertTrue(np.isfinite(mean) and np.isfinite(sd), (w, t, win))
             self.assertGreaterEqual(mean, 0.0)
             self.assertGreaterEqual(sd, 0.0)
 
-    def test_sd_is_pooled_so_it_does_not_vary_by_month(self):
-        # 9-12 days per month are too few to estimate spread, so sd is pooled over all 101
+    def test_sd_is_pooled_so_it_does_not_vary_by_weekday(self):
+        # the sd is centred on each day's own weekday curve but pooled over all 101 days, so it
+        # depends only on (minute, window) and the three weekday rows of a minute share it
         by_key = {}
-        for m, t, w, _mean, sd in self.rows:
-            by_key.setdefault((t, w), set()).add(sd)
+        for _w, t, win, _mean, sd in self.rows:
+            by_key.setdefault((t, win), set()).add(sd)
         offenders = {k: v for k, v in by_key.items() if len(v) != 1}
         self.assertEqual(offenders, {}, "sd must depend only on (minute, window)")
 
     def test_sixty_minute_means_are_at_least_thirty_minute_means(self):
-        means = {(m, t, w): mean for m, t, w, mean, _sd in self.rows}
-        for (m, t, w), mean in means.items():
-            if w == 1800:
-                self.assertLessEqual(mean, means[(m, t, 3600)] + 1e-9, (m, t))
+        means = {(w, t, win): mean for w, t, win, mean, _sd in self.rows}
+        for (w, t, win), mean in means.items():
+            if win == 1800:
+                self.assertLessEqual(mean, means[(w, t, 3600)] + 1e-9, (w, t))
 
     def test_first_minute_is_empty_by_construction(self):
         # the trailing window at t = start_time lies entirely before the day, so the count is 0
         # on every day; sd is 0 there too, which is what the SD floor exists for
-        for w in WINDOWS_S:
-            for m in MONTH_VOCAB:
-                row = next(r for r in self.rows if r[:3] == (m, START_TIME, w))
+        for win in WINDOWS_S:
+            for w in WEEKDAY_VOCAB:
+                row = next(r for r in self.rows if r[:3] == (w, START_TIME, win))
                 self.assertEqual((row[3], row[4]), (0.0, 0.0))
 
-    def test_rows_are_sorted(self):
-        keys = [(m, t, w) for m, t, w, *_ in self.rows]
-        self.assertEqual(keys, sorted(keys), "committed rows must be sorted, for a stable diff")
+    def test_rows_are_in_weekday_vocabulary_order(self):
+        """Tue/Wed/Thu, not lexical -- a stable diff that also reads in calendar order (P2.18).
+
+        A lexical file would be Thu/Tue/Wed, which looks like a defect. `canonical_baseline_text`
+        still sorts lexically for hashing, so `baseline_hash` needs no ordering table; this is
+        the file's order, which is the builder's emission order.
+        """
+        keys = [(WEEKDAY_VOCAB.index(w), t, win) for w, t, win, *_ in self.rows]
+        self.assertEqual(keys, sorted(keys))
+        self.assertEqual([w for w, *_ in self.rows][0], "Tue")
 
 
 class TestBaselineMatchesAFreshBuild(unittest.TestCase):
@@ -147,9 +173,13 @@ class TestBaselineMatchesAFreshBuild(unittest.TestCase):
 
     def test_hash_changes_if_one_value_changes(self):
         rows = read_baseline(BASELINE)
+        # mid-table, derived rather than a literal: a fixed 5000 was inside the 14,940-row month
+        # table and is an IndexError against the 4,482-row weekday one (P2.18)
+        i = len(rows) // 2
+        w, t, win, mean, sd = tampered_row = rows[i]
         tampered = list(rows)
-        m, t, w, mean, sd = tampered[5000]
-        tampered[5000] = (m, t, w, mean + 0.01, sd)
+        tampered[i] = (w, t, win, mean + 0.01, sd)
+        self.assertNotEqual(tampered[i], tampered_row)
         self.assertNotEqual(baseline_hash(tampered), baseline_hash(rows))
 
 
@@ -215,18 +245,26 @@ class TestSameNodeRowsAreExcluded(unittest.TestCase):
             self.assertEqual(kept_at, raw_at - 1, day)
 
     def test_counting_raw_rows_would_inflate_the_mean(self):
-        # the effect, measured: a February bucket moves by 1/10 if the row is counted
+        """The effect, measured on the bucket the row actually lands in.
+
+        2024-02-15 is a **Thursday**, so since P2.18 the row inflates the Thursday bucket by
+        1/33 rather than a February bucket by 1/10 -- the group it belongs to changed with the
+        baseline, the one-sided inflation did not.
+        """
         import pandas as pd
         day, rq_time = "2024-02-15", 37080
         grid = minute_grid()
-        feb = [d for d in training_day_files() if dt.date.fromisoformat(d).month == 2]
-        self.assertEqual(len(feb), 10)
+        weekday = _WEEKDAY_OF[dt.date.fromisoformat(day).weekday()]
+        self.assertEqual(weekday, "Thu")
+        same_weekday = [d for d in training_day_files()
+                        if _WEEKDAY_OF[dt.date.fromisoformat(d).weekday()] == weekday]
+        self.assertEqual(len(same_weekday), DAYS_PER_WEEKDAY[weekday])
         t = rq_time + 60                      # a window that contains the row
         i = grid.index(t)
 
         def mean_at(use_both_filters):
             vals = []
-            for d in feb:
+            for d in same_weekday:
                 path = os.path.join(CORPUS, f"{d}.csv")
                 df = pd.read_csv(path)
                 w = df[(df.rq_time >= START_TIME) & (df.rq_time < END_TIME)]
@@ -236,18 +274,24 @@ class TestSameNodeRowsAreExcluded(unittest.TestCase):
             return float(np.mean(vals))
 
         correct, inflated = mean_at(True), mean_at(False)
-        self.assertAlmostEqual(inflated - correct, 0.1, places=9)
-        committed = {(m, tt, ww): mean for m, tt, ww, mean, _sd in read_baseline(BASELINE)}
-        self.assertAlmostEqual(committed[(2, t, 1800)], correct, places=9,
+        self.assertAlmostEqual(inflated - correct, 1.0 / len(same_weekday), places=9)
+        committed = {(w, tt, ww): mean for w, tt, ww, mean, _sd in read_baseline(BASELINE)}
+        self.assertAlmostEqual(committed[(weekday, t, 1800)], correct, places=9,
                                msg="the committed baseline must use both filters")
 
 
-class TestMonthOverWeekday(unittest.TestCase):
-    """The figures behind "why month, not weekday" (P2.6), re-measured.
+class TestWeekdayOverMonth(unittest.TestCase):
+    """The figures behind "why weekday, not month" (§8 P2.6, as P2.18 rewrote it).
 
-    These are the justification for conditioning the baseline on month, so they are asserted
-    as a direction rather than as exact values: the ordering must hold even if the corpus is
-    ever extended.
+    These were the justification for conditioning on **month** through P2.17, and the same
+    measurements now justify conditioning on **weekday** — because what changed is which of
+    them the decision rests on, not what the corpus says. So this class pins both sides,
+    including the two that favour month, and the directions are asserted as directions so they
+    survive the corpus being extended.
+
+    What is deliberately **not** asserted here is that weekday beats month on fit or on
+    prediction. It does not, on either metric, and `TestWeekdayBaselineIsRecentred` plus the
+    spec record that as an observation rather than a criterion.
     """
 
     @classmethod
@@ -258,7 +302,7 @@ class TestMonthOverWeekday(unittest.TestCase):
         cls.X = np.vstack([counts_for_day(
             kept_arrival_times(os.path.join(CORPUS, f"{d}.csv")), grid, 1800) for d in days])
         cls.months = np.array([dt.date.fromisoformat(d).month for d in days])
-        cls.wd = np.array([dt.date.fromisoformat(d).strftime("%a") for d in days])
+        cls.wd = np.array([_WEEKDAY_OF[dt.date.fromisoformat(d).weekday()] for d in days])
         cls.grid = grid
 
     def _spread(self, keys):
@@ -268,16 +312,28 @@ class TestMonthOverWeekday(unittest.TestCase):
             B[sel] = self.X[sel].mean(axis=0)
         return float(np.mean(np.std(self.X - B, axis=0, ddof=1)))
 
-    def test_month_baseline_beats_weekday_and_none(self):
+    def test_whole_day_spread_still_favours_month_and_is_recorded_not_optimised(self):
+        """4.75 month, 5.20 weekday, 5.45 none — unchanged, and *against* P2.18's choice.
+
+        Kept because it is true: 3 parameters against 10 leave more unexplained **on average**,
+        and the average is not where `arrivals_z_*` does its work. The whole-day number is the
+        one figure that most invites re-deriving the old decision, so it is asserted with the
+        ordering spelled out rather than quietly dropped.
+        """
         month, weekday = self._spread(self.months), self._spread(self.wd)
         none = float(np.mean(np.std(self.X - self.X.mean(axis=0), axis=0, ddof=1)))
-        self.assertLess(month, weekday, "conditioning on month must beat weekday")
+        self.assertLess(month, weekday, "month still fits better averaged over the day")
         self.assertLess(weekday, none)
         self.assertAlmostEqual(month, 4.75, delta=0.15)
         self.assertAlmostEqual(weekday, 5.20, delta=0.15)
         self.assertAlmostEqual(none, 5.45, delta=0.15)
 
-    def test_weekday_explains_almost_none_of_the_daily_total_variance(self):
+    def test_month_explains_the_daily_level_and_weekday_explains_none_of_it(self):
+        """56% against 0.2% — and the level is already in the observation as `arrivals_30/60`.
+
+        This is why month is not what the anomaly conditions on: it predicts the *level*, which
+        the raw arrival counts carry unlabelled, rather than the within-day shape.
+        """
         totals = self.X.sum(axis=1)
 
         def share(keys):
@@ -285,11 +341,12 @@ class TestMonthOverWeekday(unittest.TestCase):
                          for k in set(keys))
             return 1 - ss_res / ((totals - totals.mean()) ** 2).sum()
 
-        self.assertLess(share(self.wd), 0.05, "weekday must explain essentially nothing")
-        self.assertGreater(share(self.months), 0.4, "month must explain a large share")
+        self.assertLess(share(self.wd), 0.05, "weekday explains essentially no daily total")
+        self.assertGreater(share(self.months), 0.4, "month explains a large share")
 
-    def test_weekday_still_matters_at_the_afternoon_peak(self):
-        # which is why the weekday one-hot stays in the observation (§5.2)
+    def test_weekday_is_the_within_day_shape_at_the_afternoon_peak(self):
+        """Tue 21.7 against Wed 37.3 in the window ending 15:30 — the structure P2.18 conditions
+        on, and the bias a month-only table carried for about an hour of every day."""
         i = self.grid.index(55800)
         tue = self.X[self.wd == "Tue", i].mean()
         wed = self.X[self.wd == "Wed", i].mean()
@@ -298,15 +355,101 @@ class TestMonthOverWeekday(unittest.TestCase):
         self.assertGreater(wed, overall)
         self.assertGreater(wed - tue, 10.0, "the weekday spread at 15:30 is large")
 
-    def test_october_reads_high_against_a_weekday_baseline(self):
+    def test_the_accepted_bias_is_a_standing_month_offset(self):
+        """October +0.69 SD, August −0.35, against the **shipped** table.
+
+        P2.6 cited this figure as a reason to reject a weekday baseline; P2.18 accepts it, in
+        exchange for removing a +1.07 SD Wednesday bias at the afternoon peak (§8 P2.6). It is
+        asserted so the trade stays visible and measured rather than remembered.
+        """
         B = np.zeros_like(self.X)
         for k in set(self.wd):
             sel = self.wd == k
             B[sel] = self.X[sel].mean(axis=0)
         res = self.X - B
         sd = np.std(res, axis=0, ddof=1)
-        z = res / np.where(sd > 0, sd, 1.0)
+        z = res / np.maximum(sd, SD_FLOOR)
         self.assertGreater(z[self.months == 10].mean(), 0.5)
+        self.assertLess(z[self.months == 8].mean(), -0.2)
+        # whole-day weekday bias is gone by construction, which is the point of conditioning
+        for w in WEEKDAY_VOCAB:
+            self.assertAlmostEqual(float(z[self.wd == w].mean()), 0.0, places=9)
+
+
+class TestWeekdayBaselineIsRecentred(unittest.TestCase):
+    """**The one defect no other check in this repository would catch** (P2.18).
+
+    A weekday mean paired with a month-centred sd passes `--check`, because that compares a
+    fresh build against the committed pair and would be comparing the defect with itself. It
+    also passes `test_sd_is_pooled_so_it_does_not_vary_by_weekday`, since a month-centred sd
+    replicated across three weekday rows is still one sd per `(minute, window)`. It would give
+    a wrong `z` at every decision of every episode. So the centring is pinned directly.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.days = training_day_files()
+        cls.grid = minute_grid()
+        times = {d: kept_arrival_times(os.path.join(CORPUS, f"{d}.csv")) for d in cls.days}
+        cls.counts = {w: {d: counts_for_day(times[d], cls.grid, w) for d in cls.days}
+                      for w in WINDOWS_S}
+        cls.weekday_of = {d: _WEEKDAY_OF[dt.date.fromisoformat(d).weekday()] for d in cls.days}
+        cls.month_of = {d: dt.date.fromisoformat(d).month for d in cls.days}
+        cls.committed = {(w, t, win): sd for w, t, win, _mu, sd in read_baseline(BASELINE)}
+
+    def _centred_sd(self, window_s, group_of):
+        counts = self.counts[window_s]
+        groups = {}
+        for d in self.days:
+            groups.setdefault(group_of[d], []).append(d)
+        means = {g: np.mean([counts[d] for d in ds], axis=0) for g, ds in groups.items()}
+        residuals = np.vstack([counts[d] - means[group_of[d]] for d in self.days])
+        return residuals.std(axis=0, ddof=1)
+
+    def test_days_per_weekday(self):
+        counts = {}
+        for d in self.days:
+            counts[self.weekday_of[d]] = counts.get(self.weekday_of[d], 0) + 1
+        self.assertEqual(counts, DAYS_PER_WEEKDAY)
+
+    def test_committed_sd_is_centred_on_the_weekday_curve(self):
+        for window_s in WINDOWS_S:
+            want = self._centred_sd(window_s, self.weekday_of)
+            for i, t in enumerate(self.grid):
+                for weekday in WEEKDAY_VOCAB:
+                    self.assertAlmostEqual(self.committed[(weekday, t, window_s)], want[i],
+                                           places=9, msg=f"{weekday} t={t} W={window_s}")
+
+    def test_the_probe_minute_distinguishes_the_two_centrings(self):
+        """7.6205, not 10.1478, at t = 55440 and W = 30 — the sharpest single check.
+
+        15:24 is where the Tue/Wed/Thu means are furthest apart (20.63 / 38.79 / 23.21) and is
+        the month-centred table's own sd maximum. A month-centred sd would read 10.1478 here
+        and every other check in the suite would still pass.
+        """
+        committed = self.committed[("Tue", RECENTRE_PROBE_T, 1800)]
+        self.assertAlmostEqual(committed, SD_AT_PROBE_W30, places=4)
+        month_centred = self._centred_sd(1800, self.month_of)[self.grid.index(RECENTRE_PROBE_T)]
+        self.assertAlmostEqual(month_centred, SD_MONTH_CENTRED_AT_PROBE_W30, places=4)
+        self.assertLess(committed, month_centred - 2.0,
+                        "the weekday-centred sd must be materially smaller at the probe")
+
+    def test_recentring_lowers_the_peak_and_raises_the_average(self):
+        """Both directions, since only reporting one of them would read as a free improvement."""
+        for window_s, mean_was, mean_now, max_was, max_now in (
+                (1800, 4.750, 5.198, 10.148, 9.192),
+                (3600, 7.042, 8.158, 13.616, 12.796)):
+            weekday_sd = self._centred_sd(window_s, self.weekday_of)
+            month_sd = self._centred_sd(window_s, self.month_of)
+            self.assertAlmostEqual(float(month_sd.mean()), mean_was, places=2)
+            self.assertAlmostEqual(float(weekday_sd.mean()), mean_now, places=2)
+            self.assertAlmostEqual(float(month_sd.max()), max_was, places=2)
+            self.assertAlmostEqual(float(weekday_sd.max()), max_now, places=2)
+            self.assertGreater(weekday_sd.mean(), month_sd.mean())
+            self.assertLess(weekday_sd.max(), month_sd.max())
+            # minutes below the SD floor, where the floor is what carries the division
+            self.assertEqual(int((weekday_sd < SD_FLOOR).sum()), 2)
+            self.assertEqual(float(weekday_sd[self.grid.index(START_TIME)]), 0.0)
 
 
 class TestManifest(unittest.TestCase):

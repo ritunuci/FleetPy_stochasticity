@@ -45,6 +45,7 @@ from src.rl_gym.gym_env import (  # noqa: E402
     parse_day_stem,
 )
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCS = os.path.join(os.path.dirname(__file__), "..", "studies", "example_study", "scenarios")
 CORPUS_ROOT = os.path.join(os.path.dirname(__file__), "..", "data", "demand",
                            "example_demand", "matched", "example_network")
@@ -1131,7 +1132,7 @@ class TestGlobalBlockInTheEnv(unittest.TestCase):
 
     def test_the_committed_artifacts_are_loaded_and_verified(self):
         # ArrivalBaseline verifies baseline_hash against the manifest at construction (trap 16)
-        self.assertEqual(len(self.env._arrival_baseline.rows), 14940)
+        self.assertEqual(len(self.env._arrival_baseline.rows), 4482)      # 3 x 747 x 2 (P2.18)
         self.assertEqual(self.env._arrival_baseline.sd_floor, 1.0)
         self.assertTrue(self.env._active_fleet.path.endswith("example_active_fleetsize.csv"))
         self.assertIn("elastic_fleet_size", self.env._active_fleet.path)
@@ -1140,13 +1141,30 @@ class TestGlobalBlockInTheEnv(unittest.TestCase):
         # TimeBasedFS.add_init: dir_names[G_DIR_FCTRL]/elastic_fleet_size/<file>
         self.assertTrue(os.path.isfile(self.env._active_fleet.path))
 
-    def test_the_episode_month_is_injected_on_every_reset(self):
+    def test_the_episode_weekday_is_injected_on_every_reset(self):
         env = SDPDPAssignmentEnv(make_cfg())
         try:
             for _ in range(2):
                 env.reset()
-                self.assertEqual(env._global_observer._month, env._episode_month)
+                self.assertEqual(env._global_observer._weekday, env._episode_weekday)
+                self.assertEqual(env._global_observer._weekday, "Thu")   # 2024-06-20
                 self.assertIs(env._global_observer._stats, env._stats)
+        finally:
+            env.close()
+
+    def test_the_month_is_still_parsed_for_the_request_block(self):
+        """P2.18 moves the *baseline* to weekday; `_episode_month` stays (P2.19 removes it).
+
+        It feeds the request block's 10-wide `month` one-hot, `tools/corpus_sweep.py`'s report
+        column and `episode_summary()`. It is **not** what `kpis.month_of` reads -- that slices
+        the day string -- so this is pinned where the dependency actually is.
+        """
+        env = SDPDPAssignmentEnv(make_cfg())
+        try:
+            env.reset()
+            self.assertEqual(env._episode_month, 6)
+            self.assertEqual(env.episode_summary()["month"], 6)
+            self.assertEqual(env._request_observer._month_index, 5)      # June, Jan-Oct vocab
         finally:
             env.close()
 
@@ -1161,13 +1179,14 @@ class TestGlobalBlockInTheEnv(unittest.TestCase):
     def test_the_anomaly_is_consistent_with_the_committed_table(self):
         layout = self.env.observation_layout
         baseline = self.env._arrival_baseline
-        month = self.env._episode_month
+        weekday = self.env._episode_weekday
         t = baseline.floor_minute(self.env._pending.sim_time)
         for window_s, key in ((1800, "30"), (3600, "60")):
             observed = float(self.obs[layout[f"arrivals_{key}"]][0])
             expected = float(self.obs[layout[f"arrivals_expected_{key}"]][0])
             z = float(self.obs[layout[f"arrivals_z_{key}"]][0])
-            self.assertAlmostEqual(expected, baseline.expected(month, t, window_s), places=4)
+            self.assertAlmostEqual(expected, baseline.expected(weekday, t, window_s),
+                                   places=4)
             sd = max(baseline.sd(t, window_s), baseline.sd_floor)
             self.assertAlmostEqual(z, (observed - expected) / sd, places=4)
 
@@ -1188,13 +1207,13 @@ class TestGlobalBlockInTheEnv(unittest.TestCase):
         from src.rl_gym.observers import ArrivalBaseline
         with tempfile.TemporaryDirectory() as tmp:
             rows = corpus.read_baseline()
-            month, t, window_s, mean, sd = rows[0]
-            rows[0] = (month, t, window_s, mean + 1.0, sd)
+            weekday, t, window_s, mean, sd = rows[0]
+            rows[0] = (weekday, t, window_s, mean + 1.0, sd)
             path = os.path.join(tmp, "arrival_baseline.csv")
             with open(path, "w", newline="") as fh:
                 fh.write(",".join(corpus.BASELINE_COLUMNS) + "\n")
-                for m, tt, w, mu, s in rows:
-                    fh.write(f"{m},{tt},{w},{corpus.FLOAT_FMT.format(mu)},"
+                for wd, tt, w, mu, s in rows:
+                    fh.write(f"{wd},{tt},{w},{corpus.FLOAT_FMT.format(mu)},"
                              f"{corpus.FLOAT_FMT.format(s)}\n")
             with self.assertRaises(ValueError) as cm:
                 ArrivalBaseline(corpus.load_manifest(), path)
@@ -1526,6 +1545,180 @@ class TestNonFiniteObservationGuard(unittest.TestCase):
             env._check_finite(env._obs)              # must not raise
         finally:
             env.close()
+
+
+class TestObservationContract(unittest.TestCase):
+    """What a checkpoint's observations *mean*, recorded and checked (P2.18).
+
+    These live here rather than in `tests/test_rl_gym_train.py` because none of them needs
+    `torch` -- the contract comes off the env and the guard reads a JSON file. P2.12's rule is
+    that only that one module imports the learning stack (§8a).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.env = SDPDPAssignmentEnv(make_cfg())
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.env.close()
+
+    def test_the_contract_records_the_five_fields_the_guard_compares(self):
+        import train_sdpdp
+        contract = self.env.observation_contract
+        self.assertEqual(contract["version"], 1)
+        for field, _consequence in train_sdpdp.OBSERVATION_CONTRACT_FIELDS:
+            self.assertIn(field, contract, f"{field} is compared but never recorded")
+        # and nothing recorded is left uncompared, which is the other direction of the same
+        # failure: a field nobody checks is not a guard
+        compared = {f for f, _c in train_sdpdp.OBSERVATION_CONTRACT_FIELDS} | {"version"}
+        self.assertEqual(set(contract), compared)
+
+    def test_the_contract_matches_the_committed_artifacts(self):
+        from src.rl_gym.corpus import load_manifest
+        contract = self.env.observation_contract
+        self.assertEqual(contract["baseline_hash"], load_manifest()["baseline_hash"])
+        self.assertEqual(contract["observation_length"], 139)
+        self.assertEqual(contract["position_encoding"], "latlon")
+        self.assertEqual(contract["wait_normalizer_s"], 1500.0)   # op_max_wait_time (§5.3)
+
+    def test_the_fingerprint_covers_names_widths_and_order(self):
+        from src.rl_gym.observers import layout_fingerprint
+        layout = dict(self.env.observation_layout)
+        base = layout_fingerprint(layout)
+        self.assertEqual(base, self.env.observation_contract["obs_layout_fingerprint"])
+        # a rename
+        renamed = {("dow_x" if k == "dow" else k): v for k, v in layout.items()}
+        self.assertNotEqual(layout_fingerprint(renamed), base)
+        # a width change -- P2.19 dropping the 10-wide month one-hot is this case
+        widths = dict(layout)
+        widths["month"] = slice(0, 9)
+        self.assertNotEqual(layout_fingerprint(widths), base)
+        # a reordering, with every name and width intact
+        reordered = dict(reversed(list(layout.items())))
+        self.assertEqual(set(reordered), set(layout))
+        self.assertNotEqual(layout_fingerprint(reordered), base)
+
+    def test_the_fingerprint_does_not_move_for_P2_18_or_the_two_scalars(self):
+        """**The reason the scalars are separate fields and not part of the hash.**
+
+        P2.18 redefined four features without touching a name or a width, and
+        `position_encoding` / `wait_normalizer_s` do the same, so the fingerprint is blind to
+        all three. `baseline_hash` catches the first and the two scalar fields catch the others;
+        folding them into the hash would leave a refusal unable to say which one moved.
+        """
+        base = self.env.observation_contract["obs_layout_fingerprint"]
+        other = SDPDPAssignmentEnv(make_cfg(position_encoding="relative",
+                                            wait_normalizer_s=900.0))
+        try:
+            self.assertEqual(other.observation_contract["obs_layout_fingerprint"], base)
+            self.assertEqual(other.observation_contract["observation_length"], 139)
+            self.assertEqual(other.observation_contract["position_encoding"], "relative")
+            self.assertEqual(other.observation_contract["wait_normalizer_s"], 900.0)
+        finally:
+            other.close()
+
+    def test_the_guard_accepts_the_contract_the_env_reports(self):
+        import train_sdpdp
+        cfg = make_cfg()
+        current = train_sdpdp.current_observation_contract(cfg)
+        self.assertEqual(current, self.env.observation_contract)
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = self._fake_checkpoint(tmp, current)
+            self.assertEqual(train_sdpdp.verify_artifact_contract(ckpt, cfg), current)
+
+    def test_the_guard_names_the_field_both_values_and_the_path(self):
+        import train_sdpdp
+        cfg = make_cfg()
+        current = train_sdpdp.current_observation_contract(cfg)
+        cases = {
+            "baseline_hash": "0" * 64,
+            "obs_layout_fingerprint": "f" * 64,
+            "observation_length": 129,
+            "position_encoding": "relative",
+            "wait_normalizer_s": 900.0,
+        }
+        for field, stale in cases.items():
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp:
+                ckpt = self._fake_checkpoint(tmp, {**current, field: stale})
+                with self.assertRaises(ValueError) as cm:
+                    train_sdpdp.verify_artifact_contract(ckpt, cfg)
+                message = str(cm.exception)
+                self.assertIn(field, message)
+                self.assertIn(repr(stale), message, "the recorded value must be named")
+                self.assertIn(repr(current[field]), message,
+                              "the current value must be named")
+                self.assertIn(ckpt, message, "the checkpoint path must be named")
+
+    def test_the_guard_refuses_a_checkpoint_with_no_record(self):
+        """Everything before P2.18, `runs/p216_gate/` included -- by decision, with no override."""
+        import train_sdpdp
+        cfg = make_cfg()
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = self._fake_checkpoint(tmp, None)      # metadata, but no contract in it
+            with self.assertRaises(ValueError) as cm:
+                train_sdpdp.verify_artifact_contract(ckpt, cfg)
+            message = str(cm.exception)
+            self.assertIn("observation_contract", message)
+            self.assertIn("predates P2.18", message)
+            self.assertIn("arrivals_z_30/60", message, "say which features were redefined")
+            self.assertIn(ckpt, message)
+
+    def test_the_guard_refuses_a_checkpoint_with_no_metadata_file_at_all(self):
+        import train_sdpdp
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = os.path.join(tmp, "model_ep00001.zip")
+            with open(ckpt, "wb") as fh:
+                fh.write(b"not a real checkpoint")
+            with self.assertRaises(ValueError) as cm:
+                train_sdpdp.verify_artifact_contract(ckpt, make_cfg())
+            self.assertIn("run_metadata.json", str(cm.exception))
+
+    def test_the_committed_run_folders_are_refused(self):
+        """The three pre-P2.18 run folders, by name: this is what P2.18 decided to give up."""
+        import train_sdpdp
+        for folder in ("runs/p215", "runs/p215b", "runs/p216_gate"):
+            checkpoints = os.path.join(REPO_ROOT, folder, "checkpoints")
+            if not os.path.isdir(checkpoints):
+                continue
+            models = sorted(f for f in os.listdir(checkpoints) if f.endswith(".zip"))
+            if not models:
+                continue
+            with self.subTest(folder=folder):
+                with self.assertRaises(ValueError) as cm:
+                    train_sdpdp.verify_artifact_contract(
+                        os.path.join(checkpoints, models[-1]), make_cfg())
+                self.assertIn("predates P2.18", str(cm.exception))
+
+    def test_the_contract_env_cfg_drops_the_per_episode_keys(self):
+        """The pre-flight env is built without `day`, `day_dir`, `episode_seed` or `eval_pairs`.
+
+        None of them changes what a feature means, and P2.3 raises when the seeding keys meet
+        each other -- so a guard that passed them through could refuse for a reason that has
+        nothing to do with the contract.
+        """
+        import train_sdpdp
+        cfg = make_cfg(day="2024-06-20", day_dir="corpus_val", episode_seed=42,
+                       base_seed=7, eval_pairs=[("2024-06-20", 42)], n_workers=4)
+        trimmed = train_sdpdp.contract_env_cfg(cfg)
+        for key in ("day", "day_dir", "episode_seed", "base_seed", "eval_pairs", "n_workers"):
+            self.assertNotIn(key, trimmed)
+        self.assertIn("constant_cfg_path", trimmed)
+        self.assertEqual(train_sdpdp.current_observation_contract(cfg),
+                         self.env.observation_contract)
+
+    @staticmethod
+    def _fake_checkpoint(directory, contract):
+        """A `.zip` and a `run_metadata.json` beside it. The guard reads neither as a model."""
+        path = os.path.join(directory, "model_ep00012.zip")
+        with open(path, "wb") as fh:
+            fh.write(b"placeholder")
+        metadata = {"base_seeds": [1], "checkpoints": ["model_ep00012.zip"]}
+        if contract is not None:
+            metadata["observation_contract"] = contract
+        with open(os.path.join(directory, "run_metadata.json"), "w") as fh:
+            json.dump(metadata, fh)
+        return path
 
 
 if __name__ == "__main__":

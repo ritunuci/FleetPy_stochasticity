@@ -376,6 +376,115 @@ def _missing_statistics_message(checkpoint_path, path):
     )
 
 
+#: The fields of `observation_contract`, in the order a refusal reports them, with a short
+#: phrase saying what a difference in each would silently do to a loaded policy. Driving both
+#: the comparison and the message off one table is what keeps a newly added field from being
+#: recorded and then never checked (P2.18).
+OBSERVATION_CONTRACT_FIELDS = (
+    ("baseline_hash", "the arrival baseline was rebuilt, so arrivals_expected_30/60 and "
+                      "arrivals_z_30/60 mean something different"),
+    ("obs_layout_fingerprint", "the observation's feature names, widths or order changed"),
+    ("observation_length", "the observation is a different length"),
+    ("position_encoding", "veh_lat/veh_lon switched between absolute and request-relative"),
+    ("wait_normalizer_s", "every wait-type feature is divided by a different number"),
+)
+
+
+def contract_env_cfg(cfg):
+    """The subset of a training/eval config that determines the observation contract.
+
+    Only the keys that reach `feature_spec()` or a feature's scaling, so the pre-flight env can
+    be built without `day`, `day_dir`, `episode_seed` or `eval_pairs` — P2.3 raises when the
+    seeding keys meet each other, and none of them changes what a feature means.
+    """
+    keys = ("constant_cfg_path", "scenario_cfg_path", "scenario_row", "K", "corpus_dir",
+            "wait_normalizer_s", "position_encoding")
+    return {k: cfg[k] for k in keys if k in cfg}
+
+
+def current_observation_contract(cfg):
+    """This code and these artifacts, as an `observation_contract` dict.
+
+    **Costs no simulation and no worker.** `SDPDPAssignmentEnv.__init__` builds the observers,
+    reads the manifest and the baseline and stops — `load_simulation_environment` is in
+    `reset()` — so this is about 70 ms with no routing engine loaded. That is what lets the
+    guard run as a pre-flight, before any `SubprocVecEnv` exists, which is P2.16's ordering
+    lesson: a refusal must orphan no workers.
+
+    Built by constructing the real env rather than by re-deriving the fields, so the values
+    compared are the ones the workers will actually observe under (trap 13).
+    """
+    from src.rl_gym.gym_env import SDPDPAssignmentEnv
+    env = SDPDPAssignmentEnv(contract_env_cfg(cfg))
+    try:
+        return dict(env.observation_contract)
+    finally:
+        env.close()
+
+
+def verify_artifact_contract(checkpoint_path, cfg, recorded=None):
+    """Raise unless `checkpoint_path` was trained under this observation contract (P2.18).
+
+    The failure this exists for: P2.18 kept 139 features and changed what 4 of them mean, so an
+    older checkpoint loads, runs, and reads `arrivals_expected_30/60` and `arrivals_z_30/60` on
+    a scale it never trained under, with every log looking healthy — the same class of silent
+    mismatch as P2.16's shared statistics file, on the same path that produces the KPI table.
+    The env's own `verify_corpus` / `verify_baseline` cannot catch it: they check that the two
+    artifacts agree with **each other**, never that they are the pair a policy was trained
+    against.
+
+    **There is no escape hatch and no `--force`**, the same rule as P2.14's `write_seed_file`
+    and P2.16's refusal to fall back to a shared statistics file. Everything written before
+    P2.18 therefore stops being evaluable and resumable — `runs/p215/`, `runs/p215b/` and
+    `runs/p216_gate/` included, by decision.
+
+    :param recorded: the recorded contract, for a caller that already has the metadata; read
+        from `run_metadata.json` beside the checkpoint otherwise
+    :return: the contract that was verified
+    """
+    from src.rl_gym.callbacks import load_run_metadata
+    path = str(checkpoint_path)
+    if recorded is None:
+        metadata = load_run_metadata(path)
+        if not metadata:
+            raise ValueError(
+                f"no run_metadata.json beside {os.path.basename(path)}, so there is no record "
+                f"of the observation contract it was trained under (P2.18). Nothing can say "
+                f"whether its features still mean what they meant; evaluating it would be a "
+                f"guess. Checkpoint: {path}"
+            )
+        recorded = metadata.get("observation_contract")
+    if not recorded:
+        raise ValueError(
+            f"{os.path.basename(path)} carries no 'observation_contract' in its "
+            f"run_metadata.json, so it predates P2.18 — which **re-defined four features "
+            f"without changing any name or width**: the arrival baseline was conditioned on "
+            f"month and is now conditioned on weekday, so arrivals_expected_30/60 and "
+            f"arrivals_z_30/60 are different numbers at the same positions in a 139-long "
+            f"vector. A policy trained before it would read them as if nothing had changed, "
+            f"and no log, KPI or TensorBoard scalar would show it. There is no migration and no "
+            f"override: re-train against the current baseline. Checkpoint: {path}"
+        )
+
+    current = current_observation_contract(cfg)
+    differences = []
+    for field, consequence in OBSERVATION_CONTRACT_FIELDS:
+        was, now = recorded.get(field), current.get(field)
+        if was != now:
+            differences.append(f"  {field}: recorded {was!r}, current {now!r} — {consequence}")
+    if not differences:
+        return current
+    raise ValueError(
+        f"{os.path.basename(path)} was trained under a different observation contract "
+        f"(P2.18):\n" + "\n".join(differences) + f"\nA policy reads the observation by "
+        f"position, so a feature that changed meaning is read as if it had not, and nothing "
+        f"downstream shows it (§5.3's silent failure, one level up). Re-train against the "
+        f"current artifacts, or restore the ones this checkpoint was trained with and rebuild "
+        f"the pair with `python -m src.rl_gym.offline.build_arrival_baseline`. "
+        f"Checkpoint: {path}"
+    )
+
+
 def save_vecnormalize(venv, checkpoint_path):
     """Write the running statistics beside `checkpoint_path`, returning the file written.
 
@@ -654,6 +763,10 @@ def train(cfg, n_workers=4, total_timesteps=10_000, out_dir="runs/sdpdp",
         # raises if this base_seed was already used: it would restart D10's rotation and the
         # episode-seed streams from pass 0 and replay sample paths already trained on
         cb.check_resume_base_seed(previous, cfg["base_seed"])
+        # and raises unless the checkpoint's features still mean what they meant (P2.18).
+        # **Before build_venv**, like the two checks around it: a refusal here costs no
+        # simulation and orphans no workers.
+        verify_artifact_contract(resume_from, cfg, recorded=previous.get("observation_contract"))
         metadata["base_seeds"] = [int(s) for s in previous.get("base_seeds", [])] + \
                                  [int(cfg["base_seed"])]
         metadata["resumed_from"] = os.path.basename(resume_from)
@@ -681,13 +794,24 @@ def train(cfg, n_workers=4, total_timesteps=10_000, out_dir="runs/sdpdp",
             from src.rl_gym.corpus import training_day_files
             training_days = training_day_files()
         episode_log = cb.EpisodeLogCallback(k_max=int(cfg["K"]), training_days=training_days)
+        # P2.18's contract, read off **worker 0's own env** rather than re-derived in the
+        # parent: these are the values the policy will actually be trained under, so there is
+        # one derivation and not two that could drift (trap 13). All workers share one cfg, so
+        # a disagreement would mean an env built differently per worker -- checked, not assumed.
+        contracts = venv.get_attr("observation_contract")
+        if any(c != contracts[0] for c in contracts[1:]):
+            raise RuntimeError(
+                f"the {len(contracts)} training workers report different observation contracts, "
+                f"so no single record would describe the policy being trained: {contracts}"
+            )
         checkpointer = cb.EpisodeCheckpointCallback(
             every_n_episodes=checkpoint_every_n_episodes,
             save_path=os.path.join(out_dir, "checkpoints"),
             save_stats_fn=save_vecnormalize,
             metadata={**metadata, "hyperparams": hp,
                       "reward_weights": dict(cfg["reward_weights"]),
-                      "day_dir": cfg.get("day_dir"), "n_workers": n_workers},
+                      "day_dir": cfg.get("day_dir"), "n_workers": n_workers,
+                      "observation_contract": contracts[0]},
         )
         callback_list = [episode_log, checkpointer] + list(extra_callbacks or [])
 
@@ -1024,6 +1148,37 @@ def verify_run(n_workers=2, episodes=8, out_dir=None, keep=False, verbose=True):
     meta = cb.load_run_metadata(ckpt_dir)
     check("the metadata records every base_seed used",
           meta.get("base_seeds") == [base_seed], f"{meta.get('base_seeds')}")
+    # P2.18: the observation contract, and that the guard accepts what this run recorded. The
+    # unit tests drive the guard against hand-written metadata; this is the only check that the
+    # **write** path and the **read** path agree on a real run's artifacts.
+    recorded = meta.get("observation_contract")
+    check("the metadata records the observation contract",
+          bool(recorded), f"{recorded}")
+    if recorded:
+        current = current_observation_contract(cfg)
+        check("the recorded contract is the one this code and these artifacts produce",
+              recorded == current,
+              f"recorded {recorded} vs current {current}")
+        try:
+            verify_artifact_contract(os.path.join(ckpt_dir, models[-1]), cfg)
+            check("the guard accepts the checkpoints this run wrote", True,
+                  f"{models[-1]}")
+        except (ValueError, FileNotFoundError) as exc:
+            check("the guard accepts the checkpoints this run wrote", False,
+                  str(exc).splitlines()[0])
+        # and refuses the same checkpoint once a recorded field moves -- the P2.18 failure,
+        # exercised on a real checkpoint rather than a placeholder
+        try:
+            verify_artifact_contract(os.path.join(ckpt_dir, models[-1]), cfg,
+                                     recorded={**recorded, "baseline_hash": "0" * 64})
+            check("the guard refuses a stale baseline_hash on a real checkpoint", False,
+                  "no raise")
+        except ValueError as exc:
+            message = str(exc)
+            check("the guard refuses a stale baseline_hash, naming both values",
+                  "baseline_hash" in message and "0000" in message
+                  and recorded["baseline_hash"][:12] in message,
+                  message.splitlines()[1] if len(message.splitlines()) > 1 else message)
     check("the metadata records the hyperparameters and the eight weights",
           set(meta.get("reward_weights", {})) == set(REQUIRED_REWARD_WEIGHTS)
           and "gamma" in meta.get("hyperparams", {}))

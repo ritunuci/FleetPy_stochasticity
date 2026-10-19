@@ -4068,3 +4068,195 @@ P2.15 figure changed.
 
 **Stopping here.** No commits made (§0).
 
+
+---
+
+## P2.18 — STARTED 2026-10-19
+Files I will touch: src/rl_gym/offline/build_arrival_baseline.py, src/rl_gym/corpus.py,
+src/rl_gym/observers.py, src/rl_gym/gym_env.py, train_sdpdp.py, src/rl_gym/evaluate.py,
+src/rl_gym/tools/phase2_run.py, src/rl_gym/callbacks.py,
+data/rl_gym/example_network/arrival_baseline.csv,
+data/rl_gym/example_network/corpus_manifest.json, tests/test_rl_gym_baseline.py,
+tests/test_rl_gym_observers.py, tests/test_rl_gym_env.py, tests/test_rl_gym_train.py,
+docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md, docs/RL_GYM_PHASE2_RESULTS.md
+
+## P2.18 — DONE 2026-10-19 — awaiting Ritun's verification
+
+Files changed (17, all from the STARTED list):
+
+Code — `src/rl_gym/corpus.py` (`BASELINE_COLUMNS[0]` -> `"weekday"`, a string through
+`canonical_baseline_text` and `read_baseline`, module docstring);
+`src/rl_gym/offline/build_arrival_baseline.py` (`compute_baseline` groups by weekday and
+centres the sd on each day's own weekday curve; rows emitted in Tue/Wed/Thu order;
+diagnostics `days_per_weekday` beside `days_per_month`; `main()`'s print; docstring);
+`src/rl_gym/observers.py` (`ArrivalBaseline` keyed by weekday, `self.months` ->
+`self.weekdays`, `expected`/`z` take a weekday; `GlobalStateObserver.set_episode_month` ->
+`set_episode_weekday`, `_month` -> `_weekday`; new `layout_fingerprint`);
+`src/rl_gym/gym_env.py` (the `set_episode_weekday` call, and `observation_contract`);
+`train_sdpdp.py` (`OBSERVATION_CONTRACT_FIELDS`, `contract_env_cfg`,
+`current_observation_contract`, `verify_artifact_contract`; the contract recorded in
+`train()`'s checkpoint metadata off `venv.get_attr`; the resume pre-flight; four new
+`--verify-run` checks); `src/rl_gym/evaluate.py` and `src/rl_gym/tools/phase2_run.py` (the
+guard beside `verify_statistics_pairing`); `src/rl_gym/callbacks.py` (docstring).
+
+Data — `data/rl_gym/example_network/arrival_baseline.csv` and `corpus_manifest.json`,
+regenerated together. 4,482 rows; `baseline_hash`
+`5638cb266b546154…` -> `a6f3c3824794ec75…`; `baseline_rows` 14940 -> 4482. **`corpus_hash`
+unchanged** at `6b232cf105d05ad3…` and `month_vocab` kept (P2.19 removes it).
+
+Tests — `tests/test_rl_gym_baseline.py` (`TestMonthOverWeekday` -> `TestWeekdayOverMonth`,
+rewritten; new `TestWeekdayBaselineIsRecentred`; the weekday column, the row order, the
+inflation test's group, and a derived tamper index);
+`tests/test_rl_gym_observers.py` (the `write_baseline` fixture keyed by weekday with a
+per-weekday level, 8 `set_episode_month` call sites, the off-grid lookup);
+`tests/test_rl_gym_env.py` (new `TestObservationContract`, 10 tests; the weekday injection;
+a new test pinning that `_episode_month` still feeds the request block);
+`tests/test_rl_gym_train.py` (the contract in the checkpoint metadata; new
+`TestResumeChecksTheObservationContract`, 3 tests).
+
+Docs — `docs/SDPDP_GYM_SPEC_v2.md` (§5.2's `arrivals_expected_*` row, sd bullet and injection
+bullet; §8 P2.6's subsection rewritten as "Why weekday, not month" with the old "Known bias"
+paragraph deleted; P2.6's and P2.11's verification lines; the new §8 P2.18 entry; After Phase 2
+step 4 rewritten as closed; §10's last bullet split and reversed; the two retired md5 pins
+annotated in P2.16 and P2.17); `docs/RL_GYM_PHASE2_RESULTS.md` (a block saying the report is
+not reproducible from P2.18 on, and why, with the figures standing as the record);
+`docs/RL_GYM_PROGRESS.md`.
+
+Verification — all eight, in the order Ritun set, plus the re-centring test:
+
+1. **The full suite: 663 tests, 218.1 s, OK** (642 before; +21). Run **twice**: 214.8 s on the
+   first pass and re-run after the four late `--verify-run` checks landed, which is P2.17's
+   lesson applied. **The P1.10 gate 8/8** separately, 43.7 s, both byte comparisons —
+   `1_user-stats.csv` == `docs/baseline_user_stats.csv` and `2-0_op-stats.csv` ==
+   `docs/baseline_op_stats.csv`. The gate reads `thursday/2024-06-20.csv`, a Thursday, so it
+   exercises the new lookup; it passing is what says the four redefined features perturbed no
+   simulation output (trap 14).
+2. **`build_arrival_baseline --check` passes** on the regenerated pair: 101 training days,
+   747 minutes, 4,482 rows, `days per weekday {'Tue': 35, 'Wed': 33, 'Thu': 33}`, "the
+   committed baseline and manifest match a fresh build, and agree with each other".
+3. **The old `baseline_hash` no longer verifies.** `5638cb266b546154…` against the committed
+   `a6f3c3824794ec75…`, and `verify_baseline` with a manifest still carrying the old value
+   raises, naming `4482 rows found, 14940 expected`.
+4. **An unknown weekday raises at `reset()`.** `2024-06-22` (a Saturday) -> `parse_day_stem`
+   gives `('Sat', 6)` and reset raises naming the vocabulary; a non-ISO stem -> `(None, None)`
+   and reset raises. Both from the **request** block's guard, which runs first in `reset()`;
+   the global block's own guard was exercised directly on a real env and refuses `None`,
+   `"Sat"`, `"Mon"`, `6` and `"thu"`, accepting only `"Thu"`. The Saturday file was a copy of a
+   `corpus_val/` day under a Saturday name — `corpus_eval/` was not read.
+5. **`python -m src.rl_gym.evaluate --verify` -> 15/15**, exit 0. Both byte comparisons hold for
+   stock and env-driven greedy, D9's premise holds with no differing KPI column, and the
+   reference directory was `53879ea79cf211d700f670dee1173dd5` /
+   `ded74ef39a274397c921c29f128f6950` before and after.
+6. **`python train_sdpdp.py --verify-run` -> 28/28 in 8.6 min**, exit 0 (24/24 before; the four
+   new checks are the contract's write path). It recorded
+   `{'baseline_hash': 'a6f3c38247…', 'obs_layout_fingerprint': '353882d00f…',
+   'observation_length': 139, 'position_encoding': 'latlon', 'version': 1,
+   'wait_normalizer_s': 1500.0}`, which equals what `current_observation_contract` derives; the
+   guard accepts the run's own final checkpoint and refuses it once `baseline_hash` is moved,
+   naming both values.
+7. **The guard refuses `runs/p216_gate/checkpoints/model_ep00047.zip` at all three call sites**,
+   each before any venv: `phase2_run --harness-only` (exit 1, after printing its header and
+   before a single greedy simulation), `evaluate --validation --rl`, and `train(...,
+   resume_from=...)` with `build_venv` patched to fail loudly — which proves the position rather
+   than asserting it. The message names the file, says it predates P2.18, says which four
+   features were re-defined and why an old policy would read them as if nothing had changed,
+   and says there is no migration and no override.
+8. **Nothing was altered by any of it.** `runs/p216_gate/checkpoints/` — four `.zip`s and
+   `run_metadata.json` — plus `docs/baseline_user_stats.csv`, `docs/baseline_op_stats.csv` and
+   `docs/RL_GYM_EVAL_SEEDS.csv` (`559b836e7c61fb7dadd2e7bd9bc8891d`) all carry their committed
+   md5s after every refusal and every run above.
+
+**The re-centring test, which is the one check nothing else would make.** A weekday mean paired
+with a month-centred sd **passes `--check`** (it compares a fresh build against the committed
+pair, so it compares the defect with itself) and passes the pooled-sd test (a month-centred sd
+replicated across three weekday rows is still one sd per `(minute, window)`), while giving a
+wrong `z` at every decision of every episode. `TestWeekdayBaselineIsRecentred` pins it directly:
+the committed sd equals the residual spread about each day's own weekday curve at all 1,494
+`(minute, window)` points, and at t = 55440, W = 30 it is **7.6205** against the month-centred
+**10.1478**.
+
+Figures — every one of Ritun's confirmed, none refuted. Measured over `corpus/` and
+`corpus_val/` only; `corpus_eval/` was not read in code, tests or scripts:
+
+| | expected | measured |
+|---|---|---|
+| days per weekday | Tue 35, Wed 33, Thu 33 | Tue 35, Wed 33, Thu 33 |
+| baseline rows | 4,482 from 14,940 | 4,482 from 14,940 |
+| sd mean, W=30 / W=60 | 4.750 -> 5.198 / 7.042 -> 8.158 | 4.7503 -> 5.1984 / 7.0416 -> 8.1578 |
+| sd max, W=30 / W=60 | 10.148 -> 9.192 / 13.616 -> 12.796 | 10.1478 -> 9.1916 / 13.6161 -> 12.7964 |
+| sd at t=55440, W=30 | 10.148 -> 7.620 | 10.1478 -> 7.6205 |
+| minutes with sd < 1.0 | W=30 6->2, W=60 5->2 | 6->2, 5->2 |
+| one sd exactly 0 | t=25200 | t=25200, both windows, both tables |
+| standing z, W=30 | Oct ~ +0.69, Aug ~ -0.35 | Oct +0.6874, Aug -0.3472 |
+| observation length | 139 unchanged | 139, 44 named features |
+| validation rms, W=30 | 5.731 / 5.698 / 5.294 | 5.731 / 5.698 / 5.294 |
+| validation rms, W=60 | 9.015 / 9.003 / 7.922 | 9.015 / 9.003 / 7.922 |
+
+Two notes on reading them. **The sd < 1.0 counts are grid minutes, not CSV rows** — one sd
+serves all three weekday rows of a minute, so as rows it is 60 -> 6 and 50 -> 6; Ritun's counts
+match grid minutes exactly. And **t = 55440 is the sharpest probe for a mechanical reason**: at
+15:24 the weekday means are Tue 20.63 / Wed 38.79 / Thu 23.21, an 18-arrival spread the
+month-centred residual carries as noise, and it is also the month table's own W=30 maximum. The
+new maximum, 9.1916, sits at t = 58140.
+
+**The validation RMSE, as an observation and not a test.** Fitting all three baselines on
+`corpus/` alone and scoring the 12 validation days: pooled 5.731, weekday 5.698, month 5.294 at
+W=30; 9.015 / 9.003 / 7.922 at W=60. **Month predicts better on both windows**, and weekday
+barely improves on no conditioning at all. No test asserts an ordering here — the spec records
+it in §8 P2.6 — and `TestWeekdayOverMonth` deliberately keeps the two in-sample figures that
+also favour month (4.75 against 5.20), with the message changed from "conditioning on month must
+beat weekday" to "month still fits better averaged over the day", so the trade stays visible
+rather than being quietly dropped.
+
+VERIFY findings — **P2.18 carries no `VERIFY` markers**, and five claims were checked before
+being relied on:
+
+- **`SDPDPAssignmentEnv.__init__` builds no simulation: confirmed, and load-bearing.** Measured
+  at 67 ms with no routing engine loaded — `load_simulation_environment` is in `reset()`. This
+  is what lets the contract pre-flight construct a real env in process and refuse before any
+  `SubprocVecEnv` exists, so P2.16's "a refusal must orphan no workers" is kept for free rather
+  than by a second derivation of the fields.
+- **`kpis.month_of` does not depend on `_episode_month` or the summary's `month`: DIFFERED from
+  the premise given.** It is `str(day)[:7]`, and `aggregate(by="month")` keys off `r["day"]`, so
+  it would survive their removal. They stay for stronger reasons: the request block's `month_*`
+  one-hot (10 of the 139 features, until P2.19), `tools/corpus_sweep.py:247`'s report column,
+  and the test pinning `episode_summary()["month"]`. Corrected in the P2.18 entry, and a new
+  test pins the dependency where it actually is.
+- **The layout fingerprint does not move in this item: confirmed, and reported rather than
+  discovered later.** Same names, same widths, so `baseline_hash` alone catches P2.18 and the
+  fingerprint earns its keep at P2.19 (139 -> 129). A test asserts both directions, including
+  that `position_encoding="relative"` and `wait_normalizer_s=900` leave the fingerprint
+  identical — which is the reason those two are separate recorded fields.
+- **`--check` cannot catch a mis-centred sd: confirmed by reading what it compares.** It hashes
+  a fresh build against the committed pair, so a defect present in the builder is present on
+  both sides. Hence the direct test.
+- **The `.zip` sort order and the hash purity: checked by construction.** Sorting
+  `canonical_baseline_text` lexically on the weekday name keeps the hash free of any ordering
+  table, and the builder emits Tue/Wed/Thu so the file still reads in calendar order; a test
+  pins the file order by vocabulary index and another pins that the hash survives a CRLF
+  round trip.
+
+One defect of my own, found by the verification rather than the tests:
+`test_an_unknown_month_or_minute_raises_rather_than_returning_zero` kept passing after the
+rename, but **for the wrong reason** — its off-grid case was `expected(6, 25230, 1800)`, and the
+`6` now fails as a weekday before the minute is ever looked at, so the off-grid branch was no
+longer exercised. Rewritten to use a weekday the table covers for the off-grid probe, and to
+check the unknown-weekday cases separately, including `6` as the stale-caller case. Found by
+grepping the edited modules for surviving month literals, not by a red test.
+
+Decisions:
+- Asked: the four concerns (§10 and After Phase 2 step 4 forbidding this item; P2.18 not being
+  step 4's additive form, with month predicting better out of sample; the `kpis.month_of`
+  premise; the retired md5 pin), the row-order option, the escape hatch, and whether
+  `position_encoding` / `wait_normalizer_s` go in the fingerprint or in separate fields.
+  Ritun: proceed on all four, rewriting §10 and step 4 in this item and recording the
+  "a month-conditioned table is itself a month code" reason in the entry; the recommended
+  row-order option (Tue/Wed/Thu in the file, lexical inside `canonical_baseline_text`); **no
+  escape hatch**, with `runs/p215`, `runs/p215b` and `runs/p216_gate` accepted as unevaluable;
+  separate recorded fields, with every refusal naming the field, both values and the checkpoint
+  path; the subsection rewritten in place in §8 P2.6; and **no new md5 pin until after P2.19**,
+  since P2.19 changes the observation again.
+- Asked: the §8 P2.18 entry and the rewritten subsection, as prose.
+  Ritun: approved both as written.
+
+**Stopping here.** No commits made (§0).

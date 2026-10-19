@@ -274,9 +274,15 @@ def candidate_observer(k_max=K, scenario=None, **kw):
 
 
 #: a tiny baseline grid covering the stub scenario's minutes, written to a temp file by
-#: `make_baseline`. Three months, both windows, the whole [START, END) minute range would be
-#: 747 rows, so the tests use a coarse grid and widen START/END only where needed.
-BASELINE_MONTHS = (5, 6, 10)
+#: `write_baseline`. The real table's three weekdays, both windows; the whole [START, END)
+#: minute range would be 747 rows, so the tests use a coarse grid and widen START/END only
+#: where needed. Keyed by weekday since P2.18; it was `BASELINE_MONTHS = (5, 6, 10)`.
+BASELINE_WEEKDAYS = ("Tue", "Wed", "Thu")
+#: the fixture's episode weekday, where one test needs only "a weekday the table covers"
+FIXTURE_WEEKDAY = "Thu"
+#: a per-weekday multiplier, so a wrong weekday lookup gives a visibly wrong number rather
+#: than coincidentally the right one -- the role the month number played before P2.18
+_WEEKDAY_LEVEL = {"Tue": 5, "Wed": 6, "Thu": 10}
 
 
 def write_baseline(tmpdir, rows=None, start=25200, end=70000, step=60):
@@ -285,21 +291,27 @@ def write_baseline(tmpdir, rows=None, start=25200, end=70000, step=60):
     The tests build the **real** `ArrivalBaseline` over this rather than a stub double: the
     lookup, the sd floor, `check_scenario` and `verify_baseline` are all things a stub would
     reimplement and then fail to keep in step.
+
+    The fixture deliberately writes a **per-weekday** sd, which the committed artifact never
+    has (its sd is pooled, one per minute and window), so that `test_sd_is_pooled_across_weekdays`
+    pins what the *lookup* does rather than restating a property of the data.
     """
     from src.rl_gym import corpus
     if rows is None:
         rows = []
-        for month in BASELINE_MONTHS:
+        for weekday in BASELINE_WEEKDAYS:
+            level = _WEEKDAY_LEVEL[weekday]
             for t in range(start, end, step):
                 for window_s in (1800, 3600):
-                    # mean rises with the month and the hour; sd stays small so the floor bites
-                    mean = month + (t - start) / 3600.0 + (0.0 if window_s == 1800 else 10.0)
-                    rows.append((month, t, window_s, round(mean, 6), 0.25 * month))
+                    # mean rises with the weekday level and the hour; sd stays small so the
+                    # SD floor bites
+                    mean = level + (t - start) / 3600.0 + (0.0 if window_s == 1800 else 10.0)
+                    rows.append((weekday, t, window_s, round(mean, 6), 0.25 * level))
     path = os.path.join(tmpdir, "arrival_baseline.csv")
     with open(path, "w", newline="") as fh:
         fh.write(",".join(corpus.BASELINE_COLUMNS) + "\n")
-        for month, t, window_s, mean, sd in rows:
-            fh.write(f"{month},{t},{window_s},{corpus.FLOAT_FMT.format(mean)},"
+        for weekday, t, window_s, mean, sd in rows:
+            fh.write(f"{weekday},{t},{window_s},{corpus.FLOAT_FMT.format(mean)},"
                      f"{corpus.FLOAT_FMT.format(sd)}\n")
     manifest = {"baseline_hash": corpus.baseline_hash(rows), "baseline_rows": len(rows),
                 "sd_floor": 1.0, "minute_s": 60}
@@ -328,12 +340,13 @@ def wide_global_observer(tmpdir):
     from src.rl_gym.observers import ActiveFleetSchedule, ArrivalBaseline
     sub = os.path.join(tmpdir, "wide")
     os.makedirs(sub, exist_ok=True)
-    rows = [(6, t, w, 1.0, 1.0) for t in range(0, 90120, 60) for w in (1800, 3600)]
+    rows = [(FIXTURE_WEEKDAY, t, w, 1.0, 1.0)
+            for t in range(0, 90120, 60) for w in (1800, 3600)]
     path, manifest, _rows = write_baseline(sub, rows=rows)
     obs = GlobalStateObserver(SCENARIO, ArrivalBaseline(manifest, path),
                               ActiveFleetSchedule(write_active_fleet(sub)))
     obs.set_stats_tracker(_ZeroTracker())
-    obs.set_episode_month(6)
+    obs.set_episode_weekday(FIXTURE_WEEKDAY)
     return obs
 
 
@@ -524,7 +537,7 @@ class TestGlobalStateObserver(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.obs = global_observer(self.tmp.name)
         self.obs.set_stats_tracker(_ZeroTracker())
-        self.obs.set_episode_month(6)
+        self.obs.set_episode_weekday(FIXTURE_WEEKDAY)
 
     def test_output_length_is_nineteen(self):
         self.assertEqual(self.obs.output_length, 19)
@@ -713,7 +726,7 @@ class TestGreedyActionHelper(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.glob = global_observer(self.tmp.name)
         self.glob.set_stats_tracker(_ZeroTracker())
-        self.glob.set_episode_month(6)
+        self.glob.set_episode_weekday(FIXTURE_WEEKDAY)
         # the same map the env publishes, built from the same specs in the same order (P2.8)
         self.layout = build_observation_layout([self.obs_builder, self.glob])
 
@@ -834,7 +847,7 @@ class TestCombinedLength(unittest.TestCase):
         cand = candidate_observer()
         glob = global_observer(self.tmp.name)
         glob.set_stats_tracker(_ZeroTracker())
-        glob.set_episode_month(6)
+        glob.set_episode_weekday(FIXTURE_WEEKDAY)
         ctx = StubCtx(make_candidates([100.0, 200.0], [1.0, 2.0]))
         fc = StubFleetCtrl([VRL_STATES.IDLE, VRL_STATES.ROUTE])
         vec = np.concatenate([cand.observe_vector(fc, ctx), glob.observe_vector(fc, ctx)])
@@ -1032,7 +1045,7 @@ class TestObservationLayout(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.glob = global_observer(self.tmp.name)
         self.glob.set_stats_tracker(_ZeroTracker())
-        self.glob.set_episode_month(6)
+        self.glob.set_episode_weekday(FIXTURE_WEEKDAY)
         self.observers = [self.cand, self.glob]
         self.layout = build_observation_layout(self.observers)
         self.obs_len = sum(o.output_length for o in self.observers)
@@ -1113,7 +1126,7 @@ class TestObservationLayout(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             renamed = Renamed(SCENARIO, self.glob.baseline, self.glob.active_fleet)
             renamed.set_stats_tracker(_ZeroTracker())
-            renamed.set_episode_month(6)
+            renamed.set_episode_weekday(FIXTURE_WEEKDAY)
             renamed.observe_vector(StubFleetCtrl([VRL_STATES.IDLE]), ctx)
         self.assertIn("feature_spec", str(cm.exception))
 
@@ -1134,7 +1147,7 @@ class TestGreedyEnforcesIsValidAgainstTheMask(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.glob = global_observer(self.tmp.name)
         self.glob.set_stats_tracker(_ZeroTracker())
-        self.glob.set_episode_month(6)
+        self.glob.set_episode_weekday(FIXTURE_WEEKDAY)
         self.layout = build_observation_layout([self.cand, self.glob])
 
     def _obs(self, n, cfvs=None):
@@ -1725,74 +1738,85 @@ class TestArrivalBaseline(unittest.TestCase):
         self.path, self.manifest, self.rows = write_baseline(self.tmp.name)
         self.baseline = ArrivalBaseline(self.manifest, self.path)
 
-    def test_mean_is_read_per_month_and_minute(self):
-        for month, t, window_s, mean, _sd in self.rows[:40]:
-            self.assertAlmostEqual(self.baseline.expected(month, t, window_s), mean, places=9)
+    def test_mean_is_read_per_weekday_and_minute(self):
+        for weekday, t, window_s, mean, _sd in self.rows[:40]:
+            self.assertAlmostEqual(self.baseline.expected(weekday, t, window_s), mean, places=9)
 
-    def test_sd_is_pooled_across_months(self):
-        """P2.6 pools the SD over all training days; the committed table reflects that.
+    def test_a_different_weekday_reads_a_different_mean(self):
+        # the fixture gives each weekday its own level, so a lookup that ignored the weekday
+        # would be caught here rather than coincidentally reading the right number (P2.18)
+        t, window_s = 25200, 1800
+        seen = {w: self.baseline.expected(w, t, window_s) for w in BASELINE_WEEKDAYS}
+        self.assertEqual(len(set(seen.values())), len(BASELINE_WEEKDAYS), seen)
 
-        Verified against the real artifact in P2.11: exactly one distinct `sd` per
-        `(t_seconds, window_s)` across all ten months. Here the fixture deliberately writes a
-        *per-month* sd, so this test pins what the lookup does — it is keyed by `(t, window)`
+    def test_sd_is_pooled_across_weekdays(self):
+        """P2.6 pools the SD over all training days, and P2.18 centres it on the weekday curve.
+
+        Verified against the real artifact: exactly one distinct `sd` per `(t_seconds,
+        window_s)` across all three weekdays. Here the fixture deliberately writes a
+        *per-weekday* sd, so this test pins what the lookup does — it is keyed by `(t, window)`
         and the last row written wins — rather than claiming the fixture is pooled.
         """
         from src.rl_gym.corpus import read_baseline
         committed = read_baseline()
         by_key = {}
-        for month, t, window_s, _mean, sd in committed:
+        for weekday, t, window_s, _mean, sd in committed:
             by_key.setdefault((t, window_s), set()).add(sd)
         self.assertEqual(max(len(v) for v in by_key.values()), 1,
-                         "the committed baseline's sd must be pooled across months (P2.6)")
+                         "the committed baseline's sd must be pooled (P2.6, P2.18)")
 
     def test_z_uses_the_sd_floor(self):
         """`z = (observed − expected) / max(sd, sd_floor)` (§5.2), tested both sides of it.
 
         Explicit rows rather than the shared fixture: its `sd` is keyed by `(t, window)`, so
-        the last month written wins and which value lands there is not something to reason
+        the last weekday written wins and which value lands there is not something to reason
         about in a test about the floor.
         """
         from src.rl_gym.observers import ArrivalBaseline
-        rows = [(6, 25200, 1800, 10.0, 0.25),      # sd below the floor
-                (6, 25260, 1800, 10.0, 4.0),       # sd above it
-                (6, 25200, 3600, 10.0, 0.25),
-                (6, 25260, 3600, 10.0, 4.0)]
+        rows = [(FIXTURE_WEEKDAY, 25200, 1800, 10.0, 0.25),   # sd below the floor
+                (FIXTURE_WEEKDAY, 25260, 1800, 10.0, 4.0),    # sd above it
+                (FIXTURE_WEEKDAY, 25200, 3600, 10.0, 0.25),
+                (FIXTURE_WEEKDAY, 25260, 3600, 10.0, 4.0)]
         path, manifest, _rows = write_baseline(os.path.join(self.tmp.name), rows=rows)
         baseline = ArrivalBaseline(manifest, path)
         self.assertEqual(baseline.sd_floor, 1.0)
 
         # sd 0.25 -> the floor of 1.0 applies, so a 3-arrival excess is 3 SD, not 12
-        exp, z = baseline.z(13.0, 6, 25200, 1800)
+        exp, z = baseline.z(13.0, FIXTURE_WEEKDAY, 25200, 1800)
         self.assertEqual(exp, 10.0)
         self.assertAlmostEqual(z, 3.0, places=9)
 
         # sd 4.0 -> the real sd applies
-        exp, z = baseline.z(14.0, 6, 25260, 1800)
+        exp, z = baseline.z(14.0, FIXTURE_WEEKDAY, 25260, 1800)
         self.assertEqual(exp, 10.0)
         self.assertAlmostEqual(z, 1.0, places=9)
 
     def test_z_is_zero_when_observed_equals_expected(self):
-        month, t, window_s = 6, 25200, 3600
-        exp = self.baseline.expected(month, t, window_s)
-        _e, z = self.baseline.z(exp, month, t, window_s)
+        weekday, t, window_s = FIXTURE_WEEKDAY, 25200, 3600
+        exp = self.baseline.expected(weekday, t, window_s)
+        _e, z = self.baseline.z(exp, weekday, t, window_s)
         self.assertEqual(z, 0.0)
 
     def test_z_keeps_its_sign(self):
-        month, t, window_s = 6, 25200, 1800
-        exp = self.baseline.expected(month, t, window_s)
-        self.assertLess(self.baseline.z(exp - 5.0, month, t, window_s)[1], 0.0)
-        self.assertGreater(self.baseline.z(exp + 5.0, month, t, window_s)[1], 0.0)
+        weekday, t, window_s = FIXTURE_WEEKDAY, 25200, 1800
+        exp = self.baseline.expected(weekday, t, window_s)
+        self.assertLess(self.baseline.z(exp - 5.0, weekday, t, window_s)[1], 0.0)
+        self.assertGreater(self.baseline.z(exp + 5.0, weekday, t, window_s)[1], 0.0)
 
     def test_floor_minute(self):
         for sim_time, want in ((25200, 25200), (25259.9, 25200), (25260, 25260),
                                (33720, 33720), (33725, 33720)):
             self.assertEqual(self.baseline.floor_minute(sim_time), want)
 
-    def test_an_unknown_month_or_minute_raises_rather_than_returning_zero(self):
+    def test_an_unknown_weekday_or_minute_raises_rather_than_returning_zero(self):
+        # an unknown weekday, including a month number from a caller that was not updated
+        for weekday in ("Mon", "Sat", 6, None):
+            with self.subTest(weekday=weekday), self.assertRaises(KeyError):
+                self.baseline.expected(weekday, 25200, 1800)
+        # off the minute grid, with a weekday the table *does* cover -- so this exercises the
+        # minute and not the weekday, which a month number here would have masked (P2.18)
         with self.assertRaises(KeyError):
-            self.baseline.expected(11, 25200, 1800)
-        with self.assertRaises(KeyError):
-            self.baseline.expected(6, 25230, 1800)       # not on the minute grid
+            self.baseline.expected(FIXTURE_WEEKDAY, 25230, 1800)
         with self.assertRaises(KeyError):
             self.baseline.sd(99999, 1800)
 
@@ -1844,8 +1868,11 @@ class TestArrivalBaseline(unittest.TestCase):
         from src.rl_gym.corpus import load_manifest
         from src.rl_gym.observers import ArrivalBaseline
         baseline = ArrivalBaseline(load_manifest())      # raises if they disagree
-        self.assertEqual(len(baseline.rows), 14940)
-        self.assertEqual(baseline.months, list(range(1, 11)))
+        # 4,482 = 3 weekdays x 747 minutes x 2 windows since P2.18; 14,940 while it was months
+        self.assertEqual(len(baseline.rows), 4482)
+        self.assertEqual(baseline.weekdays, ["Thu", "Tue", "Wed"])   # sorted, so lexical
+        self.assertFalse(hasattr(baseline, "months"),
+                         "the month-keyed lookup must be gone, not shadowed (P2.18)")
         self.assertEqual(baseline.windows_s, [1800, 3600])
         self.assertEqual(len(baseline.minutes), 747)
         baseline.check_scenario(25200, 70000, (1800, 3600))
@@ -1929,11 +1956,11 @@ class TestGlobalBlock(unittest.TestCase):
         self.fc = StubFleetCtrl([VRL_STATES.IDLE] * 12)
         self.fc.nr_vehicles = 12
 
-    def _observer(self, counts=None, wait_gap=None, month=6, **kw):
+    def _observer(self, counts=None, wait_gap=None, weekday=FIXTURE_WEEKDAY, **kw):
         obs = global_observer(self.tmp.name, **kw)
         self.tracker = _RecordingTracker(counts=counts, wait_gap=wait_gap)
         obs.set_stats_tracker(self.tracker)
-        obs.set_episode_month(month)
+        obs.set_episode_weekday(weekday)
         return obs
 
     def test_nineteen_features_in_sect_5_2_order(self):
@@ -1979,7 +2006,8 @@ class TestGlobalBlock(unittest.TestCase):
         t = 33720.0
         parts = obs.observe(self.fc, StubCtx([], sim_time=t))
         for window_s, key in ((1800, "30"), (3600, "60")):
-            expected = obs.baseline.expected(6, obs.baseline.floor_minute(t), window_s)
+            expected = obs.baseline.expected(FIXTURE_WEEKDAY,
+                                             obs.baseline.floor_minute(t), window_s)
             sd = max(obs.baseline.sd(obs.baseline.floor_minute(t), window_s),
                      obs.baseline.sd_floor)
             self.assertAlmostEqual(float(parts[f"arrivals_expected_{key}"]), expected,
@@ -1998,16 +2026,19 @@ class TestGlobalBlock(unittest.TestCase):
         self.assertNotEqual(float(a["arrivals_expected_30"]),
                             float(c["arrivals_expected_30"]))
 
-    def test_the_month_selects_the_row(self):
+    def test_the_weekday_selects_the_row(self):
         counts = {("arrival", 1800): 10}
         t = 33720.0
         seen = {}
-        for month in BASELINE_MONTHS:
-            obs = self._observer(counts=counts, month=month)
+        for weekday in BASELINE_WEEKDAYS:
+            obs = self._observer(counts=counts, weekday=weekday)
             parts = obs.observe(self.fc, StubCtx([], sim_time=t))
-            seen[month] = float(parts["arrivals_expected_30"])
-        # the fixture's mean rises with the month, so a wrong month cannot read the same value
-        self.assertEqual(sorted(seen, key=seen.get), sorted(BASELINE_MONTHS))
+            seen[weekday] = float(parts["arrivals_expected_30"])
+        # the fixture gives each weekday its own level, so a lookup that ignored the weekday --
+        # or kept reading a month -- could not produce three distinct values in this order
+        self.assertEqual(len(set(seen.values())), len(BASELINE_WEEKDAYS), seen)
+        self.assertEqual(sorted(seen, key=seen.get),
+                         sorted(BASELINE_WEEKDAYS, key=_WEEKDAY_LEVEL.get))
 
     def test_wait_gap_divides_by_the_wait_normalizer(self):
         obs = self._observer(wait_gap={1800: 150.0, 3600: -30.0})
@@ -2052,27 +2083,33 @@ class TestGlobalBlock(unittest.TestCase):
 
     # ---- guard 3 and the injected dependencies ---------------------- #
 
-    def test_an_unknown_month_raises_at_set_episode_month(self):
-        for month in (None, 0, 11, 99):
-            with self.subTest(month=month):
+    def test_an_unknown_weekday_raises_at_set_episode_weekday(self):
+        """Guard 3 (P2.18). `None` is what `parse_day_stem` gives a non-ISO filename, and a
+        name like `"Sat"` or `"Mon"` is what it gives an ISO date outside the corpus's three
+        weekdays — the two cases that reach this in practice. `6` stands for a caller still
+        passing the month number this took through P2.17."""
+        for weekday in (None, "Mon", "Sat", "Sun", "", "thu", 6):
+            with self.subTest(weekday=weekday):
                 obs = global_observer(self.tmp.name)
                 with self.assertRaises(ValueError) as cm:
-                    obs.set_episode_month(month)
-                self.assertIn("month", str(cm.exception))
+                    obs.set_episode_weekday(weekday)
+                self.assertIn("weekday", str(cm.exception))
+                # the message names what the table does cover, so the fix is readable
+                self.assertIn("Thu", str(cm.exception))
 
     def test_observe_raises_without_a_tracker(self):
         obs = global_observer(self.tmp.name)
-        obs.set_episode_month(6)
+        obs.set_episode_weekday(FIXTURE_WEEKDAY)
         with self.assertRaises(RuntimeError) as cm:
             obs.observe(self.fc, StubCtx([], sim_time=33720.0))
         self.assertIn("rolling-stats tracker", str(cm.exception))
 
-    def test_observe_raises_without_an_episode_month(self):
+    def test_observe_raises_without_an_episode_weekday(self):
         obs = global_observer(self.tmp.name)
         obs.set_stats_tracker(_ZeroTracker())
         with self.assertRaises(RuntimeError) as cm:
             obs.observe(self.fc, StubCtx([], sim_time=33720.0))
-        self.assertIn("episode month", str(cm.exception))
+        self.assertIn("episode weekday", str(cm.exception))
 
     def test_the_two_artifacts_are_required_not_optional(self):
         """A missing baseline could only mean zeros for 10 of the 19 features."""

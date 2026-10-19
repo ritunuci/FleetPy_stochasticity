@@ -467,6 +467,85 @@ class TestTrainingTimeEvaluationStaysOnValidation(unittest.TestCase):
             train_sdpdp.build_venv = original
 
 
+class TestResumeChecksTheObservationContract(unittest.TestCase):
+    """`--resume-from` refuses a checkpoint whose features have been redefined (P2.18).
+
+    No training here either. The contract guard sits beside `check_resume_base_seed`, which is
+    beside `check_eval_pairs_split` -- all three before `build_venv`, for the one reason P2.16
+    established: a refusal must orphan no workers.
+    """
+
+    def _cfg(self):
+        return {**train_sdpdp.DEFAULT_CFG, "base_seed": 7,
+                "reward_weights": dict(train_sdpdp.PHASE2_REWARD_WEIGHTS)}
+
+    def _checkpoint(self, directory, contract):
+        path = os.path.join(directory, "model_ep00012.zip")
+        with open(path, "wb") as fh:
+            fh.write(b"placeholder")
+        metadata = {"base_seeds": [11], "checkpoints": ["model_ep00012.zip"]}
+        if contract is not None:
+            metadata["observation_contract"] = contract
+        with open(os.path.join(directory, "run_metadata.json"), "w") as fh:
+            json.dump(metadata, fh)
+        return path
+
+    def test_resuming_a_pre_P2_18_checkpoint_is_refused_before_any_venv_is_built(self):
+        def exploding_build_venv(*_a, **_kw):
+            raise AssertionError("build_venv was reached before the contract check")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint = self._checkpoint(tmp, None)
+            original = train_sdpdp.build_venv
+            train_sdpdp.build_venv = exploding_build_venv
+            try:
+                with self.assertRaises(ValueError) as ctx:
+                    train_sdpdp.train(self._cfg(), n_workers=1, total_timesteps=1,
+                                      resume_from=checkpoint, verbose=False)
+                self.assertIn("predates P2.18", str(ctx.exception))
+            finally:
+                train_sdpdp.build_venv = original
+
+    def test_resuming_a_stale_contract_is_refused_and_names_the_field(self):
+        def exploding_build_venv(*_a, **_kw):
+            raise AssertionError("build_venv was reached before the contract check")
+
+        current = train_sdpdp.current_observation_contract(train_sdpdp.DEFAULT_CFG)
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint = self._checkpoint(tmp, {**current, "baseline_hash": "0" * 64})
+            original = train_sdpdp.build_venv
+            train_sdpdp.build_venv = exploding_build_venv
+            try:
+                with self.assertRaises(ValueError) as ctx:
+                    train_sdpdp.train(self._cfg(), n_workers=1, total_timesteps=1,
+                                      resume_from=checkpoint, verbose=False)
+                self.assertIn("baseline_hash", str(ctx.exception))
+            finally:
+                train_sdpdp.build_venv = original
+
+    def test_the_base_seed_guard_still_fires_first(self):
+        """A reused `base_seed` and a stale contract are both refusals; order is not arbitrary.
+
+        The seed check comes first because it is about the run being resumed, not about the
+        artifacts, and its message is the more specific one.
+        """
+        def exploding_build_venv(*_a, **_kw):
+            raise AssertionError("build_venv was reached before the resume checks")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint = self._checkpoint(tmp, None)
+            cfg = {**self._cfg(), "base_seed": 11}        # already in the metadata
+            original = train_sdpdp.build_venv
+            train_sdpdp.build_venv = exploding_build_venv
+            try:
+                with self.assertRaises(ValueError) as ctx:
+                    train_sdpdp.train(cfg, n_workers=1, total_timesteps=1,
+                                      resume_from=checkpoint, verbose=False)
+                self.assertIn("pass 0", str(ctx.exception))
+            finally:
+                train_sdpdp.build_venv = original
+
+
 class TestEvalPairPartitioning(unittest.TestCase):
     """The pairs must be split the way `evaluate_policy` spreads episodes (P2.13).
 
@@ -1150,6 +1229,25 @@ class TestEpisodeCheckpointCallback(unittest.TestCase):
             self.assertEqual(meta["day_dir"], "corpus")
             self.assertEqual(meta["episodes"], 2)
             self.assertEqual(len(meta["checkpoints"]), 2)
+
+    def test_the_metadata_records_the_observation_contract(self):
+        """P2.18: what the checkpoint's observations *mean*, beside what they were trained on.
+
+        Written by whatever `train()` passes in -- the callback is not where the contract is
+        derived, because that would be a second derivation of a value worker 0 already has
+        (trap 13). Here it only has to survive the round trip into the file.
+        """
+        import json
+        contract = {"version": 1, "baseline_hash": "a" * 64,
+                    "obs_layout_fingerprint": "b" * 64, "observation_length": 139,
+                    "position_encoding": "latlon", "wait_normalizer_s": 1500.0}
+        with tempfile.TemporaryDirectory() as tmp:
+            callback = self.make(tmp, every=1, metadata={"base_seeds": [11],
+                                                         "observation_contract": contract})
+            self.step(callback, [True])
+            with open(os.path.join(tmp, "run_metadata.json")) as fh:
+                meta = json.load(fh)
+            self.assertEqual(meta["observation_contract"], contract)
 
     def test_an_unwrapped_training_env_raises_rather_than_saving_without_statistics(self):
         with tempfile.TemporaryDirectory() as tmp:

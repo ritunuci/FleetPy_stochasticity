@@ -380,9 +380,11 @@ def run_harness(checkpoint: str, out_dir: str, greedy_processes: int = 4,
     from src.rl_gym import evaluate
 
     # First, before the ten stock-greedy simulations: the checkpoint must have the statistics
-    # it was trained under, or be given them explicitly (P2.16). A mispairing found after the
-    # greedy half would cost three minutes to say what this says in a second.
+    # it was trained under, or be given them explicitly (P2.16), and its features must still
+    # mean what they meant (P2.18). Either failure found after the greedy half would cost three
+    # minutes to say what this says in a second.
     stats_file = train_sdpdp.verify_statistics_pairing(checkpoint, stats_path)
+    train_sdpdp.verify_artifact_contract(checkpoint, build_cfg())
 
     pairs = evaluate.pairs_from_seed_file(days=list(HARNESS_DAYS),
                                           n_seeds=HARNESS_SEEDS_PER_DAY,

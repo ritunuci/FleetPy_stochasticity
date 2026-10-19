@@ -410,8 +410,8 @@
  ],
  "corpus_hash": "6b232cf105d05ad3ccc6c9121e845dace88e406471e3bbd04286edc5dabb85a3",
  "baseline_file": "arrival_baseline.csv",
- "baseline_hash": "5638cb266b54615492c85cb52de1be49faefde16cfe55e532f623fe5913622e1",
- "baseline_rows": 14940,
+ "baseline_hash": "a6f3c3824794ec75ad4e5efe564de3348323f0731d5fa71e00996cf8ba23528b",
+ "baseline_rows": 4482,
  "month_vocab": [
   1,
   2,

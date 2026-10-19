@@ -65,6 +65,7 @@ from src.rl_gym.observers import (
     NodeCoordinates,
     RequestObserver,
     build_observation_layout,
+    layout_fingerprint,
     quoted_waiting_time,
 )
 from src.rl_gym.reward import RewardTracker
@@ -229,6 +230,38 @@ class SDPDPAssignmentEnv(gym.Env):
         #: any consumer changing. Raises on a duplicate name.
         self.observation_layout = build_observation_layout(self._observers)
         obs_len = sum(o.output_length for o in self._observers)
+
+        #: **What a checkpoint's observations mean** (P2.18), recorded in `run_metadata.json` at
+        #: checkpoint time and compared before any evaluation or resume. Everything here is
+        #: fixed at construction, so this is a plain dict, not a method.
+        #:
+        #: `baseline_hash` is what catches P2.18 itself: that item kept 139 features with the
+        #: same names and widths and changed what 4 of them mean, so neither the fingerprint nor
+        #: the length moves. `verify_corpus` and `verify_baseline` do not cover it — they check
+        #: that the two artifacts agree with *each other*, never that they are the pair a policy
+        #: was trained against. `position_encoding` and the resolved `wait_normalizer_s` are the
+        #: same class of silent redefinition: `"relative"` re-points two candidate features at
+        #: the request origin, and the normalizer divides five, with no name or width moving.
+        #: Each is its own field rather than part of the hash so a refusal can quote both values.
+        self.observation_contract = {
+            "version": 1,
+            "baseline_hash": self.manifest["baseline_hash"],
+            "obs_layout_fingerprint": layout_fingerprint(self.observation_layout),
+            "observation_length": int(obs_len),
+            "position_encoding": self._candidate_observer.position_encoding,
+            "wait_normalizer_s": float(self._global_observer.wait_normalizer_s),
+        }
+        # the two observers resolve `wait_normalizer_s` identically today -- both take the cfg
+        # value or fall back to `op_max_wait_time` (§5.3). Asserted rather than assumed, so a
+        # later change to one of the two defaults cannot leave the contract recording the other.
+        if self._candidate_observer.wait_normalizer_s != \
+                self._global_observer.wait_normalizer_s:
+            raise ValueError(
+                f"the candidate and global observers resolved different wait normalizers "
+                f"({self._candidate_observer.wait_normalizer_s} against "
+                f"{self._global_observer.wait_normalizer_s}); the observation contract records "
+                f"one value for both, and §5.3 defines one normalizer for every wait feature."
+            )
 
         self.action_space = make_action_space(self.k_max)
         # unbounded: delta_cfv has no a priori bound even after sign*log1p, and VecNormalize
@@ -546,10 +579,12 @@ class SDPDPAssignmentEnv(gym.Env):
         # before the episode runs, rather than at the first decision.
         self._request_observer.set_stats_tracker(self._stats)
         self._request_observer.set_episode_day(self._episode_weekday, self._episode_month)
-        # the global block's two, the same way (P2.11). set_episode_month raises here, at reset,
-        # against the baseline's own months.
+        # the global block's two, the same way (P2.11). set_episode_weekday raises here, at
+        # reset, against the baseline's own weekdays -- the baseline is weekday-conditioned
+        # since P2.18. `_episode_month` is still parsed and still feeds the request block's
+        # month one-hot, which stays until P2.19.
         self._global_observer.set_stats_tracker(self._stats)
-        self._global_observer.set_episode_month(self._episode_month)
+        self._global_observer.set_episode_weekday(self._episode_weekday)
 
         self.sim.demand._boarding_callback = self._on_pickup
         self.sim.demand._exit_callback = self._on_exit

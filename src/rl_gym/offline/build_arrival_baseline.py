@@ -1,12 +1,19 @@
-"""Build the month-conditioned arrival baseline and the corpus manifest (P2.6).
+"""Build the weekday-conditioned arrival baseline and the corpus manifest (P2.6, P2.18).
 
 Two artifacts, written together or not at all:
 
-- `arrival_baseline.csv` -- `month, t_seconds, window_s, mean, sd`, the expected arrival count
-  and its spread for every (month, minute-of-day, window) the observation needs. A **plain
+- `arrival_baseline.csv` -- `weekday, t_seconds, window_s, mean, sd`, the expected arrival count
+  and its spread for every (weekday, minute-of-day, window) the observation needs. A **plain
   table**: no comment lines, no metadata rows, so `pd.read_csv` on it needs no arguments.
 - `corpus_manifest.json` -- the training files with their hashes, `corpus_hash`,
   `baseline_hash`, the month and weekday vocabularies, and the window and floor constants.
+
+**P2.6 conditioned this on month; P2.18 conditions it on weekday**, and re-centres the sd on the
+weekday curve with it. §8 P2.6's "Why weekday, not month" is the reasoning: `arrivals_z_*` answers
+"busier than usual for this weekday and time", the daily *level* is already in the observation as
+the raw `arrivals_30/60` counts, and a month-conditioned expected curve is itself a month code
+that P2.19's dropping of the `month_*` one-hot would not have removed. `month_vocab` stays in the
+manifest until P2.19, because the request block's one-hot still reads it.
 
 **Inputs are training days only** (`corpus/`), never evaluation or excluded days.
 
@@ -71,6 +78,7 @@ SD_FLOOR = 1.0                           # z = (observed - expected) / max(sd, S
 MINUTE = 60
 
 #: §2.9's vocabularies. An unknown weekday or month raises in P2.9, not here.
+#: `WEEKDAY_VOCAB`'s order is the baseline's row order since P2.18 (`compute_baseline`).
 MONTH_VOCAB = list(range(1, 11))                     # Jan-Oct
 WEEKDAY_VOCAB = ["Tue", "Wed", "Thu"]
 _WEEKDAY_OF = {1: "Tue", 2: "Wed", 3: "Thu"}
@@ -105,7 +113,21 @@ def counts_for_day(times: "object", grid: Sequence[int], window_s: int) -> "obje
 
 
 def compute_baseline(corpus_dir: str = CORPUS) -> Tuple[List[Tuple], Dict[str, object]]:
-    """The baseline rows, and the diagnostics the report and the tests want."""
+    """The baseline rows, and the diagnostics the report and the tests want.
+
+    **Conditioned on weekday since P2.18**, month through P2.17. One mean per
+    `(weekday, minute, window)` and one sd per `(minute, window)`, the sd taken about each day's
+    **own weekday** curve. Re-centring the sd with the mean is the substance of that change:
+    a weekday mean paired with a month-centred sd passes `--check` -- which compares a fresh
+    build against the committed pair, so it would compare the defect with itself -- and gives a
+    wrong `z` at every decision. A test pins the centring at t = 55440, W = 30, where it is
+    7.6205 and the month-centred value was 10.1478.
+
+    Rows come out in **vocabulary order**, Tue/Wed/Thu, which is the order `write_both` writes
+    and the committed file carries. `canonical_baseline_text` sorts lexically for hashing only
+    (see its docstring), so the hash needs no ordering table and the file still reads in
+    calendar order.
+    """
     import numpy as np
 
     days = training_day_files(corpus_dir)
@@ -120,30 +142,36 @@ def compute_baseline(corpus_dir: str = CORPUS) -> Tuple[List[Tuple], Dict[str, o
                          f"weekdays {unknown_w}")
 
     times = {d: kept_arrival_times(os.path.join(corpus_dir, f"{d}.csv")) for d in days}
-    by_month: Dict[int, List[str]] = {}
+    by_weekday: Dict[str, List[str]] = {}
     for d in days:
-        by_month.setdefault(months[d], []).append(d)
+        by_weekday.setdefault(weekdays[d], []).append(d)
+    # vocabulary order, not insertion or sorted order: it is what the file is written in
+    weekday_order = [w for w in WEEKDAY_VOCAB if w in by_weekday]
 
     rows: List[Tuple] = []
-    diagnostics: Dict[str, object] = {"days": days, "grid": grid,
-                                      "days_per_month": {m: len(v) for m, v in
-                                                         sorted(by_month.items())}}
+    diagnostics: Dict[str, object] = {
+        "days": days, "grid": grid,
+        "days_per_weekday": {w: len(by_weekday[w]) for w in weekday_order},
+        "days_per_month": {m: sum(1 for d in days if months[d] == m)
+                           for m in sorted(set(months.values()))},
+    }
     for window_s in WINDOWS_S:
         counts = {d: counts_for_day(times[d], grid, window_s) for d in days}
-        # mean over the month's training days
-        month_mean = {m: np.mean([counts[d] for d in ds], axis=0)
-                      for m, ds in by_month.items()}
-        # sd of the month-centred residual, pooled over ALL training days -- 9-12 days per
-        # month are too few to estimate spread per month. Sample sd, ddof=1.
-        residuals = np.vstack([counts[d] - month_mean[months[d]] for d in days])
+        # mean over that weekday's training days -- Tue 35, Wed 33, Thu 33
+        weekday_mean = {w: np.mean([counts[d] for d in ds], axis=0)
+                        for w, ds in by_weekday.items()}
+        # sd of the **weekday**-centred residual, pooled over ALL training days: 33-35 days per
+        # weekday estimate a mean well but spread is still better pooled, and centring on the
+        # weekday curve is what stops the Tue/Wed/Thu spread being counted as noise. ddof=1.
+        residuals = np.vstack([counts[d] - weekday_mean[weekdays[d]] for d in days])
         sd = residuals.std(axis=0, ddof=1)
-        diagnostics[f"month_mean_{window_s}"] = month_mean
+        diagnostics[f"weekday_mean_{window_s}"] = weekday_mean
         diagnostics[f"sd_{window_s}"] = sd
-        for m in sorted(by_month):
+        for w in weekday_order:
             for i, t in enumerate(grid):
-                rows.append((m, t, window_s, float(month_mean[m][i]), float(sd[i])))
+                rows.append((w, t, window_s, float(weekday_mean[w][i]), float(sd[i])))
 
-    rows.sort(key=lambda r: (r[0], r[1], r[2]))
+    rows.sort(key=lambda r: (weekday_order.index(r[0]), r[1], r[2]))
     bad = [r for r in rows if not (np.isfinite(r[3]) and np.isfinite(r[4]))]
     if bad:
         raise ValueError(f"{len(bad)} non-finite baseline values, first {bad[0]}")
@@ -185,8 +213,9 @@ def write_both(rows: Sequence[Tuple], corpus_dir: str, baseline_path: str,
     with open(baseline_path, "w", newline="") as fh:
         writer = csv.writer(fh)
         writer.writerow(BASELINE_COLUMNS)
-        for month, t, window_s, mean, sd in rows:
-            writer.writerow([int(month), int(t), int(window_s),
+        # in the order `compute_baseline` produced -- Tue/Wed/Thu, not lexical (P2.18)
+        for weekday, t, window_s, mean, sd in rows:
+            writer.writerow([str(weekday), int(t), int(window_s),
                              FLOAT_FMT.format(mean), FLOAT_FMT.format(sd)])
     with open(manifest_path, "w") as fh:
         json.dump(manifest, fh, indent=1, sort_keys=False)
@@ -211,7 +240,8 @@ def main() -> int:
                          f"has the corpus changed? (§2.9 freezes it)")
     print(f"training days {len(days)} | minute grid {len(diag['grid'])} | "
           f"windows {list(WINDOWS_S)} | rows {len(rows)}")
-    print(f"days per month {diag['days_per_month']}")
+    print(f"days per weekday {diag['days_per_weekday']}")
+    print(f"days per month   {diag['days_per_month']}")
 
     if not args.check:
         manifest = write_both(rows, args.corpus, args.baseline, args.manifest)

@@ -228,10 +228,18 @@ class EpisodeCheckpointCallback(BaseCallback):
       observation (§5.3). Through P2.15 this was one shared `vecnormalize.pkl` per folder that
       each save overwrote, so only the newest checkpoint kept its own statistics and the rest
       lost theirs;
-    - `run_metadata.json`, carrying **every `base_seed` the run has used**. Resuming with a
-      `base_seed` already in that list would restart D10's rotation and the episode-seed
-      streams from the beginning and replay sample paths already trained on, so
-      `check_resume_base_seed` refuses it.
+    - `run_metadata.json`, carrying **every `base_seed` the run has used** and the run's
+      **`observation_contract`**. Resuming with a `base_seed` already in that list would restart
+      D10's rotation and the episode-seed streams from the beginning and replay sample paths
+      already trained on, so `check_resume_base_seed` refuses it.
+
+    `observation_contract` records what the checkpoint's observations *mean* (P2.18):
+    `baseline_hash`, the layout fingerprint, the observation length, `position_encoding` and
+    the resolved `wait_normalizer_s`. `train_sdpdp.verify_artifact_contract` refuses to evaluate
+    or resume a checkpoint whose record differs from the current values, and refuses one with no
+    record at all. It is **one record per folder rather than per checkpoint**, which is not a
+    repeat of the statistics defect above: unlike `VecNormalize` statistics these values cannot
+    change within a run, and `--resume-from` is itself guarded.
     """
 
     METADATA_FILE = "run_metadata.json"

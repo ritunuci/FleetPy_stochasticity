@@ -153,6 +153,24 @@ def build_observation_layout(observers: Sequence[AbstractObserver]) -> Dict[str,
     return layout
 
 
+def layout_fingerprint(layout: Dict[str, slice]) -> str:
+    """SHA-256 over `<name>:<length>` lines of the layout, in order. **The only definition.**
+
+    What it covers: every feature's name and width, and their order. What it deliberately does
+    **not** cover: what a feature *means*. P2.18 redefined four features without touching a name
+    or a width, so this value is unchanged by it and `baseline_hash` is what catches that; this
+    catches a widening, a reordering or a rename — P2.19's removal of the 10-wide `month`
+    one-hot, for instance.
+
+    It is a hash rather than a recorded list because 44 names cannot be reported field by field
+    in a refusal message; every *scalar* part of the observation contract gets its own recorded
+    field instead, so a refusal can quote the recorded and current values (P2.18).
+    """
+    import hashlib
+    text = "\n".join(f"{name}:{sl.stop - sl.start}" for name, sl in layout.items())
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def signed_log1p(x) -> np.ndarray:
     """`sign(x) * log1p(|x|)` — compresses the `delta_cfv` range without a scaling constant.
 
@@ -757,13 +775,18 @@ class RequestObserver(AbstractObserver):
 
 
 class ArrivalBaseline:
-    """P2.6's month-conditioned arrival baseline, as the anomaly features read it (§5.2).
+    """P2.6's arrival baseline, **weekday-conditioned since P2.18**, as the anomaly reads it.
 
-    `expected(month, t, W)` is the mean arrival count of that month's training days in the
-    window `[t − W, t)`; `sd(t, W)` is the spread, **pooled across months** because 9-12 days
-    per month are too few to estimate it per month. Verified in P2.11: the committed table holds
-    exactly one distinct `sd` per `(t_seconds, window_s)` across all ten months, so reading it
-    from the episode's own month row is the same number.
+    `expected(weekday, t, W)` is the mean arrival count of that weekday's training days — Tue 35,
+    Wed 33, Thu 33 — in the window `[t − W, t)`; `sd(t, W)` is the spread of the
+    **weekday**-centred residual, **pooled across weekdays** so it depends only on the minute and
+    the window. The committed table therefore holds exactly one distinct `sd` per
+    `(t_seconds, window_s)` across all three weekdays, and reading it from the episode's own
+    weekday row is the same number (checked in P2.11 for the month table, re-checked in P2.18).
+
+    **The sd is centred on the weekday curve, not a month curve** (§8 P2.6, "Why weekday, not
+    month"). That is what stops the Tue/Wed/Thu spread being divided into `z` as if it were
+    noise: at t = 55440 the sd is 7.620 rather than the month table's 10.148 at `W = 30`.
 
     The table's grid is the reference scenario's minutes, `[start_time, end_time)` — 747 of them
     — so a scenario with a different window would miss every lookup. `check_scenario` raises at
@@ -781,14 +804,14 @@ class ArrivalBaseline:
         # guard 2: the manifest records the baseline it was built beside (trap 16)
         verify_baseline(manifest, rows)
         self.rows = rows
-        self._mean: Dict[Tuple[int, int, int], float] = {}
+        self._mean: Dict[Tuple[str, int, int], float] = {}
         self._sd: Dict[Tuple[int, int], float] = {}
-        for month, t, window_s, mean, sd in rows:
-            self._mean[(month, t, window_s)] = mean
+        for weekday, t, window_s, mean, sd in rows:
+            self._mean[(weekday, t, window_s)] = mean
             self._sd[(t, window_s)] = sd
-        self.months = sorted({m for m, _t, _w, _mu, _sd in rows})
-        self.windows_s = sorted({w for _m, _t, w, _mu, _sd in rows})
-        self.minutes = sorted({t for _m, t, _w, _mu, _sd in rows})
+        self.weekdays = sorted({w for w, _t, _win, _mu, _sd in rows})
+        self.windows_s = sorted({win for _w, _t, win, _mu, _sd in rows})
+        self.minutes = sorted({t for _w, t, _win, _mu, _sd in rows})
         self.sd_floor = float(manifest["sd_floor"])
         self.minute_s = int(manifest["minute_s"])
         if self.sd_floor <= 0:
@@ -818,12 +841,12 @@ class ArrivalBaseline:
         """`sim_time` floored to the baseline's minute grid (§5.2)."""
         return int(sim_time // self.minute_s) * self.minute_s
 
-    def expected(self, month: int, t: int, window_s: int) -> float:
+    def expected(self, weekday: str, t: int, window_s: int) -> float:
         try:
-            return self._mean[(int(month), int(t), int(window_s))]
+            return self._mean[(str(weekday), int(t), int(window_s))]
         except KeyError:
             raise KeyError(
-                f"no baseline row for month {month}, minute {t}, window {window_s} s in "
+                f"no baseline row for weekday {weekday!r}, minute {t}, window {window_s} s in "
                 f"{os.path.basename(self.path)}"
             ) from None
 
@@ -836,9 +859,9 @@ class ArrivalBaseline:
                 f"{os.path.basename(self.path)}"
             ) from None
 
-    def z(self, observed: float, month: int, t: int, window_s: int) -> Tuple[float, float]:
+    def z(self, observed: float, weekday: str, t: int, window_s: int) -> Tuple[float, float]:
         """`(expected, z)` with `z = (observed − expected) / max(sd, sd_floor)` (§5.2)."""
-        exp = self.expected(month, t, window_s)
+        exp = self.expected(weekday, t, window_s)
         return exp, (observed - exp) / max(self.sd(t, window_s), self.sd_floor)
 
 
@@ -908,7 +931,7 @@ class GlobalStateObserver(AbstractObserver):
     | `day_progress` | episode progress, the horizon signal D6 needs |
     | `idle_fraction` | fraction of active vehicles idle |
     | `arrivals_30/60` | fleet-wide arrivals in the window — also the anomaly's "observed" |
-    | `arrivals_expected_30/60` | P2.6's baseline mean for this month at this minute |
+    | `arrivals_expected_30/60` | P2.6's baseline mean for this **weekday** at this minute |
     | `arrivals_z_30/60` | `(observed − expected) / max(sd, sd_floor)` |
     | `declines_30/60` | fleet-wide rider declines |
     | `cancels_30/60` | fleet-wide post-match cancellations |
@@ -929,9 +952,10 @@ class GlobalStateObserver(AbstractObserver):
     `active_*` divides by the fleet size.
 
     Two per-episode dependencies are injected rather than discovered, as P2.9 does for the
-    request block: the rolling-stats tracker (rebuilt every reset, §10) and the episode's month,
-    which the baseline is conditioned on. `set_episode_month` validates against the baseline's
-    own months and **raises at reset**, not at the first decision (guard 3).
+    request block: the rolling-stats tracker (rebuilt every reset, §10) and the episode's
+    **weekday**, which the baseline is conditioned on since P2.18. `set_episode_weekday`
+    validates against the baseline's own weekdays and **raises at reset**, not at the first
+    decision (guard 3).
     """
 
     #: §5.2's two trailing windows, in seconds. Checked against the baseline at construction,
@@ -975,7 +999,7 @@ class GlobalStateObserver(AbstractObserver):
         # guard 1, at construction: the windows and the minute grid must cover this scenario
         self.baseline.check_scenario(self.start_time, self.end_time, self.WINDOWS_S)
         self._stats = None
-        self._month: Optional[int] = None
+        self._weekday: Optional[str] = None
 
     # ---------------------------------------------------------------- #
     # per-episode injection
@@ -985,22 +1009,23 @@ class GlobalStateObserver(AbstractObserver):
         """Attach P2.7's tracker for this episode. Called from `reset()`."""
         self._stats = tracker
 
-    def set_episode_month(self, month: Optional[int]) -> None:
-        """Fix the month the baseline is read at, validating against the table (guard 3).
+    def set_episode_weekday(self, weekday: Optional[str]) -> None:
+        """Fix the weekday the baseline is read at, validating against the table (guard 3).
 
-        Raises at reset rather than at the first decision. `None` is what P2.3's
-        `parse_day_stem` returns for a demand filename that is not an ISO date, and it is the
-        case this mostly catches.
+        Raises at reset rather than at the first decision. Two cases it catches: `None`, which
+        P2.3's `parse_day_stem` returns for a demand filename that is not an ISO date, and a
+        name like `"Sat"`, which it returns for an ISO date outside the corpus's three weekdays
+        (§2.9). Was `set_episode_month` through P2.17.
         """
-        if month is None or int(month) not in self.baseline.months:
+        if weekday is None or str(weekday) not in self.baseline.weekdays:
             raise ValueError(
-                f"month {month!r} has no rows in "
+                f"weekday {weekday!r} has no rows in "
                 f"{os.path.basename(self.baseline.path)}, which covers "
-                f"{self.baseline.months}. The month is parsed from the demand filename, the "
+                f"{self.baseline.weekdays}. The weekday is parsed from the demand filename, the "
                 f"only record of which day a file is (§2.9); `None` means it is not an ISO "
-                f"date."
+                f"date, and a name outside the three means the day is not a corpus weekday."
             )
-        self._month = int(month)
+        self._weekday = str(weekday)
 
     def feature_spec(self) -> List[Tuple[str, int]]:
         spec: List[Tuple[str, int]] = [
@@ -1020,10 +1045,10 @@ class GlobalStateObserver(AbstractObserver):
                 "GlobalStateObserver has no rolling-stats tracker; the env attaches one in "
                 "reset() (P2.7). Without it every rolling count would silently be zero."
             )
-        if self._month is None:
+        if self._weekday is None:
             raise RuntimeError(
-                "GlobalStateObserver has no episode month; the env calls set_episode_month() "
-                "in reset() (P2.11)."
+                "GlobalStateObserver has no episode weekday; the env calls "
+                "set_episode_weekday() in reset() (P2.11, P2.18)."
             )
         sim_time = float(ctx.sim_time)
 
@@ -1062,7 +1087,7 @@ class GlobalStateObserver(AbstractObserver):
         # (P2.8), which is what caught this being interleaved on the first run.
         anomaly = {}
         for window_s in self.WINDOWS_S:
-            anomaly[window_s] = self.baseline.z(arrivals[window_s], self._month, minute,
+            anomaly[window_s] = self.baseline.z(arrivals[window_s], self._weekday, minute,
                                                 window_s)
         for window_s in self.WINDOWS_S:
             out[f"arrivals_expected_{window_s // 60}"] = np.float32(anomaly[window_s][0])

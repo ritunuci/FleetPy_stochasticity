@@ -578,12 +578,6 @@ def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
     if n_workers > len(pairs):
         raise ValueError(f"n_workers {n_workers} exceeds the {len(pairs)} pair(s): a worker "
                          f"with no pair has nothing to run")
-    # before anything is constructed, in this order: the half (P2.17) and then the statistics
-    # pairing (P2.16). Neither a cross-half day nor a mispaired statistics file may cost a
-    # SubprocVecEnv whose workers the raise would then orphan.
-    day_dir = resolve_pairs_split(pairs, split)
-    train_sdpdp.verify_statistics_pairing(checkpoint, stats_path)
-
     env_cfg = {
         "constant_cfg_path": DEFAULT_CONSTANT_CFG,
         "scenario_cfg_path": DEFAULT_SCENARIO_CFG,
@@ -593,6 +587,14 @@ def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
         # output is what the KPI script reads; not negotiable for this harness
         "skip_output": False,
     }
+    # before anything is constructed, in this order: the half (P2.17), the statistics pairing
+    # (P2.16) and the observation contract (P2.18). None of a cross-half day, a mispaired
+    # statistics file or a checkpoint whose features have been re-defined may cost a
+    # SubprocVecEnv whose workers the raise would then orphan. The contract check builds one
+    # env in this process, which loads no simulation and takes about 70 ms.
+    day_dir = resolve_pairs_split(pairs, split)
+    train_sdpdp.verify_statistics_pairing(checkpoint, stats_path)
+    train_sdpdp.verify_artifact_contract(checkpoint, env_cfg)
     # eval_pairs fixes day and seed, and P2.3 raises if it meets any training seeding key
     base = {k: v for k, v in env_cfg.items()
             if k not in ("base_seed", "day", "episode_seed", "eval_pairs", "day_dir")}

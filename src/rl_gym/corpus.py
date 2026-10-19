@@ -29,6 +29,13 @@ missing or added one, and the per-file list lets the check say *which* files dif
 difference on another machine cannot fail it. It lives here for the same reason `corpus_hash`
 does: P2.11 verifies it at env construction, and a second implementation in the runtime path is
 exactly the drift the manifest exists to prevent.
+
+**The baseline's first column is the weekday name since P2.18**, not the month number, so
+`BASELINE_COLUMNS` and the two hash helpers carry a string there. `verify_baseline` then refuses
+every checkpoint-era baseline automatically, since the rows no longer hash to what any earlier
+manifest recorded; what refuses an old *checkpoint* against the new table is the
+`observation_contract` guard in `train_sdpdp.py`, because the two artifacts agreeing with each
+other says nothing about which pair a policy was trained against.
 """
 
 import csv
@@ -76,8 +83,9 @@ DEFAULT_BASELINE = os.path.join(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")),
     "data", "rl_gym", "example_network", "arrival_baseline.csv")
 
-#: `arrival_baseline.csv`'s header, in order
-BASELINE_COLUMNS = ["month", "t_seconds", "window_s", "mean", "sd"]
+#: `arrival_baseline.csv`'s header, in order. The first column is the **weekday name** since
+#: P2.18 ("Tue" / "Wed" / "Thu"); it was the month number through P2.17.
+BASELINE_COLUMNS = ["weekday", "t_seconds", "window_s", "mean", "sd"]
 #: float format used when writing and when hashing alike, so parse -> format is idempotent
 FLOAT_FMT = "{:.12g}"
 
@@ -258,15 +266,21 @@ def corpus_hash(files: Sequence[Dict[str, str]]) -> str:
 
 
 def canonical_baseline_text(rows: Sequence[Tuple]) -> str:
-    """The baseline's rows as canonical text, sorted by `(month, t_seconds, window_s)`.
+    """The baseline's rows as canonical text, sorted by `(weekday, t_seconds, window_s)`.
 
     Hashed instead of the file's bytes so a line-ending or trailing-newline difference on
     another machine cannot change the hash. `FLOAT_FMT` is used both here and when writing, so
     write -> parse -> format is idempotent and the hash round-trips exactly.
+
+    **The sort is lexical on the weekday name, and that is deliberate** (P2.18). The committed
+    file is written in Tue/Wed/Thu order instead, by the builder, because a lexical file would
+    read Thu/Tue/Wed and look like a defect. Sorting here by the weekday's position in the
+    vocabulary would make this function depend on an ordering table, and `baseline_hash` would
+    then move silently if that table were ever edited. The hash needs nothing but the rows.
     """
     lines = []
-    for month, t, window_s, mean, sd in sorted(rows, key=lambda r: (r[0], r[1], r[2])):
-        lines.append(f"{int(month)},{int(t)},{int(window_s)},"
+    for weekday, t, window_s, mean, sd in sorted(rows, key=lambda r: (str(r[0]), r[1], r[2])):
+        lines.append(f"{weekday},{int(t)},{int(window_s)},"
                      f"{FLOAT_FMT.format(mean)},{FLOAT_FMT.format(sd)}")
     return "\n".join(lines)
 
@@ -288,7 +302,7 @@ def read_baseline(path: str = DEFAULT_BASELINE) -> List[Tuple]:
         if reader.fieldnames != BASELINE_COLUMNS:
             raise ValueError(f"{path}: expected header {BASELINE_COLUMNS}, "
                              f"got {reader.fieldnames}")
-        return [(int(r["month"]), int(r["t_seconds"]), int(r["window_s"]),
+        return [(str(r["weekday"]), int(r["t_seconds"]), int(r["window_s"]),
                  float(r["mean"]), float(r["sd"])) for r in reader]
 
 
