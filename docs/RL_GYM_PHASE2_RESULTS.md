@@ -39,8 +39,31 @@ git-ignored (added in P2.15), so the tables below are reproduced in full rather 
 > those policies are being read correctly, and there is no override. A full re-run would train
 > against the new baseline and produce its own figures, so the KPI md5
 > `db34f5aea5f8cd59437fb2628c9534e0` — pinned by P2.15, P2.16 and P2.17 — is **retired**, not
-> merely unverified. P2.19 changes the observation again, so no replacement figure is pinned
-> until after it.
+> merely unverified.
+>
+> **No replacement reference exists yet.** What P2.19 has is an **observation** of one run:
+> `kpi_report.txt` md5 **`bcd4904da181b5a0bbc4383ebaa62667`** from `runs/p219_gate/`, 23/23 checks
+> in 26.8 minutes, under the 129-feature observation P2.19 left behind (it dropped the request
+> block's 10-wide `month` one-hot, 139 → 129). The harness days are **validation** days (P2.17)
+> and nothing is tuned from them. **It is not a reference and not a check — nothing should ask it
+> to reproduce.** A real reference becomes possible after **P2.20**, which fixes the defect below;
+> the gate is re-run then.
+>
+> Three runs of the same ten pairs against the same checkpoint and statistics file gave **three
+> different md5s** — `bcd4904d…` inside the gate, `a2e2e9f3…` and `7f39b75e…` from two
+> `--harness-only` runs:
+>
+>     caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p219_check \
+>         --harness-only --checkpoint runs/p219_gate/checkpoints/model_ep00047.zip
+>
+> Every stock-greedy row is byte-identical across all three, and 8 of the 10 RL rows are; the two
+> that move do so by two no-showing riders each, and both are the **second** episode of their
+> worker. Run as a worker's first episode, one of them reproduces exactly across three processes.
+> §8 P2.19 carries the measurements. Unlike the P2.18 note above, this is an open defect in the
+> harness rather than a deliberate retirement; it is **P2.20**.
+>
+> Everything below this box remains P2.15's record, measured under the month-conditioned
+> baseline and the 139-feature observation.
 
 ---
 

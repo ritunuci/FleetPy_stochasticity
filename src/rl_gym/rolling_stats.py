@@ -28,11 +28,13 @@ are all inside the loop.
 arrival, and cached per rid -- an exit or a pickup always follows that rider's arrival, so no
 later lookup is needed and `ZoneTable` is touched once per request rather than four times.
 
-**Scale.** The busiest (month, minute) in P2.6's baseline averages 73.7 arrivals in a 60-minute
-window and reaches about 115 at +3 SD; with declines, cancellations and pickups on top a
-60-minute window holds roughly 200 events fleet-wide. Scanning a few hundred deque entries a
-handful of times per decision is far cheaper than maintaining per-zone indices, so the queries
-scan.
+**Scale.** The busiest (weekday, minute) in the arrival baseline averages 66.7 arrivals in a
+60-minute window -- Wednesday at t = 56640 -- and reaches about 104 at +3 SD; with declines,
+cancellations and pickups on top a 60-minute window holds roughly 200 events fleet-wide.
+Scanning a few hundred deque entries a handful of times per decision is far cheaper than
+maintaining per-zone indices, so the queries scan. *(Read "(month, minute) ... 73.7 ... about
+115" through P2.18, of a baseline that was keyed by month; re-measured against the committed
+weekday table in P2.19, when the stale keying was noticed. The conclusion is unchanged.)*
 
 The tracker is rebuilt with the simulation at every reset (§10).
 """

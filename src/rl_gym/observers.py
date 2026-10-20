@@ -3,8 +3,9 @@
 Three observers, each producing a dict of named feature arrays and each reporting its own
 output length. The env concatenates them in the order candidate, request, global (§5.2) and
 builds `observation_space` by summing those lengths, so nothing anywhere hardcodes a total.
-At `K = 8` the length is **139** after P2.11 — 96 candidate + 24 request + 19 global — which
-completes §5.2's table.
+At `K = 8` the length is **129** after P2.19 — 96 candidate + 14 request + 19 global — which
+completes §5.2's table. It was 139 from P2.11 until P2.19 dropped the request block's 10-wide
+`month` one-hot.
 
 Design rules this module is bound by:
 
@@ -159,12 +160,15 @@ def layout_fingerprint(layout: Dict[str, slice]) -> str:
     What it covers: every feature's name and width, and their order. What it deliberately does
     **not** cover: what a feature *means*. P2.18 redefined four features without touching a name
     or a width, so this value is unchanged by it and `baseline_hash` is what catches that; this
-    catches a widening, a reordering or a rename — P2.19's removal of the 10-wide `month`
-    one-hot, for instance.
+    catches a widening, a reordering or a rename. **P2.19 is the first item it caught**: dropping
+    the 10-wide `month` one-hot moved it from
+    `353882d00f0e1184e48fff437aca9e5d92c28df546b8342b03d3b16f2b33bae5` to
+    `1a9c1144963b5402fc5822254815b072c74a502d04c29cf891ee9a10e1b2d96c`.
 
-    It is a hash rather than a recorded list because 44 names cannot be reported field by field
-    in a refusal message; every *scalar* part of the observation contract gets its own recorded
-    field instead, so a refusal can quote the recorded and current values (P2.18).
+    It is a hash rather than a recorded list because 43 names (44 before P2.19) cannot be
+    reported field by field in a refusal message; every *scalar* part of the observation contract
+    gets its own recorded field instead, so a refusal can quote the recorded and current
+    values (P2.18).
     """
     import hashlib
     text = "\n".join(f"{name}:{sl.stop - sl.start}" for name, sl in layout.items())
@@ -644,26 +648,31 @@ class NodeCoordinates:
 
 
 class RequestObserver(AbstractObserver):
-    """The request block: 24 features about the rider being decided on (§5.2).
+    """The request block: 14 features about the rider being decided on (§5.2).
 
     | feature | source | scaling |
     |---|---|---|
     | `o_lat`, `o_lon`, `d_lat`, `d_lon` | `prq.o_pos[0]`, `prq.d_pos[0]` | [-1, 1], node hull |
     | `n_pax` | `prq.nr_pax` | raw |
     | `dow` (3) | the demand filename | one-hot over Tue/Wed/Thu |
-    | `month` (10) | the demand filename | one-hot over Jan-Oct |
     | `zone_arrivals_30/60`, `zone_declines_30/60`, `zone_cancels_30/60` | P2.7 | raw counts |
 
-    **The vocabularies come from P2.6's manifest, never literals** (§5.2), and an unknown
-    weekday or month raises -- at `set_episode_day`, i.e. at `reset()`, rather than at the first
+    **24 features through P2.18**, with a 10-wide `month` one-hot over Jan-Oct beside `dow`.
+    **P2.19 removed it**, and since P2.18 had already moved the arrival baseline off month, no
+    feature anywhere in the observation encodes the calendar month any more (§8 P2.6, "Why
+    weekday, not month"). The month is still *parsed* from the filename, for `episode_summary()`
+    and `tools/corpus_sweep.py`'s report column -- reporting, not observation.
+
+    **The weekday vocabulary comes from P2.6's manifest, never literals** (§5.2), and an unknown
+    weekday raises -- at `set_episode_day`, i.e. at `reset()`, rather than at the first
     decision, so a misconfigured episode fails before it runs rather than 40 seconds in.
 
     **Zone set** = the request's origin H3 cell plus its neighbours, from P2.5's table; events
     are keyed to the event rider's origin cell (§5.2, P2.7).
 
     Two per-episode dependencies are injected rather than discovered: the rolling-stats tracker
-    (rebuilt every reset, §10) and the episode's weekday and month. Both have explicit setters
-    the env calls in `reset()`, and `observe` raises if either is missing -- reaching into
+    (rebuilt every reset, §10) and the episode's weekday. Both have explicit setters the env
+    calls in `reset()`, and `observe` raises if either is missing -- reaching into
     `fleetpy_module._stats_tracker` would work but couples this to a private attribute of the
     operator and makes a stub tracker awkward to inject.
     """
@@ -676,24 +685,20 @@ class RequestObserver(AbstractObserver):
                    ("zone_cancels", "cancel"))
 
     def __init__(self, node_coords: NodeCoordinates, zone_table,
-                 weekday_vocab: Sequence[str], month_vocab: Sequence[int]):
+                 weekday_vocab: Sequence[str]):
         """
         :param weekday_vocab: from P2.6's manifest, e.g. `["Tue", "Wed", "Thu"]`
-        :param month_vocab: from P2.6's manifest, e.g. `[1, ..., 10]`
         """
         self.coords = node_coords
         self.zones = zone_table
         self.weekday_vocab = list(weekday_vocab)
-        self.month_vocab = [int(m) for m in month_vocab]
-        if not self.weekday_vocab or not self.month_vocab:
-            raise ValueError("the weekday and month vocabularies must both be non-empty; "
-                             "they come from P2.6's manifest (§5.2)")
-        if len(set(self.weekday_vocab)) != len(self.weekday_vocab) or \
-                len(set(self.month_vocab)) != len(self.month_vocab):
-            raise ValueError("the vocabularies must not repeat a value")
+        if not self.weekday_vocab:
+            raise ValueError("the weekday vocabulary must not be empty; "
+                             "it comes from P2.6's manifest (§5.2)")
+        if len(set(self.weekday_vocab)) != len(self.weekday_vocab):
+            raise ValueError("the weekday vocabulary must not repeat a value")
         self._stats = None
         self._dow_index: Optional[int] = None
-        self._month_index: Optional[int] = None
 
     # ---------------------------------------------------------------- #
     # per-episode injection
@@ -703,12 +708,16 @@ class RequestObserver(AbstractObserver):
         """Attach P2.7's tracker for this episode. Called from `reset()`."""
         self._stats = tracker
 
-    def set_episode_day(self, weekday: Optional[str], month: Optional[int]) -> None:
-        """Fix this episode's one-hots, validating against the manifest vocabularies.
+    def set_episode_day(self, weekday: Optional[str]) -> None:
+        """Fix this episode's `dow` one-hot, validating against the manifest vocabulary.
 
         Raises here rather than at the first decision: `None` is what P2.3's `parse_day_stem`
         returns for a demand filename that is not an ISO date, and §5.2 requires an unknown
-        weekday or month to raise -- P2.9 is the item that owes that.
+        weekday to raise -- P2.9 is the item that owes that.
+
+        **Took the month as a second argument through P2.18.** P2.19 dropped the one-hot it fed,
+        so an episode on a month the corpus never trained on is no longer a reason to refuse: the
+        weekday is the whole of what this block reads off the calendar.
         """
         if weekday not in self.weekday_vocab:
             raise ValueError(
@@ -716,20 +725,14 @@ class RequestObserver(AbstractObserver):
                 f"It is parsed from the demand filename, which is the only record of which day "
                 f"a file is (§2.9); `None` means the filename is not an ISO date."
             )
-        if month not in self.month_vocab:
-            raise ValueError(
-                f"month {month!r} is not in the manifest vocabulary {self.month_vocab}. "
-                f"Parsed from the demand filename (§2.9); `None` means it is not an ISO date."
-            )
         self._dow_index = self.weekday_vocab.index(weekday)
-        self._month_index = self.month_vocab.index(int(month))
 
     def feature_spec(self) -> List[Tuple[str, int]]:
         spec: List[Tuple[str, int]] = [
             ("o_lat", 1), ("o_lon", 1), ("d_lat", 1), ("d_lon", 1), ("n_pax", 1),
-            ("dow", len(self.weekday_vocab)), ("month", len(self.month_vocab)),
+            ("dow", len(self.weekday_vocab)),
         ]
-        # the one-hots are single named blocks rather than one name per level: the layout map
+        # the one-hot is a single named block rather than one name per level: the layout map
         # addresses blocks, and `dow` of width 3 is what §5.2's "dow_* (3)" means
         for stem, _kind in self._ZONE_KINDS:
             for window_s in self.WINDOWS_S:
@@ -742,7 +745,7 @@ class RequestObserver(AbstractObserver):
                 "RequestObserver has no rolling-stats tracker; the env attaches one in reset() "
                 "(P2.7). Without it the six zone counts would silently be zero."
             )
-        if self._dow_index is None or self._month_index is None:
+        if self._dow_index is None:
             raise RuntimeError(
                 "RequestObserver has no episode day; the env calls set_episode_day() in "
                 "reset() (P2.9)."
@@ -755,8 +758,6 @@ class RequestObserver(AbstractObserver):
 
         dow = np.zeros(len(self.weekday_vocab), dtype=np.float32)
         dow[self._dow_index] = 1.0
-        month = np.zeros(len(self.month_vocab), dtype=np.float32)
-        month[self._month_index] = 1.0
 
         out: Dict[str, np.ndarray] = {
             "o_lat": np.float32(o_lat),
@@ -765,7 +766,6 @@ class RequestObserver(AbstractObserver):
             "d_lon": np.float32(d_lon),
             "n_pax": np.float32(prq.nr_pax),
             "dow": dow,
-            "month": month,
         }
         for stem, kind in self._ZONE_KINDS:
             for window_s in self.WINDOWS_S:

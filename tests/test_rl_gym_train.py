@@ -125,9 +125,10 @@ class TestVecNormalizeWiring(unittest.TestCase):
         finally:
             venv.close()
 
-    def test_the_observation_space_is_the_full_one_hundred_and_thirty_nine(self):
-        self.assertEqual(self.venv.observation_space.shape, (139,))
-        self.assertEqual(self.obs.shape, (N_WORKERS, 139))
+    def test_the_observation_space_is_the_full_one_hundred_and_twenty_nine(self):
+        # 139 through P2.18; P2.19 dropped the request block's 10-wide month one-hot
+        self.assertEqual(self.venv.observation_space.shape, (129,))
+        self.assertEqual(self.obs.shape, (N_WORKERS, 129))
 
     # ---- save / load ------------------------------------------------ #
 
@@ -139,7 +140,7 @@ class TestVecNormalizeWiring(unittest.TestCase):
             self.assertEqual(os.path.basename(path), "model_000042_vecnormalize.pkl")
             self.assertEqual(os.path.dirname(path), tmp)
 
-            fixed = np.linspace(-5.0, 5.0, 139, dtype=np.float32).reshape(1, 139)
+            fixed = np.linspace(-5.0, 5.0, 129, dtype=np.float32).reshape(1, 129)
             before = self.venv.normalize_obs(fixed)
 
             reloaded = train_sdpdp.load_vecnormalize(checkpoint, self.venv.venv)
@@ -1239,7 +1240,7 @@ class TestEpisodeCheckpointCallback(unittest.TestCase):
         """
         import json
         contract = {"version": 1, "baseline_hash": "a" * 64,
-                    "obs_layout_fingerprint": "b" * 64, "observation_length": 139,
+                    "obs_layout_fingerprint": "b" * 64, "observation_length": 129,
                     "position_encoding": "latlon", "wait_normalizer_s": 1500.0}
         with tempfile.TemporaryDirectory() as tmp:
             callback = self.make(tmp, every=1, metadata={"base_seeds": [11],

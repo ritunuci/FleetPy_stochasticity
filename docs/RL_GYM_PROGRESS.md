@@ -4260,3 +4260,312 @@ Decisions:
   Ritun: approved both as written.
 
 **Stopping here.** No commits made (§0).
+
+---
+
+## P2.19 — STARTED 2026-10-19
+Files I will touch: src/rl_gym/observers.py, src/rl_gym/corpus.py,
+src/rl_gym/offline/build_arrival_baseline.py, src/rl_gym/gym_env.py, train_sdpdp.py,
+src/rl_gym/rolling_stats.py, data/rl_gym/example_network/corpus_manifest.json,
+tests/test_rl_gym_observers.py, tests/test_rl_gym_env.py, tests/test_rl_gym_baseline.py,
+tests/test_rl_gym_train.py, docs/SDPDP_GYM_SPEC_v2.md, docs/RL_GYM_PROGRESS.md,
+docs/RL_GYM_PHASE2_RESULTS.md
+
+Contract recorded at c9438a6, before any edit, as the "before" a test pins:
+obs_layout_fingerprint 353882d00f0e1184e48fff437aca9e5d92c28df546b8342b03d3b16f2b33bae5,
+observation_length 139, baseline_hash a6f3c3824794ec75ad4e5efe564de3348323f0731d5fa71e00996cf8ba23528b
+(unchanged by this item), position_encoding latlon, wait_normalizer_s 1500.0.
+Suite at c9438a6: 663 tests, OK. arrival_baseline.csv md5 3659dd90b729e32c591f588d32423427.
+
+## P2.19 — DONE 2026-10-19 — awaiting Ritun's verification
+
+Files changed (14, all from the STARTED list):
+
+Code — `src/rl_gym/observers.py` (`RequestObserver` loses the `month` one-hot, the
+`month_vocab` parameter, `self.month_vocab` and `self._month_index`; `set_episode_day` takes
+the weekday only and still raises at `reset()`; the empty/duplicate-vocabulary check and the
+"no episode day" `RuntimeError` are weekday-only; class docstring 24 -> 14; module docstring
+139 -> 129, `24 request` -> `14 request`; `layout_fingerprint`'s docstring names P2.19 as the
+first item it caught, with both fingerprints, and 44 names -> 43);
+`src/rl_gym/corpus.py` (`load_manifest`'s required keys drop `month_vocab`);
+`src/rl_gym/offline/build_arrival_baseline.py` (`MONTH_VOCAB`, the training-day month check,
+the manifest key and the `--check` key comparison all removed; new `FORBIDDEN_MANIFEST_KEYS`
+and the `--check` test that uses it; module docstring);
+`src/rl_gym/gym_env.py` (the `RequestObserver` construction, the `set_episode_day` call,
+`parse_day_stem`'s docstring, the `_episode_month` comment, `_check_finite`'s docstring
+139 -> 129, and a P2.19 paragraph on the `observation_contract`);
+`train_sdpdp.py` (the no-contract refusal message and `verify_artifact_contract`'s docstring,
+both of which stated 139 as the current length);
+`src/rl_gym/rolling_stats.py` (the stale scale figure, see below).
+
+Data — `data/rl_gym/example_network/corpus_manifest.json` regenerated; the whole diff is the
+12 removed `month_vocab` lines. `arrival_baseline.csv` was rewritten by the same `write_both`
+call and is **byte-identical**.
+
+Tests — `tests/test_rl_gym_observers.py` (`TestRequestObserver` 24 -> 14; the month one-hot,
+the unknown-month cases and the `month_vocab` arguments gone; new
+`test_the_setter_no_longer_takes_a_month`);
+`tests/test_rl_gym_env.py` (`REQUEST_BLOCK` 14, `OBS_LEN` 129, the `FINGERPRINT_P218` /
+`FINGERPRINT_P219` / `OBS_LEN_P218` literals, the one-hot test, the month-is-reporting test,
+the fingerprint and contract assertions; new `test_no_feature_name_mentions_the_month`,
+`TestNoMonthDependencyLeft` and `test_the_guard_refuses_a_P2_18_era_checkpoint`);
+`tests/test_rl_gym_baseline.py` (the `MONTH_VOCAB` import and manifest-key assertion gone; new
+`test_the_committed_manifest_carries_no_month_vocabulary` and
+`test_check_refuses_a_manifest_that_still_carries_month_vocab`);
+`tests/test_rl_gym_train.py` (139 -> 129 in three places).
+
+Docs — `docs/SDPDP_GYM_SPEC_v2.md` (§5.2's length, block table, the `month_*` row, the
+vocabulary bullet, "Not in the observation", the non-finite message's count, §8 P2.3's
+weekday/month sentence, P2.6's new known-limitation paragraphs and its manifest pointer,
+P2.9's "+24", P2.11's length pointer, three P2.18 pointers, and the new §8 P2.19 entry);
+`docs/RL_GYM_PROGRESS.md` (this entry); `docs/RL_GYM_PHASE2_RESULTS.md` (the opening block's
+replacement md5 pin).
+
+### What this item is
+
+Month leaves the observation entirely. Request block 24 -> **14**, observation 139 -> **129**
+at `K = 8`; the weekday one-hot (3) stays. Since P2.18 the baseline no longer carries month, so
+**no feature encodes the calendar month any more.** `delta_cfv` is still at `obs[8:16]` --
+the request block sits after the candidate block, so nothing before it moves.
+
+The contract, recorded off `c9438a6` before any edit and now:
+
+| | P2.18 (`c9438a6`) | P2.19 |
+|---|---|---|
+| `obs_layout_fingerprint` | `353882d00f0e1184e48fff437aca9e5d92c28df546b8342b03d3b16f2b33bae5` | **`1a9c1144963b5402fc5822254815b072c74a502d04c29cf891ee9a10e1b2d96c`** |
+| `observation_length` | 139 | **129** |
+| named features | 44 | **43** |
+| `baseline_hash` | `a6f3c382…` | `a6f3c382…` unchanged |
+| `corpus_hash` | `6b232cf1…` | `6b232cf1…` unchanged |
+| `arrival_baseline.csv` md5 | `3659dd90…` | `3659dd90…` byte-identical |
+| contract `version` | 1 | 1 |
+
+`version` stays 1: no field is added, removed or re-typed -- only two values move. The format
+did not change, so nothing justifies bumping it.
+
+### Everything that reads the month, and which side it is on
+
+Observation, and therefore removed: `RequestObserver`'s one-hot, `month_vocab` and
+`_month_index`; the `_episode_month` argument `gym_env` passed to `set_episode_day`;
+`load_manifest`'s required `month_vocab`; the builder's `MONTH_VOCAB`, its training-day month
+check, the manifest key and the `--check` comparison.
+
+Reporting, and therefore kept: `parse_day_stem`'s second return value; `_episode_month` and
+`episode_summary()["month"]`; `tools/corpus_sweep.py:247` and `:472`'s report column; the KPI
+report's "By month" level (`kpis.month_of` + `kpis.aggregate`, `evaluate.py:692`, `:860`,
+`:862`) -- which reads `str(day)[:7]` and never touched `_episode_month`; and the builder's
+`days_per_month` print, which is a description of the corpus in the build report rather than an
+input. `src/ReplayFromResult.py:612`'s `today.month` is an unrelated wall-clock date.
+
+### Why `--check` needed a forbidden-key test
+
+**This item moves neither hash.** `corpus/` is untouched and the baseline is byte-identical, so
+a P2.18 manifest and a P2.19 manifest have the same `corpus_hash` and the same `baseline_hash`,
+and every other `--check` comparison passes on the stale one. The removed key is the only thing
+that distinguishes them, and a comparison loop only sees the keys it names -- so without an
+explicit check a stale manifest passes silently. Verified in both directions: the fresh pair
+exits 0, and the same pair with `month_vocab` put back exits 1 naming the key, P2.19 and the
+rebuild command. No runtime raise was added, by the judgement call Ritun approved: online the
+key is simply unread, so a stale manifest is inert there.
+
+### VERIFY findings
+
+- **Observation length 129, request block 14** -- matched: `(129,)` observation space, 43 named
+  features, `96 + 14 + 19`, the layout tiling `[0, 129)` with no gap or overlap.
+- **`delta_cfv` still at `obs[8:16]`** -- matched, `slice(8, 16, None)`.
+- **No layout name containing "month"** -- matched, and a test now asserts the substring rather
+  than the exact name, so a reintroduced `month_sin` or `month_idx` would fail too.
+- **`arrival_baseline.csv` byte-identical, both hashes unchanged** -- matched; md5
+  `3659dd90b729e32c591f588d32423427` before and after, and `git diff --stat data/` shows only
+  the manifest.
+- **The guard refuses a P2.18-era checkpoint naming both fields and not `baseline_hash`** --
+  matched; message quoted below.
+- **An unknown weekday still raises at `reset()`** -- matched; `None`, `"Mon"`, `"Sat"`, `""`,
+  `"thu"` and a bare `6` all raise from `set_episode_day`.
+- **The known-limitation figures Ritun supplied** -- all eight recomputed over `corpus/` and
+  `corpus_val/` only and **all matched**: Wed 44.40 / 21.25 (25 and 8 days), Tue 20.78 / 20.12,
+  Thu 24.04 / 20.14, 2024-02-21 at 22, Wednesday daily totals 475.8 / 446.8, the table's 38.79
+  with sd 7.62, the summer-Wednesday mean z of -2.30, and 2024-07-31 at 15 with z -3.12. Two
+  details added: the Tue/Thu split is 27/8 and 26/7 days (only Wednesday's was stated), and
+  2024-02-21 is **tied** for fifth-lowest of the 33 Wednesdays with 2024-08-14, both at 22 --
+  the wording Ritun corrected.
+- **`corpus_eval/` was not read**, in code or by hand, for any of the above.
+
+### Three stale P2.18 figures corrected, all comments
+
+`rolling_stats.py`'s scale note said *"The busiest (month, minute) in P2.6's baseline averages
+73.7 arrivals in a 60-minute window and reaches about 115 at +3 SD"* -- of a table that has had
+no month buckets since P2.18. Re-measured against the committed weekday table: the busiest
+**(weekday, minute)** is Wednesday at t = 56640, **66.7** at `W = 60`, about **104** at +3 SD.
+The argument it supports (roughly 200 events a window, so scanning beats indexing) is unchanged.
+Grepping for the same class of leftover found two more, both saying the baseline has "month
+means": `gym_env.py`'s trap-16 comment and `corpus.py`'s `verify_corpus` docstring. Both now say
+"weekday means". Flagged in the proposal and approved; no behaviour touched by any of the three.
+
+### Verification
+
+**1. The full suite** — `python -m unittest discover -s tests`: **669 tests, OK**, 225.6 s.
+663 at `c9438a6`; the six added are `test_the_setter_no_longer_takes_a_month`,
+`test_no_feature_name_mentions_the_month`,
+`TestNoMonthDependencyLeft.test_an_untrained_month_resets_and_observes`,
+`test_the_guard_refuses_a_P2_18_era_checkpoint`,
+`test_the_committed_manifest_carries_no_month_vocabulary` and
+`test_check_refuses_a_manifest_that_still_carries_month_vocab`. Nothing was deleted; several
+were renamed for the new widths.
+
+**2. The P1.10 gate, byte for byte** — `python -m unittest tests.test_rl_gym`: **8 tests, OK**,
+43.8 s. `test_user_stats_matches_baseline_byte_for_byte` and
+`test_op_stats_matches_baseline_byte_for_byte` both pass, so the narrower vector perturbed no
+simulation output (trap 14). Greedy reads `delta_cfv` and `is_valid`, both before the request
+block, which is why a width change there could only have broken it through a side effect.
+
+**3. The artifacts.**
+
+    $ python -m src.rl_gym.offline.build_arrival_baseline --check
+    training days 101 | minute grid 747 | windows [1800, 3600] | rows 4482
+    days per weekday {'Tue': 35, 'Wed': 33, 'Thu': 33}
+    days per month   {1: 9, 2: 10, 3: 10, 4: 10, 5: 11, 6: 9, 7: 10, 8: 10, 9: 10, 10: 12}
+    corpus_hash   6b232cf105d05ad3ccc6c9121e845dace88e406471e3bbd04286edc5dabb85a3
+    baseline_hash a6f3c3824794ec75ad4e5efe564de3348323f0731d5fa71e00996cf8ba23528b
+    the committed baseline and manifest match a fresh build, and agree with each other
+
+`arrival_baseline.csv` md5 **`3659dd90b729e32c591f588d32423427`** both at `c9438a6` (via
+`git show`) and after the rebuild — byte-identical. `git diff --stat data/` is one file,
+`corpus_manifest.json`, 12 deletions, and the diff is exactly the `month_vocab` block.
+`baseline_hash` and `corpus_hash` as above, unmoved. With `month_vocab` put back into a copy of
+the manifest, `--check` exits **1**:
+
+    MISMATCH:
+      manifest carries 'month_vocab', which this builder no longer writes: removed in P2.19
+      with the request block's `month` one-hot; a manifest carrying it was built before that
+      and is stale, even though corpus_hash and baseline_hash are unchanged by P2.19.
+      Rebuild it with `python -m src.rl_gym.offline.build_arrival_baseline`.
+
+**4. The layout.** `observation_space (129,)`, `observation_length 129`, request block **14**,
+candidate 96, global 19, **43** named features, names containing "month": **none**,
+`delta_cfv slice(8, 16, None)`, `dow slice(101, 104, None)`, the layout tiling `[0, 129)` with
+no gap or overlap, `obs_layout_fingerprint 1a9c1144963b5402fc5822254815b072c74a502d04c29cf891ee9a10e1b2d96c`,
+`version 1`.
+
+**5. `python -m src.rl_gym.evaluate --verify`** — **15/15 checks passed**, including D9's
+env-driven greedy row identical to stock on (2024-06-20, 42), both byte comparisons against
+`docs/baseline_user_stats.csv` and `docs/baseline_op_stats.csv`, and the reference output
+directory byte-unchanged.
+
+**6. `python train_sdpdp.py --verify-run`** — **28/28 checks passed in 8.2 min**, including
+"the metadata records the observation contract" and "the recorded contract is the one this code
+and these artifacts produce", both quoting `observation_length 129` and the new fingerprint.
+
+**7. The guard.** A synthetic checkpoint carrying the P2.18 contract:
+
+    model_ep00047.zip was trained under a different observation contract (P2.18):
+      obs_layout_fingerprint: recorded '353882d0…bae5', current '1a9c1144…d96c'
+        — the observation's feature names, widths or order changed
+      observation_length: recorded 139, current 129 — the observation is a different length
+    … Checkpoint: /var/folders/…/model_ep00047.zip
+
+Both fields named, both values on each, the path given, and **`baseline_hash` does not appear** —
+asserted in the test, not just observed. `runs/p216_gate/checkpoints/model_ep00047.zip` is still
+refused, on the no-`observation_contract` branch, whose message now states 139 as what was then
+and 129 as what is now.
+
+**8. The untrained month.** `TestNoMonthDependencyLeft` — ok, 1.2 s. A corpus Tuesday
+(`2024-01-09`) copied into a temp directory as `2024-11-05.csv`, `day_dir` pointed at the
+absolute temp path: `reset()` returns a finite 129-vector, `dow` reads `[1, 0, 0]` (Tue),
+`episode_summary()["month"]` is 11, and a greedy-by-name step runs on it. No November data,
+folder, seed file or flag added.
+
+**9. md5s unchanged.** `docs/RL_GYM_EVAL_SEEDS.csv` `559b836e7c61fb7dadd2e7bd9bc8891d`;
+`docs/RL_GYM_HELDOUT_SPLIT.csv` `ff1d9c8714d8368bf61fa4abbf4bd76a`;
+`docs/baseline_user_stats.csv` `53879ea79cf211d700f670dee1173dd5`;
+`docs/baseline_op_stats.csv` `ded74ef39a274397c921c29f128f6950`; `git status --short` on all
+four is empty. `runs/p216_gate/` — 14 files, tree md5 `796f1c168765e7ef84af30fd0adb76f9`, and no
+file in it has an mtime later than this session's start, which is the available evidence since
+`runs/` is git-ignored.
+
+**10. The P2.15 gate — passed, and it exposed a defect that is not mine.**
+
+`caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p219_gate`:
+**23/23 checks passed in 26.8 min**, load average at end (8.27, 7.27, 6.08). `kpi_report.txt`
+md5 **`bcd4904da181b5a0bbc4383ebaa62667`**, final checkpoint `model_ep00047.zip`.
+
+**I lost the per-check lines of that run to my own `tail -120` on the pipe.** The aggregate line
+and the exit code (0 — the driver exits non-zero if any check fails) are what I have for the
+training half; the harness half's three lines were recovered from the `--harness-only` runs
+below. Re-running the gate to recapture them costs 27 minutes and I did not spend it unasked.
+
+**Then the md5 did not reproduce.** Three runs of the same ten pairs, same checkpoint, same
+statistics file (`model_ep00047_vecnormalize.pkl`, pairing-checked), same 5 RL workers:
+
+| run | command | checks | `kpi_report.txt` md5 |
+|---|---|---|---|
+| `runs/p219_gate` | full gate | 23/23 | **`bcd4904da181b5a0bbc4383ebaa62667`** |
+| `runs/p219_check` | `--harness-only` | 3/3 | `a2e2e9f362133d0bf0cab97bb3532826` |
+| `runs/p219_check2` | `--harness-only` | 3/3 | `7f39b75e88e95f23b332b1ca24f7c170` |
+
+What varies, measured rather than inferred:
+
+- **Every stock-greedy row is byte-identical across all three runs.** The demand, the
+  simulation, the no-show and cancellation models and the KPI code are all reproducible.
+- **8 of the 10 RL rows are identical across all three.** The two that move are
+  (2024-01-11, 1186391) — 273 / 271 / 273 served — and (2024-03-19, 2483245) — 235 / 236 / 236.
+- **Each moves by exactly two riders, and they are no-shows.** `diff` of the two
+  `1_user-stats.csv` for the first pair: rids 7 and 29 are `BasicRequest_no_show` in the gate run
+  and absent from that section in the check run. `fleet_vkt_km` is identical (2184.50) in both.
+- **Both are the second episode of their worker** (env0 `ep2`, env1 `ep2`). Run alone as a
+  worker's *first* episode with `n_workers=1`, (2024-01-11, 1186391) gave
+  `1_user-stats.csv` md5 `e8945812b69c9b5c2ff05540bebdb3f3` in **three** separate processes —
+  equal to the gate's value for it. So a worker's first episode is reproducible and its second
+  is not.
+- The other three `ep2` pairs are stable across all three runs, so the leak only sometimes
+  changes an outcome.
+
+My reading: a `SubprocVecEnv` worker's second episode is not fully isolated from its first, and
+the leftover state occasionally flips a rider-side draw near its threshold. D7's per-episode
+reseeding is in force, and greedy running the identical pairs in separate processes is stable,
+which is what narrows this to episode sequencing inside a worker rather than to the demand or the
+rider models. I did not diagnose it further and **I have not proposed or applied a fix** (§0).
+
+**What I did to the pin, and what I am asking.** Ritun's instruction was to pin the md5 "as the
+new reference" and to give the `--harness-only` command "that should reproduce" it. The md5 is
+pinned in §8 P2.19 and in the opening block of `docs/RL_GYM_PHASE2_RESULTS.md` as a **record of
+what `runs/p219_gate` produced**, with the three-md5 measurement beside it and the command shown
+for what it actually does. I did not write it as a reproducibility check, because it is not one —
+and §0 forbids characterising that as minor or relaxing the comparison. **Three questions:**
+whether to keep the md5 pinned at all on those terms; whether chasing the worker-second-episode
+leak is its own work item; and whether to spend 27 minutes re-running the gate to recapture the
+per-check lines I truncated. P2.20 is not started.
+
+**Stopping here.** No commits made (§0).
+
+## P2.19 — DECISIONS 2026-10-19 (appended after the DONE entry above, §0's append-only rule)
+
+- Asked: the known-limitation paragraph's wording for 2024-02-21.
+  Ritun: it is **tied** for fifth-lowest of the 33 Wednesdays with 2024-08-14, both at 22 — say
+  "tied for fifth-lowest". Applied in §8 P2.6.
+- Asked: whether `rolling_stats.py`'s stale "(month, minute) … 73.7 … about 115" figure should be
+  corrected in this item or left for later.
+  Ritun: correct it, and record it in the DONE entry. Done, together with the two "month means"
+  comments in `gym_env.py` and `corpus.py` that the same grep turned up.
+- Asked: the two judgement calls — keeping the name `set_episode_day`, and adding no runtime
+  raise for a manifest that still carries `month_vocab`.
+  Ritun: both approved as proposed.
+- Asked: whether to keep `kpi_report.txt` md5 `bcd4904d…` pinned, given that three runs produced
+  three different md5s.
+  Ritun: **keep it recorded on exactly those terms** — an observation of what `runs/p219_gate`
+  produced, **not a reference and not a check** — and make sure no "how to verify" text anywhere
+  asks it to reproduce. Applied: §8 P2.19's md5 paragraph and its "How Ritun verifies" bullet,
+  the opening block of `docs/RL_GYM_PHASE2_RESULTS.md`, and the two earlier pointers that
+  promised a replacement figure after P2.19 (§8 P2.16's retirement note and §8 P2.18's
+  "no replacement figure is pinned in this item"). The P2.18-retired `db34f5ae…` slot stays
+  **empty** — nothing replaces it in this item.
+- Asked: whether the worker-second-episode leak is its own work item.
+  Ritun: **yes, P2.20.** The gate is re-run after that fix, and that is when its md5 becomes the
+  real reference. The November-data item that this item's prompt called P2.20 moves to **P2.21**;
+  §8 P2.19's "no November data" paragraph now says P2.21 and why the number moved.
+- Asked: whether to re-run the gate to recapture the per-check lines I truncated with my own
+  `tail -120`.
+  Ritun: **no re-run now** — the gate is re-run after P2.20 anyway.
+
+Ritun: P2.19 is done; he will verify and commit it. **P2.20 is not to be started until he sends
+its prompt.** Nothing further done here.

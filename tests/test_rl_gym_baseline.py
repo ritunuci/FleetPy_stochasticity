@@ -26,8 +26,8 @@ from src.rl_gym.offline.build_arrival_baseline import (  # noqa: E402
     BASELINE_COLUMNS,
     CORPUS,
     END_TIME,
+    FORBIDDEN_MANIFEST_KEYS,
     MANIFEST,
-    MONTH_VOCAB,
     SD_FLOOR,
     START_TIME,
     WEEKDAY_VOCAB,
@@ -464,8 +464,13 @@ class TestManifest(unittest.TestCase):
         self.assertEqual(self.m["end_time"], END_TIME)
         self.assertEqual(self.m["windows_s"], list(WINDOWS_S))
         self.assertEqual(self.m["sd_floor"], SD_FLOOR)
-        self.assertEqual(self.m["month_vocab"], MONTH_VOCAB)
         self.assertEqual(self.m["weekday_vocab"], WEEKDAY_VOCAB)
+
+    def test_the_committed_manifest_carries_no_month_vocabulary(self):
+        """P2.19. The key fed the request block's one-hot and nothing else now reads it."""
+        self.assertNotIn("month_vocab", self.m)
+        for key, _why in FORBIDDEN_MANIFEST_KEYS:
+            self.assertNotIn(key, self.m)
 
     def test_file_list_is_the_training_corpus(self):
         self.assertEqual(self.m["n_training_days"], N_TRAINING_DAYS)
@@ -530,6 +535,57 @@ class TestBothOrNeither(unittest.TestCase):
             with open(mf) as fh:
                 self.assertNotEqual(json.load(fh)["baseline_hash"],
                                     baseline_hash(read_baseline(b)))
+
+    def test_check_refuses_a_manifest_that_still_carries_month_vocab(self):
+        """P2.19. **The one thing that tells a P2.18 manifest from a P2.19 one.**
+
+        P2.19 changed neither artifact: `corpus/` is untouched and `arrival_baseline.csv` is
+        byte-identical, so `corpus_hash` and `baseline_hash` are the same in both manifests and
+        every other `--check` comparison passes on a stale one. Without an explicit
+        forbidden-key check a manifest built before P2.19 would therefore pass silently, which
+        is the whole reason the check exists.
+        """
+        import contextlib
+        import io
+
+        import src.rl_gym.offline.build_arrival_baseline as builder
+
+        rows, _ = compute_baseline()
+        with tempfile.TemporaryDirectory() as tmp:
+            b = os.path.join(tmp, "arrival_baseline.csv")
+            mf = os.path.join(tmp, "corpus_manifest.json")
+            write_both(rows, CORPUS, b, mf)
+
+            def run_check():
+                out = io.StringIO()
+                argv = ["build_arrival_baseline", "--check", "--corpus", CORPUS,
+                        "--baseline", b, "--manifest", mf]
+                saved, sys.argv = sys.argv, argv
+                try:
+                    with contextlib.redirect_stdout(out):
+                        code = builder.main()
+                finally:
+                    sys.argv = saved
+                return code, out.getvalue()
+
+            code, text = run_check()
+            self.assertEqual(code, 0, f"a fresh pair must pass --check:\n{text}")
+
+            with open(mf) as fh:
+                manifest = json.load(fh)
+            manifest["month_vocab"] = list(range(1, 11))       # as P2.18 wrote it
+            with open(mf, "w") as fh:
+                json.dump(manifest, fh, indent=1, sort_keys=False)
+                fh.write("\n")
+
+            code, text = run_check()
+            self.assertEqual(code, 1, "a manifest carrying month_vocab must fail --check")
+            self.assertIn("month_vocab", text)
+            self.assertIn("P2.19", text)
+            self.assertIn("build_arrival_baseline", text, "name the rebuild command")
+            # and the hashes it would otherwise be judged on are genuinely unchanged
+            self.assertEqual(manifest["baseline_hash"], baseline_hash(read_baseline(b)))
+            self.assertEqual(manifest["corpus_hash"], corpus_hash(corpus_file_hashes(CORPUS)))
 
     def test_corpus_with_a_stray_non_csv_entry_is_unaffected(self):
         # §2.9: readers list demand days by *.csv only, because macOS rewrites .DS_Store

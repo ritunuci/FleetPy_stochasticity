@@ -918,18 +918,20 @@ class TestNodeCoordinateScaling(unittest.TestCase):
 
 
 class TestRequestObserver(unittest.TestCase):
-    """The request block's 24 features (§5.2, P2.9)."""
+    """The request block's 14 features (§5.2, P2.9).
+
+    **24 through P2.18**, with a 10-wide `month` one-hot over Jan-Oct; P2.19 removed it and the
+    `month_vocab` constructor argument with it.
+    """
 
     WEEKDAYS = ["Tue", "Wed", "Thu"]
-    MONTHS = list(range(1, 11))
 
-    def _observer(self, tracker=None, weekday="Thu", month=6):
-        obs = RequestObserver(NodeCoordinates(), ZoneTable(),
-                              weekday_vocab=self.WEEKDAYS, month_vocab=self.MONTHS)
+    def _observer(self, tracker=None, weekday="Thu"):
+        obs = RequestObserver(NodeCoordinates(), ZoneTable(), weekday_vocab=self.WEEKDAYS)
         if tracker is not None:
             obs.set_stats_tracker(tracker)
         if weekday is not None:
-            obs.set_episode_day(weekday, month)
+            obs.set_episode_day(weekday)
         return obs
 
     def _ctx(self, o_node=0, d_node=100, nr_pax=1):
@@ -943,16 +945,16 @@ class TestRequestObserver(unittest.TestCase):
         ctx.prq = prq
         return ctx
 
-    def test_declares_twenty_four_features(self):
+    def test_declares_fourteen_features(self):
         obs = self._observer(tracker=_ZeroTracker())
-        self.assertEqual(obs.output_length, 24)
-        self.assertEqual(sum(n for _, n in obs.feature_spec()), 24)
+        self.assertEqual(obs.output_length, 14)
+        self.assertEqual(sum(n for _, n in obs.feature_spec()), 14)
 
     def test_feature_names_and_widths(self):
         spec = dict(self._observer(tracker=_ZeroTracker()).feature_spec())
         self.assertEqual(spec["o_lat"], 1)
         self.assertEqual(spec["dow"], 3)
-        self.assertEqual(spec["month"], 10)
+        self.assertNotIn("month", spec, "the month one-hot is gone (P2.19)")
         for stem in ("zone_arrivals", "zone_declines", "zone_cancels"):
             for w in (30, 60):
                 self.assertEqual(spec[f"{stem}_{w}"], 1)
@@ -972,16 +974,14 @@ class TestRequestObserver(unittest.TestCase):
             parts = obs.observe(None, self._ctx(nr_pax=n))
             self.assertEqual(float(parts["n_pax"]), float(n))
 
-    def test_one_hots_are_exactly_one_hot(self):
-        for weekday, month in (("Tue", 1), ("Wed", 10), ("Thu", 6)):
-            obs = self._observer(tracker=_ZeroTracker(), weekday=weekday, month=month)
+    def test_the_dow_one_hot_is_exactly_one_hot(self):
+        for weekday in self.WEEKDAYS:
+            obs = self._observer(tracker=_ZeroTracker(), weekday=weekday)
             parts = obs.observe(None, self._ctx())
             np.testing.assert_array_equal(
                 parts["dow"], [1.0 if w == weekday else 0.0 for w in self.WEEKDAYS])
-            np.testing.assert_array_equal(
-                parts["month"], [1.0 if m == month else 0.0 for m in self.MONTHS])
             self.assertEqual(parts["dow"].sum(), 1.0)
-            self.assertEqual(parts["month"].sum(), 1.0)
+            self.assertNotIn("month", parts, "the month one-hot is gone (P2.19)")
 
     def test_zone_counts_come_from_the_tracker_for_the_requests_origin(self):
         tracker = _RecordingTracker()
@@ -993,46 +993,56 @@ class TestRequestObserver(unittest.TestCase):
             ("cancel", 1800, 42), ("cancel", 3600, 42)]))
         self.assertEqual(float(parts["zone_arrivals_30"]), 11.0)   # the stub's answer
 
-    def test_an_unknown_weekday_or_month_raises_at_set_episode_day(self):
+    def test_an_unknown_weekday_raises_at_set_episode_day(self):
         # at reset, not at the first decision: a misconfigured episode must fail before it runs.
         # set_episode_day is called directly rather than through the helper, which skips it for
         # a None weekday -- `None` is exactly what P2.3's parse_day_stem returns for a non-ISO
         # filename, so it is the case that most needs covering.
-        for weekday, month in (("Mon", 6), ("Thu", 11), (None, 6), ("Thu", None),
-                               (None, None), ("thu", 6), ("Thu", 0)):
-            with self.subTest(weekday=weekday, month=month):
+        for weekday in ("Mon", "Sat", None, "", "thu", 6):
+            with self.subTest(weekday=weekday):
                 obs = RequestObserver(NodeCoordinates(), ZoneTable(),
-                                      weekday_vocab=self.WEEKDAYS, month_vocab=self.MONTHS)
+                                      weekday_vocab=self.WEEKDAYS)
                 with self.assertRaises(ValueError):
-                    obs.set_episode_day(weekday, month)
+                    obs.set_episode_day(weekday)
+
+    def test_the_setter_no_longer_takes_a_month(self):
+        """P2.19: the month was the second argument through P2.18.
+
+        Pinned so a caller that was not updated fails loudly instead of having its month
+        silently absorbed by a `*args` or an ignored keyword -- and so that nothing can quietly
+        reintroduce a month-conditioned one-hot through this door.
+        """
+        obs = RequestObserver(NodeCoordinates(), ZoneTable(), weekday_vocab=self.WEEKDAYS)
+        with self.assertRaises(TypeError):
+            obs.set_episode_day("Thu", 6)
+        with self.assertRaises(TypeError):
+            RequestObserver(NodeCoordinates(), ZoneTable(),
+                            weekday_vocab=self.WEEKDAYS, month_vocab=list(range(1, 11)))
 
     def test_observe_without_a_tracker_raises(self):
-        obs = RequestObserver(NodeCoordinates(), ZoneTable(),
-                              weekday_vocab=self.WEEKDAYS, month_vocab=self.MONTHS)
-        obs.set_episode_day("Thu", 6)
+        obs = RequestObserver(NodeCoordinates(), ZoneTable(), weekday_vocab=self.WEEKDAYS)
+        obs.set_episode_day("Thu")
         with self.assertRaises(RuntimeError) as cm:
             obs.observe(None, self._ctx())
         self.assertIn("rolling-stats tracker", str(cm.exception))
 
     def test_observe_without_an_episode_day_raises(self):
-        obs = RequestObserver(NodeCoordinates(), ZoneTable(),
-                              weekday_vocab=self.WEEKDAYS, month_vocab=self.MONTHS)
+        obs = RequestObserver(NodeCoordinates(), ZoneTable(), weekday_vocab=self.WEEKDAYS)
         obs.set_stats_tracker(_ZeroTracker())
         with self.assertRaises(RuntimeError) as cm:
             obs.observe(None, self._ctx())
         self.assertIn("episode day", str(cm.exception))
 
-    def test_empty_or_repeating_vocabularies_raise(self):
-        for wd, mo in (([], self.MONTHS), (self.WEEKDAYS, []),
-                       (["Tue", "Tue"], self.MONTHS), (self.WEEKDAYS, [1, 1])):
-            with self.assertRaises(ValueError):
-                RequestObserver(NodeCoordinates(), ZoneTable(),
-                                weekday_vocab=wd, month_vocab=mo)
+    def test_an_empty_or_repeating_weekday_vocabulary_raises(self):
+        for wd in ([], ["Tue", "Tue"]):
+            with self.subTest(weekday_vocab=wd):
+                with self.assertRaises(ValueError):
+                    RequestObserver(NodeCoordinates(), ZoneTable(), weekday_vocab=wd)
 
     def test_observe_matches_its_declaration(self):
         obs = self._observer(tracker=_ZeroTracker())
         vec = obs.observe_vector(None, self._ctx())          # raises on any disagreement
-        self.assertEqual(vec.shape, (24,))
+        self.assertEqual(vec.shape, (14,))
         self.assertEqual(vec.dtype, np.float32)
 
 

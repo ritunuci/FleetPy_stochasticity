@@ -51,10 +51,18 @@ CORPUS_ROOT = os.path.join(os.path.dirname(__file__), "..", "data", "demand",
                            "example_demand", "matched", "example_network")
 CORPUS_DIR = os.path.join(CORPUS_ROOT, "corpus")
 K = 8
-REQUEST_BLOCK = 24          # §5.2: 4 coords + n_pax + 3 dow + 10 month + 6 zone
+REQUEST_BLOCK = 14          # §5.2: 4 coords + n_pax + 3 dow + 6 zone; 24 with month, to P2.18
+
+#: the observation contract's layout fingerprint **before** P2.19, recorded off `c9438a6` while
+#: the 10-wide `month` one-hot was still in the request block, and **after** it. The pair is what
+#: makes the guard's P2.19 refusal a real test rather than a comparison of two live values: a
+#: recorded contract has to come from code that no longer exists, so it comes from a literal.
+FINGERPRINT_P218 = "353882d00f0e1184e48fff437aca9e5d92c28df546b8342b03d3b16f2b33bae5"
+FINGERPRINT_P219 = "1a9c1144963b5402fc5822254815b072c74a502d04c29cf891ee9a10e1b2d96c"
+OBS_LEN_P218 = 139
 CANDIDATE_FEATURES = 12     # §5.2: per candidate slot, after P2.10
 GLOBAL_BLOCK = 19           # §5.2: after P2.11
-OBS_LEN = CANDIDATE_FEATURES * K + REQUEST_BLOCK + GLOBAL_BLOCK   # 139 at K = 8
+OBS_LEN = CANDIDATE_FEATURES * K + REQUEST_BLOCK + GLOBAL_BLOCK   # 129 at K = 8, since P2.19
 
 
 def make_cfg(**overrides):
@@ -119,7 +127,7 @@ class TestConstruction(unittest.TestCase):
     def test_spaces(self):
         env = SDPDPAssignmentEnv(make_cfg())
         self.assertEqual(env.action_space.n, K + 1)
-        # 12K candidate (P2.10) + 24 request (P2.9) + 19 global (P2.11); 139 at K = 8
+        # 12K candidate (P2.10) + 14 request (P2.9, P2.19) + 19 global (P2.11); 129 at K = 8
         self.assertEqual(env.observation_space.shape, (OBS_LEN,))
         self.assertEqual(env.observation_space.dtype, np.float32)
         self.assertTrue(np.all(env.observation_space.low == -np.inf))
@@ -915,12 +923,12 @@ class TestRequestBlockInTheEnv(unittest.TestCase):
     def tearDownClass(cls):
         cls.env.close()
 
-    def test_observation_length_is_one_hundred_and_thirty_nine(self):
+    def test_observation_length_is_one_hundred_and_twenty_nine(self):
         self.assertEqual(self.env.observation_space.shape, (OBS_LEN,))
         self.assertEqual(self.obs.shape, (OBS_LEN,))
 
-    def test_the_request_block_adds_twenty_four(self):
-        self.assertEqual(self.env._request_observer.output_length, 24)
+    def test_the_request_block_adds_fourteen(self):
+        self.assertEqual(self.env._request_observer.output_length, 14)
 
     def test_block_order_is_candidate_request_global(self):
         names = list(self.env.observation_layout)
@@ -940,14 +948,24 @@ class TestRequestBlockInTheEnv(unittest.TestCase):
         for a, b in zip(slices, slices[1:]):
             self.assertEqual(a.stop, b.start)
 
-    def test_the_one_hots_match_the_demand_filename(self):
+    def test_the_one_hot_matches_the_demand_filename(self):
         L = self.env.observation_layout
         # the reference scenario runs thursday/2024-06-20.csv
         np.testing.assert_array_equal(self.obs[L["dow"]], [0.0, 0.0, 1.0])       # Thu
-        np.testing.assert_array_equal(
-            self.obs[L["month"]], [0.0] * 5 + [1.0] + [0.0] * 4)                # June
         self.assertEqual(self.env.episode_summary()["weekday"], "Thu")
+        # the month is still summarised -- and is no longer in the vector (P2.19)
         self.assertEqual(self.env.episode_summary()["month"], 6)
+        self.assertNotIn("month", L)
+
+    def test_no_feature_name_mentions_the_month(self):
+        """P2.19: not just `month` gone, but nothing month-shaped under another name.
+
+        The layout map is the only way a consumer addresses the vector (P2.8), so a month term
+        reintroduced as `cal_month`, `month_sin` or `month_idx` would be invisible to a check
+        that only asserts the exact name is absent.
+        """
+        offenders = [n for n in self.env.observation_layout if "month" in n.lower()]
+        self.assertEqual(offenders, [])
 
     def test_coordinates_are_inside_the_unit_box(self):
         L = self.env.observation_layout
@@ -1152,19 +1170,23 @@ class TestGlobalBlockInTheEnv(unittest.TestCase):
         finally:
             env.close()
 
-    def test_the_month_is_still_parsed_for_the_request_block(self):
-        """P2.18 moves the *baseline* to weekday; `_episode_month` stays (P2.19 removes it).
+    def test_the_month_is_still_parsed_but_only_for_reporting(self):
+        """P2.18 moved the *baseline* to weekday; P2.19 removed the request block's one-hot.
 
-        It feeds the request block's 10-wide `month` one-hot, `tools/corpus_sweep.py`'s report
-        column and `episode_summary()`. It is **not** what `kpis.month_of` reads -- that slices
-        the day string -- so this is pinned where the dependency actually is.
+        `_episode_month` stays, and after P2.19 its only consumers are `episode_summary()` and
+        `tools/corpus_sweep.py`'s report column -- reporting, not observation. It is **not**
+        what `kpis.month_of` reads: that slices the day string and would survive its removal.
+        The observer no longer holds a month index at all, which is the half this pins.
         """
         env = SDPDPAssignmentEnv(make_cfg())
         try:
             env.reset()
             self.assertEqual(env._episode_month, 6)
             self.assertEqual(env.episode_summary()["month"], 6)
-            self.assertEqual(env._request_observer._month_index, 5)      # June, Jan-Oct vocab
+            self.assertFalse(hasattr(env._request_observer, "_month_index"),
+                             "the month index must be gone, not shadowed (P2.19)")
+            self.assertFalse(hasattr(env._request_observer, "month_vocab"),
+                             "the month vocabulary must be gone, not shadowed (P2.19)")
         finally:
             env.close()
 
@@ -1261,6 +1283,59 @@ class TestGlobalBlockInTheEnv(unittest.TestCase):
                                             f"minute-aligned")
         finally:
             env.close()
+
+
+class TestNoMonthDependencyLeft(unittest.TestCase):
+    """An episode in a month the corpus never trained on runs (P2.19).
+
+    The point of removing the one-hot is that the calendar month stops being an input at all.
+    Through P2.18 this exact case **raised at `reset()`**, by design: `set_episode_day`
+    validated the month against the manifest's Jan-Oct vocabulary, so a November day had no
+    column to light up and refusing was the only honest answer. With the one-hot gone the
+    weekday is the whole of what the request block reads off the calendar, and a November
+    Tuesday is just a Tuesday.
+
+    A **training-day file is copied under a new date name**, so this adds no demand data: the
+    arrivals are a real corpus Tuesday's, and only the filename -- which is the only record of
+    which day a file is (§2.9) -- says November. 2024-11-05 is a Tuesday, so the weekday lookup
+    into the baseline resolves; the baseline has no month dimension to miss (P2.18).
+    """
+
+    #: a Tuesday from `corpus/`, chosen for the weekday only
+    SOURCE_DAY = "2024-01-09"
+    #: a Tuesday outside the corpus's Jan-Oct span
+    TARGET_DAY = "2024-11-05"
+
+    def test_an_untrained_month_resets_and_observes(self):
+        import datetime as dt
+        self.assertEqual(dt.date.fromisoformat(self.SOURCE_DAY).weekday(),
+                         dt.date.fromisoformat(self.TARGET_DAY).weekday(),
+                         "the copy must keep the weekday, or this tests the wrong thing")
+        self.assertGreater(int(self.TARGET_DAY[5:7]), 10,
+                           "the target month must be outside the Jan-Oct corpus span")
+
+        source = os.path.join(CORPUS_DIR, f"{self.SOURCE_DAY}.csv")
+        self.assertTrue(os.path.isfile(source), source)
+        with tempfile.TemporaryDirectory() as tmp:
+            # an absolute day_dir: get_directory_dict's os.path.join absorbs it, so nothing is
+            # written inside data/demand/ and no November folder is created
+            shutil.copyfile(source, os.path.join(tmp, f"{self.TARGET_DAY}.csv"))
+            env = SDPDPAssignmentEnv(make_cfg(day_dir=tmp, day=self.TARGET_DAY))
+            try:
+                obs, _info = env.reset()                 # raised here through P2.18
+                self.assertEqual(obs.shape, (OBS_LEN,))
+                self.assertTrue(np.all(np.isfinite(obs)))
+                L = env.observation_layout
+                np.testing.assert_array_equal(obs[L["dow"]], [1.0, 0.0, 0.0])      # Tue
+                # the month reaches the summary and nothing else
+                self.assertEqual(env.episode_summary()["month"], 11)
+                self.assertEqual(env.episode_summary()["weekday"], "Tue")
+                # and a decision can be taken on it
+                obs, _r, _term, _trunc, _info = env.step(
+                    policy_greedy_action(obs, env.action_masks(), env.observation_layout))
+                self.assertTrue(np.all(np.isfinite(obs)))
+            finally:
+                env.close()
 
 
 class TestInfoKeysDoNotCollideWithSB3(unittest.TestCase):
@@ -1578,7 +1653,8 @@ class TestObservationContract(unittest.TestCase):
         from src.rl_gym.corpus import load_manifest
         contract = self.env.observation_contract
         self.assertEqual(contract["baseline_hash"], load_manifest()["baseline_hash"])
-        self.assertEqual(contract["observation_length"], 139)
+        self.assertEqual(contract["observation_length"], 129)     # 139 through P2.18
+        self.assertEqual(contract["obs_layout_fingerprint"], FINGERPRINT_P219)
         self.assertEqual(contract["position_encoding"], "latlon")
         self.assertEqual(contract["wait_normalizer_s"], 1500.0)   # op_max_wait_time (§5.3)
 
@@ -1590,10 +1666,18 @@ class TestObservationContract(unittest.TestCase):
         # a rename
         renamed = {("dow_x" if k == "dow" else k): v for k, v in layout.items()}
         self.assertNotEqual(layout_fingerprint(renamed), base)
-        # a width change -- P2.19 dropping the 10-wide month one-hot is this case
+        # a width change -- P2.19 dropping the 10-wide month one-hot was this case
         widths = dict(layout)
-        widths["month"] = slice(0, 9)
+        widths["dow"] = slice(0, 2)
         self.assertNotEqual(layout_fingerprint(widths), base)
+        # a removal, which is what P2.19 actually did: adding `month` back at its old width and
+        # position must give the fingerprint the P2.18 checkpoints recorded, exactly
+        restored = {}
+        for name, sl in layout.items():
+            restored[name] = sl
+            if name == "dow":
+                restored["month"] = slice(0, 10)
+        self.assertEqual(layout_fingerprint(restored), FINGERPRINT_P218)
         # a reordering, with every name and width intact
         reordered = dict(reversed(list(layout.items())))
         self.assertEqual(set(reordered), set(layout))
@@ -1612,7 +1696,7 @@ class TestObservationContract(unittest.TestCase):
                                             wait_normalizer_s=900.0))
         try:
             self.assertEqual(other.observation_contract["obs_layout_fingerprint"], base)
-            self.assertEqual(other.observation_contract["observation_length"], 139)
+            self.assertEqual(other.observation_contract["observation_length"], 129)
             self.assertEqual(other.observation_contract["position_encoding"], "relative")
             self.assertEqual(other.observation_contract["wait_normalizer_s"], 900.0)
         finally:
@@ -1634,7 +1718,7 @@ class TestObservationContract(unittest.TestCase):
         cases = {
             "baseline_hash": "0" * 64,
             "obs_layout_fingerprint": "f" * 64,
-            "observation_length": 129,
+            "observation_length": OBS_LEN_P218,
             "position_encoding": "relative",
             "wait_normalizer_s": 900.0,
         }
@@ -1649,6 +1733,40 @@ class TestObservationContract(unittest.TestCase):
                 self.assertIn(repr(current[field]), message,
                               "the current value must be named")
                 self.assertIn(ckpt, message, "the checkpoint path must be named")
+
+    def test_the_guard_refuses_a_P2_18_era_checkpoint(self):
+        """**The refusal P2.18 recorded the fingerprint and the length for** (P2.19).
+
+        A P2.18 checkpoint carries a complete `observation_contract`, so the no-record branch
+        above never sees it. What refuses it is the pair that moved: `obs_layout_fingerprint`
+        and `observation_length`, 139 against 129. `baseline_hash` must **not** appear --
+        `corpus/` and `arrival_baseline.csv` are untouched by P2.19, so the hash a P2.18 run
+        recorded is still the current one, and naming it would send a reader to rebuild an
+        artifact that is already correct.
+
+        The recorded side is literals, not a second derivation: the code that produced a
+        139-long observation no longer exists in this tree.
+        """
+        import train_sdpdp
+        cfg = make_cfg()
+        current = train_sdpdp.current_observation_contract(cfg)
+        p218 = {**current,
+                "obs_layout_fingerprint": FINGERPRINT_P218,
+                "observation_length": OBS_LEN_P218}
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = self._fake_checkpoint(tmp, p218)
+            with self.assertRaises(ValueError) as cm:
+                train_sdpdp.verify_artifact_contract(ckpt, cfg)
+            message = str(cm.exception)
+            for field in ("obs_layout_fingerprint", "observation_length"):
+                self.assertIn(field, message)
+            self.assertIn(repr(FINGERPRINT_P218), message)
+            self.assertIn(repr(FINGERPRINT_P219), message)
+            self.assertIn("139", message)
+            self.assertIn("129", message)
+            self.assertIn(ckpt, message)
+            self.assertNotIn("baseline_hash", message,
+                             "baseline_hash does not move in P2.19 and must not be listed")
 
     def test_the_guard_refuses_a_checkpoint_with_no_record(self):
         """Everything before P2.18, `runs/p216_gate/` included -- by decision, with no override."""

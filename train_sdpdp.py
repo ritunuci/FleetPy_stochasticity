@@ -431,7 +431,8 @@ def verify_artifact_contract(checkpoint_path, cfg, recorded=None):
     mismatch as P2.16's shared statistics file, on the same path that produces the KPI table.
     The env's own `verify_corpus` / `verify_baseline` cannot catch it: they check that the two
     artifacts agree with **each other**, never that they are the pair a policy was trained
-    against.
+    against. P2.19's 139 → 129 is the easier half of the same guard: `obs_layout_fingerprint`
+    and `observation_length` both move there, and `baseline_hash` does not move at all.
 
     **There is no escape hatch and no `--force`**, the same rule as P2.14's `write_seed_file`
     and P2.16's refusal to fall back to a shared statistics file. Everything written before
@@ -460,10 +461,13 @@ def verify_artifact_contract(checkpoint_path, cfg, recorded=None):
             f"run_metadata.json, so it predates P2.18 — which **re-defined four features "
             f"without changing any name or width**: the arrival baseline was conditioned on "
             f"month and is now conditioned on weekday, so arrivals_expected_30/60 and "
-            f"arrivals_z_30/60 are different numbers at the same positions in a 139-long "
-            f"vector. A policy trained before it would read them as if nothing had changed, "
-            f"and no log, KPI or TensorBoard scalar would show it. There is no migration and no "
-            f"override: re-train against the current baseline. Checkpoint: {path}"
+            f"arrivals_z_30/60 became different numbers at the same positions in what was then "
+            f"a 139-long vector. P2.19 then dropped the request block's 10-wide month one-hot, "
+            f"so the vector is 129 long today and every feature after the one-hot has moved. A "
+            f"policy trained before all this would read the observation as if nothing had "
+            f"changed, and no log, KPI or TensorBoard scalar would show it. There is no "
+            f"migration and no override: re-train against the current baseline. "
+            f"Checkpoint: {path}"
         )
 
     current = current_observation_contract(cfg)

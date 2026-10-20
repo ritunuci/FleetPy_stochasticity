@@ -6,14 +6,19 @@ Two artifacts, written together or not at all:
   and its spread for every (weekday, minute-of-day, window) the observation needs. A **plain
   table**: no comment lines, no metadata rows, so `pd.read_csv` on it needs no arguments.
 - `corpus_manifest.json` -- the training files with their hashes, `corpus_hash`,
-  `baseline_hash`, the month and weekday vocabularies, and the window and floor constants.
+  `baseline_hash`, the weekday vocabulary, and the window and floor constants.
 
 **P2.6 conditioned this on month; P2.18 conditions it on weekday**, and re-centres the sd on the
 weekday curve with it. §8 P2.6's "Why weekday, not month" is the reasoning: `arrivals_z_*` answers
 "busier than usual for this weekday and time", the daily *level* is already in the observation as
 the raw `arrivals_30/60` counts, and a month-conditioned expected curve is itself a month code
-that P2.19's dropping of the `month_*` one-hot would not have removed. `month_vocab` stays in the
-manifest until P2.19, because the request block's one-hot still reads it.
+that dropping the `month_*` one-hot would not have removed.
+
+**No month vocabulary since P2.19.** `month_vocab` stayed in the manifest through P2.18 because
+the request block's one-hot read it; P2.19 dropped the one-hot, so the key, `MONTH_VOCAB` and the
+training-day month check all went with it. `--check` **refuses** a manifest that still carries
+the key: a stale manifest has the same `corpus_hash` and `baseline_hash` as the current one --
+neither artifact changed in P2.19 -- so the key itself is the only thing that distinguishes them.
 
 **Inputs are training days only** (`corpus/`), never evaluation or excluded days.
 
@@ -77,11 +82,20 @@ WINDOWS_S = (1800, 3600)                 # §5.2's 30 and 60 minute trailing win
 SD_FLOOR = 1.0                           # z = (observed - expected) / max(sd, SD_FLOOR)
 MINUTE = 60
 
-#: §2.9's vocabularies. An unknown weekday or month raises in P2.9, not here.
+#: §2.9's weekday vocabulary. An unknown weekday raises in P2.9, not here.
 #: `WEEKDAY_VOCAB`'s order is the baseline's row order since P2.18 (`compute_baseline`).
-MONTH_VOCAB = list(range(1, 11))                     # Jan-Oct
+#: `MONTH_VOCAB = list(range(1, 11))` sat beside it through P2.18; removed in P2.19 with the
+#: request block's `month` one-hot, the only thing that read it.
 WEEKDAY_VOCAB = ["Tue", "Wed", "Thu"]
 _WEEKDAY_OF = {1: "Tue", 2: "Wed", 3: "Thu"}
+
+#: manifest keys that must **not** be present, with why. `--check` fails on each one it finds,
+#: because a key this code no longer writes can only come from a build that predates its removal.
+FORBIDDEN_MANIFEST_KEYS = (
+    ("month_vocab", "removed in P2.19 with the request block's `month` one-hot; a manifest "
+                    "carrying it was built before that and is stale, even though corpus_hash "
+                    "and baseline_hash are unchanged by P2.19"),
+)
 
 EXPECTED_TRAINING_DAYS = 101
 
@@ -135,11 +149,12 @@ def compute_baseline(corpus_dir: str = CORPUS) -> Tuple[List[Tuple], Dict[str, o
     months = {d: dt.date.fromisoformat(d).month for d in days}
     weekdays = {d: _WEEKDAY_OF[dt.date.fromisoformat(d).weekday()] for d in days}
 
-    unknown_m = sorted({m for m in months.values() if m not in MONTH_VOCAB})
+    # weekday only since P2.19: the month was checked against `MONTH_VOCAB` here through P2.18,
+    # when it was a feature's vocabulary. `months` now feeds the `days_per_month` diagnostic
+    # below and nothing else -- a description of the corpus in the build report, not an input.
     unknown_w = sorted({w for w in weekdays.values() if w not in WEEKDAY_VOCAB})
-    if unknown_m or unknown_w:
-        raise ValueError(f"training days outside the vocabularies: months {unknown_m}, "
-                         f"weekdays {unknown_w}")
+    if unknown_w:
+        raise ValueError(f"training days outside the weekday vocabulary: {unknown_w}")
 
     times = {d: kept_arrival_times(os.path.join(corpus_dir, f"{d}.csv")) for d in days}
     by_weekday: Dict[str, List[str]] = {}
@@ -199,7 +214,7 @@ def write_both(rows: Sequence[Tuple], corpus_dir: str, baseline_path: str,
         "baseline_file": os.path.basename(baseline_path),
         "baseline_hash": baseline_hash(rows),
         "baseline_rows": len(rows),
-        "month_vocab": MONTH_VOCAB,
+        # `"month_vocab": MONTH_VOCAB` sat here through P2.18 (P2.19)
         "weekday_vocab": WEEKDAY_VOCAB,
         "start_time": START_TIME,
         "end_time": END_TIME,
@@ -279,9 +294,16 @@ def main() -> int:
         problems.append("baseline_hash in the manifest does not match arrival_baseline.csv")
     for key, want in (("start_time", START_TIME), ("end_time", END_TIME),
                       ("windows_s", list(WINDOWS_S)), ("sd_floor", SD_FLOOR),
-                      ("month_vocab", MONTH_VOCAB), ("weekday_vocab", WEEKDAY_VOCAB)):
+                      ("weekday_vocab", WEEKDAY_VOCAB)):
         if manifest.get(key) != want:
             problems.append(f"manifest {key}: {manifest.get(key)!r}, expected {want!r}")
+    # a key this builder no longer writes cannot be absent from the comparison *and* tolerated:
+    # the loop above only sees keys it names, so a stale manifest would otherwise pass silently
+    for key, why in FORBIDDEN_MANIFEST_KEYS:
+        if key in manifest:
+            problems.append(f"manifest carries {key!r}, which this builder no longer writes: "
+                            f"{why}. Rebuild it with "
+                            f"`python -m src.rl_gym.offline.build_arrival_baseline`.")
 
     print(f"corpus_hash   {manifest.get('corpus_hash')}")
     print(f"baseline_hash {manifest.get('baseline_hash')}")

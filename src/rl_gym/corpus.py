@@ -315,7 +315,10 @@ def load_manifest(path: str = DEFAULT_MANIFEST) -> Dict[str, Any]:
         )
     with open(path) as fh:
         manifest = json.load(fh)
-    for key in ("files", "corpus_hash", "month_vocab", "weekday_vocab"):
+    # `month_vocab` was required here through P2.18, for the request block's `month` one-hot.
+    # P2.19 removed the one-hot and the key; the builder's `--check` is what refuses a manifest
+    # that still carries it, since nothing online reads it any more.
+    for key in ("files", "corpus_hash", "weekday_vocab"):
         if key not in manifest:
             raise ValueError(f"{path} has no {key!r}; rebuild it")
     return manifest
@@ -325,7 +328,7 @@ def verify_corpus(manifest: Dict[str, Any],
                   corpus_dir: str = DEFAULT_CORPUS_DIR) -> None:
     """Raise unless `corpus_dir` still matches the manifest, naming what differs (trap 16).
 
-    P2.6's baseline, its month means and its SD are all computed over one particular set of
+    P2.6's baseline, its weekday means and its SD are all computed over one particular set of
     days. A baseline read against a different corpus produces plausible-looking anomalies that
     are simply wrong, and nothing else would notice -- so the env refuses to start (P2.9).
 

@@ -114,8 +114,13 @@ def parse_day_stem(stem: str) -> Tuple[Optional[str], Optional[int]]:
     The demand rows carry `rq_time` as seconds from midnight and no date column, so the
     filename is the only record of which day a file is (§2.9). A stem that is not an ISO date
     yields `(None, None)` rather than raising: the reference path's `rq_file` is not required to
-    be ISO-named, and P2.9 -- the first consumer that actually needs these -- raises on an
-    unknown weekday or month against P2.6's vocabularies (§5.2).
+    be ISO-named, and P2.9 -- the first consumer that actually needs the weekday -- raises on an
+    unknown weekday against P2.6's vocabulary (§5.2).
+
+    **The month is reporting only since P2.19.** It fed the request block's `month` one-hot
+    through P2.18 and was validated against a manifest vocabulary; now it reaches
+    `episode_summary()["month"]` and `tools/corpus_sweep.py`'s report column and nothing else,
+    so no month value can make an episode refuse to start.
     """
     try:
         date = dt.date.fromisoformat(stem)
@@ -184,9 +189,9 @@ class SDPDPAssignmentEnv(gym.Env):
         self.scenario_parameters = self._build_scenario_parameters()
         self._configure_days(cfg)
 
-        # trap 16, at construction and unconditionally: P2.6's baseline, its month means and
+        # trap 16, at construction and unconditionally: P2.6's baseline, its weekday means and
         # its SD were computed over one particular set of days, and the request block's
-        # vocabularies come from the same manifest. A baseline read against a different corpus
+        # vocabulary comes from the same manifest. A baseline read against a different corpus
         # produces plausible-looking anomalies that are simply wrong. This runs even on the
         # reference path, which reads `thursday/` and never touches a corpus day -- so a corpus
         # edit now breaks the P1.10 gate, deliberately, with a message naming the files.
@@ -205,7 +210,6 @@ class SDPDPAssignmentEnv(gym.Env):
             node_coords,
             self._zone_table(),
             weekday_vocab=self.manifest["weekday_vocab"],
-            month_vocab=self.manifest["month_vocab"],
         )
         # P2.6's baseline, with its manifest-recorded hash verified against the parsed rows
         # (trap 16, guard 2), and the scheduled active fleet curve. Both static, both built
@@ -243,6 +247,11 @@ class SDPDPAssignmentEnv(gym.Env):
         #: same class of silent redefinition: `"relative"` re-points two candidate features at
         #: the request origin, and the normalizer divides five, with no name or width moving.
         #: Each is its own field rather than part of the hash so a refusal can quote both values.
+        #:
+        #: **P2.19 is the other half**, and the first item the fingerprint and the length caught:
+        #: dropping the request block's `month` one-hot took the observation from 139 to 129 and
+        #: moved the fingerprint, while `baseline_hash` did not move at all — the baseline and the
+        #: corpus are untouched by it. `version` stays 1: the fields are the same fields.
         self.observation_contract = {
             "version": 1,
             "baseline_hash": self.manifest["baseline_hash"],
@@ -339,7 +348,7 @@ class SDPDPAssignmentEnv(gym.Env):
         self._episode_pass = None           # D10 pass index, rotation mode only
         self._episode_position = None       # position within that pass
         self._episode_weekday = None        # "Tue" / "Wed" / "Thu", or None if unparseable
-        self._episode_month = None          # 1..12, or None if unparseable
+        self._episode_month = None          # 1..12, or None if unparseable; reporting only
         self._training_days = None          # sorted day list, rotation mode only
 
         if self.fixed_episode_seed is not None and self.base_seed is not None:
@@ -578,11 +587,12 @@ class SDPDPAssignmentEnv(gym.Env):
         # (P2.9). set_episode_day validates against the manifest vocabularies and raises here,
         # before the episode runs, rather than at the first decision.
         self._request_observer.set_stats_tracker(self._stats)
-        self._request_observer.set_episode_day(self._episode_weekday, self._episode_month)
+        self._request_observer.set_episode_day(self._episode_weekday)
         # the global block's two, the same way (P2.11). set_episode_weekday raises here, at
         # reset, against the baseline's own weekdays -- the baseline is weekday-conditioned
-        # since P2.18. `_episode_month` is still parsed and still feeds the request block's
-        # month one-hot, which stays until P2.19.
+        # since P2.18. `_episode_month` is still parsed, but since P2.19 it reaches only
+        # `episode_summary()` and corpus_sweep's report column: no observation feature reads it,
+        # and neither setter validates it.
         self._global_observer.set_stats_tracker(self._stats)
         self._global_observer.set_episode_weekday(self._episode_weekday)
 
@@ -756,7 +766,7 @@ class SDPDPAssignmentEnv(gym.Env):
         construction.
 
         **The message names the features**, through the layout map, rather than only reporting
-        that something is non-finite. With 139 features and `VecNormalize` downstream, a NaN
+        that something is non-finite. With 129 features and `VecNormalize` downstream, a NaN
         would otherwise surface as a silent dead policy: `VecNormalize` would fold it into a
         running mean, every later observation of that feature would come out NaN, and the loss
         would go to NaN some updates later with nothing pointing back here.

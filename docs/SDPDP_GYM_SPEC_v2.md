@@ -898,13 +898,16 @@ design. Do not propose it.
 ### 5.2 Phase 2 — full (DECIDED)
 
 Per proposal §3.1.1–§3.1.3, as settled with Ritun. Same `Box`, same observer→dict→concat
-mechanism, wider vector. For `K = 8` the length is **139**:
+mechanism, wider vector. For `K = 8` the length is **129**:
 
 | Block | Features | Length at `K = 8` |
 |---|---|---|
 | Candidate | 12 per slot | 96 |
-| Request | 24 | 24 |
+| Request | 14 | 14 |
 | Global | 19 | 19 |
+
+*(**139**, with a 24-feature request block, from P2.11 until P2.19 dropped the 10-wide `month`
+one-hot. Items P2.9 through P2.18 below quote the lengths that held when they ran.)*
 
 Block order in the vector is candidate, request, global. Inside the candidate block the layout
 stays feature-major, as in Phase 1 — each feature is a length-`K` vector — and the three
@@ -1070,12 +1073,15 @@ Definitions:
 | `o_lat`, `o_lon`, `d_lat`, `d_lon` | request origin and destination node | [−1, 1] over the node bbox |
 | `n_pax` | `prq.nr_pax` | raw |
 | `dow_*` (3) | one-hot over the weekday vocabulary (Tue, Wed, Thu) | — |
-| `month_*` (10) | one-hot over the month vocabulary (Jan–Oct) | — |
 | `zone_arrivals_30`, `zone_arrivals_60` | arrivals in the request's zone set | raw count |
 | `zone_declines_30`, `zone_declines_60` | rider declines in the zone set | raw count |
 | `zone_cancels_30`, `zone_cancels_60` | post-match cancellations in the zone set | raw count |
 
-- Vocabularies come from P2.6's manifest, never literals. An unknown weekday or month raises.
+- The weekday vocabulary comes from P2.6's manifest, never literals. An unknown weekday raises.
+- **No month term, anywhere in the observation** (P2.19). A `month_*` (10) one-hot over Jan–Oct
+  sat under `dow_*` from P2.9 to P2.18, and the arrival baseline was month-conditioned until
+  P2.18. Both are gone: the daily *level* is carried unlabelled by `arrivals_30/60`, and §8 P2.6's
+  *"Why weekday, not month"* is the argument, including the limitation the weekday table accepts.
 - VERIFY the `PlanRequest` attributes for the origin and destination nodes.
 - **Zone set** = the request's origin H3 cell (resolution 7) plus its neighbours from P2.5's
   table. Events are keyed to **the event rider's origin cell**.
@@ -1134,7 +1140,8 @@ Definitions:
     runtime, so it is the first that can check it.
 - **The anomaly's two per-episode dependencies are injected, not discovered**, as P2.9 does for
   the request block: the rolling-stats tracker and the episode's **weekday** (P2.18; the month
-  through P2.17). An unknown weekday **raises at `reset()`** — `None`, which is what a non-ISO
+  through P2.17, and the request block took both until P2.19). An unknown weekday
+  **raises at `reset()`** — `None`, which is what a non-ISO
   demand filename yields, and a name like `Sat`, which is what an ISO date outside the corpus's
   three weekdays yields.
   Both the baseline and the schedule are **required** constructor arguments: an absent one could
@@ -1177,7 +1184,9 @@ at env construction as static data. The bbox is the min/max over all nodes.
 Settled; do not add, and see §10: infeasible-plan fractions, a rejection-rate anomaly, a
 separate availability fraction, plan-independent proximity (distance or ETA to pickup), slack
 to a latest-pickup bound, H3 centroid coordinates, an idle companion flag, the ETA gap for
-cancelled riders, an implied-decline-probability feature, the request's direct travel time.
+cancelled riders, an implied-decline-probability feature, the request's direct travel time,
+**the calendar month in any encoding** — one-hot, index, cyclical pair, or inside an expected
+curve (P2.18, P2.19; §10's baseline bullet covers the last of those).
 
 ### 5.3 Normalization
 
@@ -1224,7 +1233,7 @@ Two layers.
    vector from the first step onwards, rather than only once the statistics have moved.)*
 
 The env raises `ValueError` if any observation value is non-finite, at reset and at step
-(P2.12). **The message names the offending features through the layout map**, because with 139
+(P2.12). **The message names the offending features through the layout map**, because with 129
 features the alternative is a silent dead policy: `VecNormalize` would absorb a NaN into its
 running mean, every later observation of that feature would come out NaN, and the loss would go
 to NaN some updates later with nothing pointing back at the observation that caused it.
@@ -2234,8 +2243,9 @@ in `day_dir`, checked at construction; otherwise a typo surfaces as a path error
 
 The env parses weekday and month from the filename and exposes them for the request block
 (P2.9). A stem that is not an ISO date yields `None` for both rather than raising, so the
-reference path's `rq_file` need not be ISO-named; P2.9 is where an unknown weekday or month
-raises, against P2.6's vocabularies (§5.2).
+reference path's `rq_file` need not be ISO-named; P2.9 is where an unknown weekday
+raises, against P2.6's vocabulary (§5.2). *(An unknown **month** raised there too until P2.19
+removed the one-hot it validated; the month is reporting-only from that item on.)*
 
 VERIFY: the `scenario_parameters` keys that carry the demand directory and file, and that no
 component caches the demand path before construction. *(Checked in P2.3: `G_DAY_DIR` and
@@ -2411,6 +2421,28 @@ months, against an hour-a-day offset on every day.** It is taken because the sec
 within-day pattern this feature exists to describe, and the first is a level the raw arrival
 counts already carry.
 
+**A known limitation: the Wednesday peak is a school-year pattern, and a weekday table cannot
+know that.** The afternoon peak the trade above rests on is not a property of Wednesdays as such.
+Kept arrivals in `[53640, 55440)` — the `W = 30` window ending 15:24 — average **44.40** on the
+25 non-summer training Wednesdays against **21.25** on the 8 from 2024-06-05 to 2024-08-14. The
+other two weekdays barely move across the same split: Tuesdays **20.78** against **20.12** (27
+days against 8), Thursdays **24.04** against **20.14** (26 against 7). Among non-summer
+Wednesdays only 2024-02-21 reads low — **22**, tied for fifth-lowest of the 33 with the summer
+Wednesday 2024-08-14 — and Wednesday daily totals hardly change at all, **475.8** against
+**446.8**, so what the summer removes is a shape in the afternoon rather than a day's worth of
+demand.
+
+**The consequence, measured.** One mean per weekday has to average the two regimes: the table
+expects **38.79** at t = 55440 with sd **7.62**, so a routine summer Wednesday afternoon reads
+`arrivals_z_30` of about **−2.3** with nothing unusual happening — the eight summer Wednesdays
+average **−2.30**, spanning −1.28 to −3.38. Validation day 2024-07-31, a Wednesday, has **15**
+arrivals in that window, `z ≈ −3.1`. The policy is told the afternoon is very quiet for a
+Wednesday when it is an ordinary July afternoon, for about an hour of every summer Wednesday.
+
+**Recorded, not proposed.** §10 still holds: the conditioning is settled and is not open to
+variants. A school-in-session term would change the baseline's conditioning, and that is Ritun's
+decision, not an open option.
+
 **Prediction accuracy goes the other way, and is recorded rather than optimised.** Out of sample
 on the 12 validation days, with all three baselines fitted on `corpus/` alone — rms residual
 over every day-minute: one pooled curve **5.731**, weekday **5.698**, month **5.294** at
@@ -2422,11 +2454,14 @@ will measure it; not the criterion, for the reason the first paragraph gives.
 *All figures here were re-measured in P2.18 over `corpus/` and `corpus_val/` only —
 `corpus_eval/`'s 14 test days were not read, in code or by hand. (P2.6 had already re-measured
 the nine figures carried from drafting, five of which were a little off because they predate the
-October days landing in the corpus, `6eeb05e`.)*
+October days landing in the corpus, `6eeb05e`.) The known-limitation paragraphs were measured in
+P2.19, on the same two directories and under the same rule.*
 
 **Manifest:** `files` — every training file, sorted by filename, with the SHA-256 of its bytes;
 `corpus_hash`; `baseline_hash`; the month vocabulary (Jan–Oct); the weekday vocabulary
-(Tue, Wed, Thu); `start_time`, `end_time`, the windows, and the SD floor. `corpus_hash` is the
+(Tue, Wed, Thu); `start_time`, `end_time`, the windows, and the SD floor. *(`month_vocab` left
+the manifest in P2.19 with the one-hot that read it; `--check` now refuses a manifest carrying
+it, since P2.19 moved neither hash and the key is the only difference.)* `corpus_hash` is the
 SHA-256 of the UTF-8 text made of one line per entry of `files`, in order, each line
 `<filename>:<SHA-256 of the file's bytes>`, joined with `\n`. It covers contents as well as
 names, so an edited file is caught too, and the per-file list lets the env say which files
@@ -2610,7 +2645,9 @@ come from the demand filename (P2.3), so the env calls `set_stats_tracker` and
 and **raises there** — at reset, not at the first decision — so a misconfigured episode fails
 before it runs rather than 40 seconds in. `None`, which P2.3's `parse_day_stem` returns for a
 non-ISO demand filename, is what that check mostly catches. `observe` raises if either
-dependency is missing.
+dependency is missing. *(Since P2.19 `set_episode_day` takes the **weekday alone** and validates
+only that: the month one-hot it also fed is gone, so an unknown month is no longer a reason to
+refuse an episode.)*
 
 This item also adds the corpus check (trap 16): at construction the env loads P2.6's manifest,
 recomputes `corpus_hash` over the files in the corpus directory exactly as P2.6 defines it, and
@@ -2628,7 +2665,8 @@ rebuild command, so the message explains itself rather than looking like an unre
 
 **How Ritun verifies:** the P1.10 gate, byte for byte, with the block present; for 10 decisions,
 every feature matches a hand computation — coordinates from `nodes.csv`, one-hots from the
-filename, zone counts from P2.7's recomputation; observation length +24; and with `corpus_dir`
+filename, zone counts from P2.7's recomputation; observation length +24 (**+14 since P2.19**, which
+removed this block's `month` one-hot); and with `corpus_dir`
 pointed at a temporary copy of `corpus/`, removing one file makes construction raise and name
 it, and editing one file does the same. **Also: dropping a stray `.DS_Store` into that copy must
 leave construction working** — §2.9's `*.csv`-only rule, which is otherwise the kind of thing
@@ -2651,7 +2689,8 @@ and **skipped entirely when the vehicle has no pending rider**, which is what fe
 12 are 0.0 for anyway (§5.2); 168 of 436 decisions re-time anything at all on the reference day.
 The routing cache is restored after every observation, per §5.2 (b).
 
-Observation length 52 → **124** at `K = 8`: 96 candidate + 24 request + 4 global.
+Observation length 52 → **124** at `K = 8`: 96 candidate + 24 request + 4 global. *(The request
+block is **14** since P2.19; see §5.2 for today's table.)*
 
 The quoted pickup used by features 9 and 10 comes from the **one** definition
 `observers.quoted_pickup_time`, built on the same `prq.offer` lookup that
@@ -2700,7 +2739,10 @@ quantity feeding both the statistics and the observation.
 
 Per §5.2's global block: rolling counts and the wait gap from P2.7, the anomaly from P2.6's
 baseline, `active_*` from `op_act_fs_file` read as §5.2 describes. Observation length 124 →
-**139** at `K = 8`, which completes §5.2's table.
+**139** at `K = 8`, which completes §5.2's table. *(139 is this item's figure and P2.11 through
+P2.18's; §5.2's table reads **129** today, P2.19 having dropped the request block's 10-wide
+`month` one-hot. Every 139 in this item and in its verification below is the length that held
+when it ran.)*
 
 **The last two files are there for the `baseline_hash` guard** (§5.2). `baseline_hash`,
 `canonical_baseline_text`, `read_baseline`, `BASELINE_COLUMNS` and `FLOAT_FMT` move from
@@ -3179,7 +3221,9 @@ four **distinct** statistics files and the same KPI md5, since training is uncha
 observation features and added a guard that refuses a checkpoint with no recorded
 observation contract. The commands above now stop with that refusal, which is the
 intended behaviour; the figures they produced stand as the record of what this item
-verified when it ran. No replacement md5 is pinned until after P2.19.)*
+verified when it ran. No replacement md5 is pinned until after P2.19. **Still none after it**:
+P2.19 recorded a figure from its own gate run and then found the RL half of that table does not
+reproduce, which is P2.20. A re-runnable md5 becomes possible once P2.20 lands.)*
 
 **Commit:** `RL-GYM: one VecNormalize statistics file per checkpoint, with a pairing check`
 
@@ -3290,7 +3334,7 @@ md5 `559b836e7c61fb7dadd2e7bd9bc8891d`.
 P2.6's baseline conditions on month. This item conditions it on weekday instead. The reasoning
 is §8 P2.6's rewritten *"Why weekday, not month"*; this entry is the machinery. **P2.19 drops
 the `month_*` one-hot and is a separate item** — month stays in the request block and in the
-manifest here.
+manifest here. *(Done: see P2.19.)*
 
 - **One mean per (weekday, minute, window)**, over that weekday's training days: Tue 35, Wed 33,
   Thu 33.
@@ -3325,7 +3369,9 @@ manifest here.
   and it would survive their removal. What needs them is the request block's `month_*` one-hot —
   10 of the 139 features, until P2.19 — plus `tools/corpus_sweep.py`'s report column and the test
   that pins the summary field. *(An earlier draft of this item gave `kpis.month_of` as the
-  reason; it was wrong, and the reasons above are stronger.)*
+  reason; it was wrong, and the reasons above are stronger. P2.19 removed the one-hot, so the
+  report column and the summary field are the whole of what keeps them now — reporting, not
+  observation.)*
 
 **The checkpoint guard.** This item keeps **139 features and changes what 4 of them mean**, so a
 pre-P2.18 checkpoint would load, run, and silently read `arrivals_expected_30/60` and
@@ -3376,7 +3422,10 @@ this item that command is **refused**. The number would have moved regardless �
 four re-defined features, so its actions and the KPI table change — so the guard is what turns a
 silently different table into a refusal rather than what retires the check. **No replacement
 figure is pinned in this item:** P2.19 changes the observation again, so a pin created now would
-be retired immediately. New reference figures are produced and pinned once, after P2.19.
+be retired immediately. New reference figures are produced and pinned once, after P2.19. *(It did
+not work out that way. P2.19 ran the gate and **recorded** its md5, then found that the RL half of
+the table does not reproduce run to run — three runs, three md5s. No reference figure exists yet;
+one becomes possible after P2.20 fixes that; P2.20 has no entry here yet. See §8 P2.19.)*
 
 **Figures, all measured over `corpus/` and `corpus_val/` only — `corpus_eval/` was not read:**
 
@@ -3411,6 +3460,136 @@ and both windows.
   and the path.
 
 **Commit:** `RL-GYM: condition the arrival baseline on weekday`
+
+---
+
+### P2.19 — Remove the month one-hot from the observation
+
+**Files:** `src/rl_gym/observers.py`, `src/rl_gym/corpus.py`,
+`src/rl_gym/offline/build_arrival_baseline.py`, `src/rl_gym/gym_env.py`, `train_sdpdp.py`,
+`src/rl_gym/rolling_stats.py` (docstring);
+`data/rl_gym/example_network/corpus_manifest.json` (regenerated);
+`tests/test_rl_gym_observers.py`, `tests/test_rl_gym_env.py`, `tests/test_rl_gym_baseline.py`,
+`tests/test_rl_gym_train.py`; `docs/SDPDP_GYM_SPEC_v2.md`, `docs/RL_GYM_PROGRESS.md`,
+`docs/RL_GYM_PHASE2_RESULTS.md`
+
+**Month leaves the observation entirely.** The request block loses its 10-wide `month` one-hot,
+so it goes **24 → 14** and the observation **139 → 129** at `K = 8`. The weekday one-hot (3)
+stays. P2.18 had already moved the arrival baseline off month, so **after this item no feature
+encodes the calendar month** — which is the point: P2.18's own reasoning (§8 P2.6, *"A
+month-conditioned baseline is itself a month code"*) is that dropping the one-hot alone would
+have left a month code in `arrivals_expected_30/60`. The two items are one change in two steps,
+and this is the second.
+
+- **`RequestObserver`** drops the one-hot, the `month_vocab` parameter, `self.month_vocab` and
+  `self._month_index`. `set_episode_day` takes the **weekday only** and still raises there, i.e.
+  at `reset()`. The name stays `set_episode_day`: it still fixes the episode's day, and it stays
+  distinct from `GlobalStateObserver.set_episode_weekday`.
+- **`month_vocab` leaves the manifest**, the builder (`MONTH_VOCAB`, the training-day month
+  check, the `--check` key comparison) and `load_manifest`'s required keys. `--check` gains a
+  **forbidden-key** test, because this item moves **neither hash**: `corpus/` is untouched, the
+  baseline is byte-identical, and so `corpus_hash` (`6b232cf1…`) and `baseline_hash` (`a6f3c382…`)
+  are the same in a P2.18 manifest as in a P2.19 one. The key is the only thing that tells them
+  apart, so without that test a stale manifest passes silently. `days_per_month` stays as a
+  printed build diagnostic — a description of the corpus, not an input.
+- **What stays, and why it is reporting rather than observation:** `parse_day_stem` still returns
+  the month; `_episode_month` and `episode_summary()["month"]` stay for `tools/corpus_sweep.py`'s
+  report column; the KPI report's **"By month"** level stays, reading `kpis.month_of`, which
+  slices the `day` string and never touched `_episode_month`.
+
+**The guard.** A P2.18-era checkpoint is now refused by the observation contract, naming
+`obs_layout_fingerprint` and `observation_length` (recorded 139, current 129). **`baseline_hash`
+is deliberately not listed** — it does not change here, so naming it would send a reader to
+rebuild an artifact that is already correct. This is the refusal P2.18 recorded the fingerprint
+and the length for; `baseline_hash` alone caught P2.18, and these two alone catch P2.19. The
+contract's `version` stays **1**: the fields are the same fields, and only two of their values
+move. The two fingerprints were recorded off `c9438a6` **before any edit**, so a test can pin the
+P2.18 values as the "before" — the code that produced a 139-long observation no longer exists in
+the tree, and a recorded contract cannot be re-derived from live code:
+
+| | P2.18 (`c9438a6`) | P2.19 |
+|---|---|---|
+| `obs_layout_fingerprint` | `353882d0…bae5` | **`1a9c1144…d96c`** |
+| `observation_length` | 139 | **129** |
+| named features | 44 | **43** |
+| `baseline_hash` | `a6f3c382…` | `a6f3c382…` unchanged |
+| request block | 24 | **14** |
+| `arrival_baseline.csv` md5 | `3659dd90…` | `3659dd90…` byte-identical |
+
+**No month dependency left, tested.** An episode on a corpus weekday in a month outside Jan–Oct
+now resets and observes. Through P2.18 that case **raised at `reset()`**, by design: the month was
+validated against the manifest vocabulary, and a November day had no column to light up. The test
+copies a training-day file into a temp directory under a new date name — a Tuesday as
+`2024-11-05.csv` — so the arrivals are a real corpus Tuesday's and only the filename says
+November (§2.9: the filename is the only record of which day a file is). **No November data,
+folder, seed file or flag is added**; that is **P2.21** (it was to be P2.20 until this item's
+verification turned up the harness-reproducibility defect, which took that number).
+
+**Figures, all measured over `corpus/` and `corpus_val/` only — `corpus_eval/` was not read:**
+the eight figures of §8 P2.6's new known-limitation paragraphs, which this item added and which
+are listed there rather than repeated here. `rolling_stats.py`'s scale note was a P2.18 leftover
+(*"the busiest (month, minute) … 73.7 … about 115"*, of a table that no longer has month
+buckets); re-measured against the committed weekday table it is the busiest **(weekday, minute)**,
+Wednesday at t = 56640, **66.7** arrivals at `W = 60` and about **104** at +3 SD. The conclusion
+it supports — roughly 200 events in a 60-minute window, so scanning beats indexing — is unchanged.
+
+**`kpi_report.txt` md5 `bcd4904da181b5a0bbc4383ebaa62667`, from `runs/p219_gate/`** — 23/23
+checks in 26.8 minutes. The harness days are **validation** days (P2.17) and nothing is tuned
+from them.
+
+**This is an observation of what one run produced. It is not a reference and not a check**, and
+it does not replace the `db34f5ae…` that P2.18 retired — that slot stays empty until P2.20. **Do
+not write a verification anywhere that asks this md5 to reproduce.** The reason: **the RL half of
+this table does not reproduce.** Measured in P2.19, three runs of the same ten pairs against the
+same checkpoint and the same statistics file gave **three different md5s**: `bcd4904d…` (inside
+the gate),
+`a2e2e9f3…` and `7f39b75e…` (two `--harness-only` runs). The command is
+
+    caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p219_check \
+        --harness-only --checkpoint runs/p219_gate/checkpoints/model_ep00047.zip
+
+and it passes 3/3 checks every time while producing a different table. What varies is narrow and
+repeatable in shape:
+
+- **every stock-greedy row is byte-identical across all three runs**, so the demand, the
+  simulation, the no-show and cancellation models and the KPI code are all reproducible;
+- **8 of the 10 RL rows are identical across all three**; the two that move are
+  (2024-01-11, 1186391) and (2024-03-19, 2483245), each by **two riders** who no-show in one run
+  and are served in another — 273/271/273 served on the first of them;
+- both are the **second** episode of their worker (env0 and env1, `ep2`). Run alone as a
+  worker's *first* episode, (2024-01-11, 1186391) reproduces exactly — the same
+  `1_user-stats.csv` md5 in three separate processes, equal to the gate's — so a worker's first
+  episode is reproducible and its second is not.
+
+So a `SubprocVecEnv` worker's second episode is not fully isolated from its first, and the leak
+occasionally flips a rider-side draw. Per-episode reseeding (D7) is in force, and greedy running
+the identical pairs in separate processes is stable, which is what narrows this to episode
+sequencing inside a worker rather than to the demand or the models. **Diagnosed no further in
+this item, and not treated as acceptable** (§0): a KPI table that moves between runs cannot pin
+anything. **Ritun made it its own work item, P2.20**, and the gate is re-run after that fix —
+which is when its md5 becomes a real reference. The November-data item that was to be P2.20 moves
+to **P2.21**.
+
+**How Ritun verifies:**
+- the full suite, with the new count;
+- **the P1.10 gate, byte for byte.** Greedy reads only `delta_cfv` and `is_valid`, both before
+  the request block, so a passing gate says the narrower vector perturbed no simulation output;
+- `python -m src.rl_gym.offline.build_arrival_baseline --check`; `arrival_baseline.csv`
+  byte-identical; the manifest diff showing **only** `month_vocab` removed; and `--check` failing
+  on a manifest with the key put back;
+- observation length 129, request block 14, no layout name containing `month`, `delta_cfv` still
+  at `obs[8:16]`;
+- `python -m src.rl_gym.evaluate --verify`; `python train_sdpdp.py --verify-run`;
+- the guard refusing a P2.18-contract checkpoint, naming both fields, both values and the path,
+  and **not** naming `baseline_hash`; and still refusing
+  `runs/p216_gate/checkpoints/model_ep00047.zip`;
+- an episode on `2024-11-05` (a Tuesday, from a copied training day) resetting and observing;
+- `caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p219_gate` passing its
+  checks. **Do not expect its `kpi_report.txt` md5 to match the one recorded above, and do not
+  treat a mismatch as a failure of this item** — the RL half of that table does not reproduce
+  run to run, which is P2.20. The md5 above is an observation of one run, not a check.
+
+**Commit:** `RL-GYM: remove the month one-hot from the observation`
 
 ---
 
