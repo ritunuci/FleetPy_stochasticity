@@ -810,6 +810,15 @@ def main() -> int:
                         help="workers for the checkpoint's harness episodes")
     args = parser.parse_args()
 
+    # P2.20: before the folder is created and before 27 minutes of training -- the run
+    # directory, and, when the harness runs, the results directory its simulations write to
+    # (training writes no simulation output: skip_output is on)
+    from src.rl_gym.output_integrity import refuse_synced_path
+    refuse_synced_path(args.out_dir, "the gate's run directory")
+    if not args.skip_harness:
+        from src.rl_gym import evaluate
+        refuse_synced_path(evaluate.results_dir(), "the harness's simulation output")
+
     os.makedirs(args.out_dir, exist_ok=True)
     checker = Checker()
     t0 = time.perf_counter()

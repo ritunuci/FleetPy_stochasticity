@@ -69,6 +69,8 @@ from src.rl_gym.corpus import (  # noqa: E402
     VAL_DAY_DIR,
     day_dir_for,
 )
+# standard library only, like `corpus` -- no torch, so §8a's ordering holds
+from src.rl_gym.output_integrity import refuse_synced_path  # noqa: E402
 
 SCS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                    "studies", "example_study", "scenarios")
@@ -753,6 +755,11 @@ def train(cfg, n_workers=4, total_timesteps=10_000, out_dir="runs/sdpdp",
         `collect_rollouts`' locals -- would otherwise have to edit the training script it is
         checking. Nothing here depends on them, and the default changes no behaviour.
     """
+    # P2.20: first, before anything is created or imported -- checkpoints, statistics files
+    # and TensorBoard event files are appended to for hours, which is exactly the exposure a
+    # cloud-synced folder loses rows under. Covers --train, --verify-run --keep and phase2_run.
+    refuse_synced_path(out_dir, "the training run directory (checkpoints, VecNormalize "
+                                "statistics, TensorBoard event files)")
     from stable_baselines3.common.utils import set_random_seed
     from src.rl_gym import callbacks as cb
 

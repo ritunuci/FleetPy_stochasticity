@@ -41,7 +41,19 @@ git-ignored (added in P2.15), so the tables below are reproduced in full rather 
 > `db34f5aea5f8cd59437fb2628c9534e0` — pinned by P2.15, P2.16 and P2.17 — is **retired**, not
 > merely unverified.
 >
-> **No replacement reference exists yet.** What P2.19 has is an **observation** of one run:
+> **The replacement reference, pinned in P2.20: `kpi_report.txt` md5
+> `7f39b75e88e95f23b332b1ca24f7c170`.** Three runs, three byte-identical files: the full gate and
+> two `--harness-only` runs from its final checkpoint into fresh folders,
+>
+>     caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p220_gate
+>     caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p220_check1 \
+>         --harness-only --checkpoint runs/p220_gate/checkpoints/model_ep00047.zip
+>
+> (and the same into `runs/p220_check2`): 23/23 checks in 22.4 min, then 3/3 twice. Same
+> 129-feature observation as P2.19, validation days only, nothing tuned from them. §8 P2.20
+> carries the measurements; P2.19's history follows.
+>
+> **Before P2.20 no replacement reference existed.** What P2.19 had was an **observation** of one run:
 > `kpi_report.txt` md5 **`bcd4904da181b5a0bbc4383ebaa62667`** from `runs/p219_gate/`, 23/23 checks
 > in 26.8 minutes, under the 129-feature observation P2.19 left behind (it dropped the request
 > block's 10-wide `month` one-hot, 139 → 129). The harness days are **validation** days (P2.17)
@@ -61,6 +73,11 @@ git-ignored (added in P2.15), so the tables below are reproduced in full rather 
 > worker. Run as a worker's first episode, one of them reproduces exactly across three processes.
 > §8 P2.19 carries the measurements. Unlike the P2.18 note above, this is an open defect in the
 > harness rather than a deliberate retirement; it is **P2.20**.
+>
+> *(Closed by P2.20, and the defect was not in the harness. The repository sat in a
+> OneDrive-synced folder, and the sync client silently dropped bands of rows appended to
+> `1_user-stats.csv`; the riders above were lost rows, not no-shows. Of P2.19's three md5s,
+> `7f39b75e…` was the intact table -- it is the one P2.20 reproduced three times and pinned.)*
 >
 > Everything below this box remains P2.15's record, measured under the month-conditioned
 > baseline and the 139-feature observation.

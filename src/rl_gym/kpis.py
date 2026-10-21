@@ -5,8 +5,15 @@ comparison is only as good as the sameness of the two measurements. So this modu
 the output directory**, with one code path for both policies, and takes nothing from the env, a
 tracker or a config.
 
-Three files are read, and the choice of which matters:
+Four files are read, and the choice of which matters:
 
+- **`rl_output_rows.json`** (P2.20) -- first, and it decides whether anything else is read. It
+  records how many rows the simulation wrote to each CSV, and is written by
+  `output_integrity.check_episode_output` only after the files matched that count at the end of
+  the run -- for both policies, by the same function. `kpi_row` re-counts both CSVs against it
+  and **refuses** a directory that has no record or whose files no longer match it: a file that
+  has silently lost rows would otherwise produce a plausible, wrong row of this table, which is
+  how P2.19's KPI table came to differ between runs.
 - **`1_user-stats.csv`** -- every per-rider figure. It is the file both byte-for-byte gates
   compare, so for a greedy run the numbers here are pinned.
 - **`2-0_op-stats.csv`** -- fleet VKT only, as `Σ driven_distance / 1000`, which is exactly how
@@ -25,9 +32,12 @@ Two files in the same directory are **deliberately not read**:
   stays out of fleet-control CPU time. Measured in P2.14: those two columns are the *only*
   difference between a stock and an env-driven run of the reference day, and no KPI may depend
   on them.
-- **`standard_eval.csv`** exists for stock greedy (`evaluate = 1`) and not for an env run (the
-  env forces `evaluate = 0`), so reading it would silently give the two policies different
-  treatment -- the one thing this module exists to prevent.
+- **`standard_eval.csv`** is FleetPy's own aggregate over the same CSVs, and reading figures out
+  of it would give this module a second definition of each KPI beside the one below. *(Corrected
+  in P2.20. This said the file exists for stock greedy and not for an env run because the env
+  forces `evaluate = 0`. Both runs write it: nothing in FleetPy reads the `evaluate` key, and
+  `run()` and `run_generator()` call `evaluate()` whenever output is on. The decision not to
+  read it stands; only its reason was wrong.)*
 
 **The terminal-outcome counts come from `reward.classify_exit`, not a second ladder.** §6.4's
 order is subtle -- `no_show` after `diffusion_cancelled` and gated on `pu_time is None`, no
@@ -44,12 +54,15 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import pandas as pd
 
+from src.rl_gym import output_integrity
 from src.rl_gym.reward import classify_exit
 
-#: the three files read, and nothing else in the directory
-USER_STATS_FILE = "1_user-stats.csv"
-OP_STATS_FILE = "2-0_op-stats.csv"
+#: the four files read, and nothing else in the directory. The CSV names are
+#: `output_integrity`'s, so the files checked and the files read cannot drift apart.
+USER_STATS_FILE = output_integrity.USER_STATS_FILE
+OP_STATS_FILE = output_integrity.op_stats_file(0)
 EPISODE_SUMMARY_FILE = "rl_episode_summary.json"
+ROWS_RECORD_FILE = output_integrity.ROWS_RECORD_FILE
 
 #: `offers` for a request the operator made no offer to -- an operator rejection or an empty
 #: candidate list. `_create_rejection` produces a `Rejection`, which serialises to this.
@@ -150,7 +163,8 @@ def fleet_vkt_km(output_dir: str) -> float:
 
     The same expression as `op_total_km` in `evaluation/standard.py:477`, unfiltered, which is
     right here because the reference scenario has one operator. Reimplemented rather than read
-    out of `standard_eval.csv`, which an env run does not write.
+    out of `standard_eval.csv`, so this module holds the one definition (see the module
+    docstring; both policies' runs do write that file, P2.20).
     """
     path = os.path.join(output_dir, OP_STATS_FILE)
     if not os.path.isfile(path):
@@ -188,7 +202,11 @@ def kpi_row(output_dir: str, policy: Optional[str] = None, day: Optional[str] = 
 
     :param policy: a label carried through to the table; it selects nothing. Which files exist
         is what distinguishes the two policies, not what the caller says they are.
+    :raises output_integrity.OutputIntegrityError: the directory has no `rl_output_rows.json`,
+        or a CSV no longer holds the rows recorded there (P2.20). Checked before anything is
+        read, so no figure is ever computed from a short file.
     """
+    output_integrity.verify_output_dir(output_dir)
     df = read_user_stats(output_dir)
     summary = read_episode_summary(output_dir)
     counts = classify_user_stats(df)

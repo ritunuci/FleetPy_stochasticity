@@ -49,6 +49,13 @@ so the failure cannot happen rather than being noticed afterwards.
 
 Every run writes under `studies/<study>/results/`, which `.gitignore` already covers in full, so
 no result directory can reach git.
+
+**Every run's output is refused inside a cloud-synced folder and checked once it ends** (P2.20,
+`output_integrity`). A stock-greedy run is therefore constructed and run here rather than through
+`run_examples.run_single_simulation` -- its two lines, without the `bugfix` branch that swallows
+exceptions -- so the row counter can be attached to the simulation object. An exception in a
+greedy run now propagates. `--verify`'s byte comparisons against both committed baselines are
+what prove the baseline is still stock FleetPy.
 """
 
 # numpy before anything that might pull in torch -- §8a. The torch and sb3 imports in this
@@ -93,6 +100,14 @@ from src.rl_gym.corpus import (  # noqa: E402
     validation_days,
 )
 from src.rl_gym.gym_env import MAX_EPISODE_SEED, derive_study_name  # noqa: E402
+from src.rl_gym.output_integrity import (  # noqa: E402
+    RowCounter,
+    check_episode_output,
+    count_data_rows,
+    op_stats_file,
+    read_rows_record,
+    refuse_synced_path,
+)
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SCS = os.path.join(ROOT, "studies", "example_study", "scenarios")
@@ -126,6 +141,16 @@ BASELINE_OP_STATS = os.path.join(ROOT, "docs", "baseline_op_stats.csv")
 #: the pair `docs/baseline_*.csv` were generated at (§2.8)
 REFERENCE_DAY = "2024-06-20"
 REFERENCE_SEED = 42
+
+#: what recreates the reference run's output directory, from the repository root: `run_examples`'
+#: own call for this scenario, which reproduces both committed baselines byte for byte (P2.14,
+#: and again in P2.20's step 0). `--verify` names it when the directory is missing.
+REFERENCE_RERUN_COMMAND = (
+    "python -c \"import os, run_examples as r; s = os.path.join('studies', 'example_study', "
+    "'scenarios'); r.run_scenarios(os.path.join(s, 'constant_config_depot_cali_sc_1.csv'), "
+    "os.path.join(s, 'example_depot_cali_sc_1.csv'), log_level='info', n_cpu_per_sim=1, "
+    "n_parallel_sim=1)\""
+)
 
 
 # -------------------------------------------------------------------------- #
@@ -339,6 +364,14 @@ def output_dir_for(scenario_name: str, constant_cfg_path: str = DEFAULT_CONSTANT
     return get_directory_dict(dict(params))[G_DIR_OUTPUT]
 
 
+def results_dir(constant_cfg_path: str = DEFAULT_CONSTANT_CFG) -> str:
+    """`studies/<study>/results/`, the parent of every run's output directory, both policies'.
+
+    What the P2.20 pre-flight checks refuse inside a cloud-synced folder before a run starts.
+    """
+    return os.path.dirname(output_dir_for(GREEDY_PREFIX, constant_cfg_path))
+
+
 def guard_output_dir(scenario_parameters, row_scenario_name: str) -> str:
     """Raise unless this run writes somewhere other than the reference run (trap 1).
 
@@ -403,7 +436,10 @@ def build_greedy_scenario_parameters(day: str, seed: int,
             f"op_module={op_module!r}, sim_env={sim_env!r}. Expected 'PoolingIRSOnly' and "
             f"'ImmediateDecisionsSimulation'."
         )
-    guard_output_dir(params, row_scenario_name)
+    out_dir = guard_output_dir(params, row_scenario_name)
+    # P2.20, per run: the pre-flight in `run_greedy_pairs` checks the results directory once,
+    # and this is the backstop for any caller that builds parameters directly
+    refuse_synced_path(out_dir, "stock-greedy simulation output")
     return params
 
 
@@ -417,14 +453,28 @@ def run_greedy_pair(task: Sequence[Any]) -> Dict[str, Any]:
         than being bound once in the parent, so each worker re-checks the half it is running
         (P2.17) -- the check costs two `isfile` calls and means a mixed pair list cannot have
         one element slip through.
+
+    **Constructed and run here, not through `run_examples.run_single_simulation`** (P2.20). That
+    function is `load_simulation_environment(params).run()` plus a `bugfix` branch that swallows
+    exceptions; the two lines are repeated so `RowCounter` can be attached to the simulation
+    object, and the branch is left out, so **an exception in a greedy run propagates** rather
+    than being printed and swallowed, which would have handed the half-written directory to the
+    KPI table as a finished run. The run is then checked against its count, and
+    `rl_output_rows.json` written, exactly as the env does for an RL episode. That this is still
+    stock FleetPy is proved by `--verify`: the reference pair reproduces both committed
+    baselines byte for byte through this function.
     """
+    from src.misc.init_modules import load_simulation_environment
+
     day, seed = str(task[0]), int(task[1])
     split = task[2] if len(task) > 2 else None
     params = build_greedy_scenario_parameters(day, seed, split=split)
     out_dir = get_directory_dict(dict(params))[G_DIR_OUTPUT]
     t0 = time.perf_counter()
-    import run_examples
-    run_examples.run_single_simulation(params)
+    sim = load_simulation_environment(params)
+    counter = RowCounter.attach(sim)
+    sim.run()
+    check_episode_output(out_dir, counter)
     return {"policy": "greedy", "day": day, "seed": seed, "output_dir": out_dir,
             "split": split_of_day(day), "wall_seconds": time.perf_counter() - t0}
 
@@ -443,6 +493,8 @@ def run_greedy_pairs(pairs: Sequence[Tuple[str, int]], processes: int = 1,
     check.
     """
     pairs = [(str(d), int(s)) for d, s in pairs]
+    # P2.20: before any process starts, like the split check below
+    refuse_synced_path(results_dir(), "stock-greedy simulation output")
     if split is not None:
         for day, _seed in pairs:
             day_dir_for(day, split)
@@ -565,6 +617,11 @@ def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
     Each episode's output directory is found through `episode_summary()["scenario_name"]`, which
     the env records for exactly this purpose (P2.14).
     """
+    # P2.20, first of the pre-flight checks below and ahead even of the torch imports: each
+    # worker's env would refuse a cloud-synced output folder too, but only from inside the
+    # worker, after the venv is built
+    refuse_synced_path(results_dir(), "RL simulation output")
+
     from sb3_contrib import MaskablePPO
     from sb3_contrib.common.maskable.utils import get_action_masks
     from stable_baselines3.common.vec_env import SubprocVecEnv
@@ -588,10 +645,11 @@ def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
         "skip_output": False,
     }
     # before anything is constructed, in this order: the half (P2.17), the statistics pairing
-    # (P2.16) and the observation contract (P2.18). None of a cross-half day, a mispaired
-    # statistics file or a checkpoint whose features have been re-defined may cost a
-    # SubprocVecEnv whose workers the raise would then orphan. The contract check builds one
-    # env in this process, which loads no simulation and takes about 70 ms.
+    # (P2.16) and the observation contract (P2.18) -- after the synced-folder check (P2.20) at
+    # the top. None of a cross-half day, a mispaired statistics file or a checkpoint whose
+    # features have been re-defined may cost a SubprocVecEnv whose workers the raise would then
+    # orphan. The contract check builds one env in this process, which loads no simulation and
+    # takes about 70 ms.
     day_dir = resolve_pairs_split(pairs, split)
     train_sdpdp.verify_statistics_pairing(checkpoint, stats_path)
     train_sdpdp.verify_artifact_contract(checkpoint, env_cfg)
@@ -636,13 +694,18 @@ def run_rl_pairs(pairs: Sequence[Tuple[str, int]], checkpoint: str,
         # `SubprocVecEnv`'s worker resets unconditionally on `done`, so the step that reports
         # the last episode has already started one more. Closing abandons it, which leaves
         # **one** stray output directory per worker per invocation -- P2.13 documents the same
-        # effect inside `evaluate_policy`. Measured in P2.14: such a directory holds only the
-        # construction-time files (`00_config.json`, `2_vehicle_types.csv`,
-        # `3-0_op-dyn_atts.csv`) and **no `1_user-stats.csv` at all**, so it cannot be mistaken
-        # for a finished run. It is not removed here: its name would have to be reconstructed
-        # by string surgery on P1.9's naming rule, and speculative `rmtree` of a results
-        # directory is the one thing trap 1 says not to write. Nothing globs for runs -- the
-        # KPI table is built from the explicit directories returned below.
+        # effect inside `evaluate_policy`. It is not removed here: its name would have to be
+        # reconstructed by string surgery on P1.9's naming rule, and speculative `rmtree` of a
+        # results directory is the one thing trap 1 says not to write. Nothing globs for runs --
+        # the KPI table is built from the explicit directories returned below.
+        #
+        # **It can hold a partial `1_user-stats.csv`** (corrected in P2.20; P2.14 said it held
+        # none). A worker that has finished its slice is still stepped -- `eval_pairs` wraps --
+        # until the slowest worker finishes, so its abandoned episode runs and flushes rows at
+        # every time step until this `close()`. P2.14 measured a single-pair run, where it was
+        # abandoned at once. What keeps it from being read as a finished run is the record:
+        # the abandoned episode never reaches its end-of-episode check, so it has no
+        # `rl_output_rows.json`, and `kpis.kpi_row` refuses a directory without one.
         venv.close()
     return rows
 
@@ -725,6 +788,13 @@ def verify(keep: bool = False, verbose: bool = True) -> int:
     second pair 2024-08-13 are both **validation** days now, so six of the original checks read
     their demand out of `corpus_val/` -- with identical expected results, since a move changes a
     file's directory and not its bytes, and no KPI reads the directory name.
+
+    **17 since P2.20.** The reference output directory must exist with both CSVs: through P2.19
+    the byte-unchanged check compared only the files it found, so with the directory missing --
+    as in a fresh clone, `results/` being git-ignored -- it compared nothing and passed. Now that
+    is a FAIL naming `REFERENCE_RERUN_COMMAND`, and so is the byte-unchanged check, which has
+    nothing to compare. And both reference-pair runs must carry an integrity record matching
+    their files, at the row counts of the two committed baselines.
     """
     checks: List[Tuple[bool, str]] = []
 
@@ -733,15 +803,23 @@ def verify(keep: bool = False, verbose: bool = True) -> int:
         if verbose:
             print(f"{'PASS' if ok else 'FAIL'}  {label}", flush=True)
 
+    # P2.20: before anything is written
+    refuse_synced_path(results_dir(), "the verification's simulation output")
+
     reference_dir = output_dir_for(
         _base_scenario_parameters()[G_SCENARIO_NAME])
+    reference_files = (kpis.USER_STATS_FILE, kpis.OP_STATS_FILE)
     before = {name: _md5(os.path.join(reference_dir, name))
-              for name in (kpis.USER_STATS_FILE, kpis.OP_STATS_FILE)
+              for name in reference_files
               if os.path.isfile(os.path.join(reference_dir, name))}
     if verbose:
         print(f"reference directory: {reference_dir}")
         for name, digest in sorted(before.items()):
             print(f"  before  {name}  md5 {digest}")
+    missing = [name for name in reference_files if name not in before]
+    record(not missing,
+           f"the reference output directory holds both CSVs"
+           f"{'' if not missing else f' -- missing {missing} in {reference_dir}; recreate it, from the repository root, with: {REFERENCE_RERUN_COMMAND}'}")
 
     created: List[str] = []
     try:
@@ -853,6 +931,22 @@ def verify(keep: bool = False, verbose: bool = True) -> int:
                                                    kpis.EPISODE_SUMMARY_FILE)),
                "rl_episode_summary.json written by the env run only")
 
+        # 8b. P2.20: both runs were checked at their end and recorded what they wrote, and the
+        # record is the committed baselines' own row counts -- so the counter counts every row,
+        # on the stock path and the env path alike, and no more
+        expected_rows = {kpis.USER_STATS_FILE: count_data_rows(BASELINE_USER_STATS),
+                         op_stats_file(0): count_data_rows(BASELINE_OP_STATS)}
+        records = {}
+        for label, run in (("stock", stock), ("env", env_run)):
+            try:
+                records[label] = read_rows_record(run["output_dir"])
+            except Exception as exc:
+                records[label] = f"{type(exc).__name__}: {exc}"
+        record(all(r == expected_rows for r in records.values()),
+               f"integrity record of both runs == the baselines' row counts "
+               f"{expected_rows}"
+               f"{'' if all(r == expected_rows for r in records.values()) else f' -- got {records}'}")
+
         # 9. the table renders at all three levels, and carries the half it came from (P2.17)
         rows = [stock_row, env_row]
         report = format_report(rows, header=report_header(
@@ -870,8 +964,9 @@ def verify(keep: bool = False, verbose: bool = True) -> int:
         if verbose:
             for name, digest in sorted(after.items()):
                 print(f"  after   {name}  md5 {digest}")
-        record(after == before,
-               "the reference output directory is byte-unchanged by every run above")
+        record(not missing and after == before,
+               "the reference output directory is byte-unchanged by every run above"
+               f"{'' if not missing else ' -- nothing to compare: the directory or a file is missing'}")
         if not keep:
             for directory in created:
                 if os.path.isdir(directory):
@@ -959,6 +1054,11 @@ def main() -> int:
     if not (args.greedy or args.rl):
         parser.error("nothing to do: pass --derive-seeds, --check-seeds, --verify, "
                      "--greedy or --rl")
+
+    # P2.20: the report is written last, so its folder is checked first -- a refusal must not
+    # come after an hour of simulation. The simulation output is checked by the two runners.
+    if args.out:
+        refuse_synced_path(os.path.dirname(os.path.abspath(args.out)), "the KPI report")
 
     # G1: exactly one half, and no default. A default is what gets used by accident, and the
     # accident this guards against -- reading the 14 test days while choosing a checkpoint --

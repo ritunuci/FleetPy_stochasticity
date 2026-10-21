@@ -90,6 +90,10 @@ past `end_time` on an env being torn down.
 These are mirrors. If either parent method changes, they must change with it; the
 byte-for-byte tests are what catch a drift.
 
+Its `__init__` (P2.20) only arranges logging: with output on, each episode gets its own
+`00_simulation.log` instead of writing into the first episode's, and the handlers it replaces
+are closed. With output off, P1.2's once-per-process `NullHandler` is kept.
+
 ### `spaces.py` — truncation and masking
 
 Five pure functions, no state. `K` is passed in.
@@ -255,7 +259,7 @@ Four files, ~140 lines, every edit marked `# RL-GYM:`.
 | | |
 |---|---|
 | `src/misc/globals.py` | `G_SKIP_OUTPUT`, `G_RL_MODE` |
-| `src/FleetSimulationBase.py` | output guards, once-per-process logging in RL mode |
+| `src/FleetSimulationBase.py` | output guards, once-per-process logging in RL mode (with output on, `sim_env_rl.py` makes it once per episode since P2.20, without editing this file) |
 | `src/demand/demand.py` | two optional callbacks, the user-stats write guard |
 | `src/fleetctrl/FleetControlBase.py` | dyn-atts write guard |
 

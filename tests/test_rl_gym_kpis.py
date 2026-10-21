@@ -23,7 +23,7 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.rl_gym import corpus, evaluate, kpis  # noqa: E402
+from src.rl_gym import corpus, evaluate, kpis, output_integrity  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 BASELINE_USER_STATS = os.path.join(ROOT, "docs", "baseline_user_stats.csv")
@@ -46,11 +46,23 @@ REFERENCE_COUNTS = {
 }
 
 
+def record_rows_as_written(tmp):
+    """Write the P2.20 integrity record a checked run would carry: each CSV's own row count.
+
+    A fixture models a run that passed its end-of-run check, and `kpi_row` refuses a directory
+    without a record. The refusals themselves are tested in `test_rl_gym_output_integrity.py`.
+    """
+    output_integrity.write_rows_record(tmp, {
+        name: output_integrity.count_data_rows(os.path.join(tmp, name))
+        for name in (kpis.USER_STATS_FILE, kpis.OP_STATS_FILE)})
+
+
 def baseline_output_dir(tmp, summary=None):
     """A fixture output directory holding the two committed baselines, plus a summary JSON."""
     os.makedirs(tmp, exist_ok=True)
     shutil.copy(BASELINE_USER_STATS, os.path.join(tmp, kpis.USER_STATS_FILE))
     shutil.copy(BASELINE_OP_STATS, os.path.join(tmp, kpis.OP_STATS_FILE))
+    record_rows_as_written(tmp)
     if summary is not None:
         with open(os.path.join(tmp, kpis.EPISODE_SUMMARY_FILE), "w") as fh:
             json.dump(summary, fh)
@@ -157,6 +169,7 @@ class TestClassifyUsesTheSharedLadder(unittest.TestCase):
             writer = csv.writer(fh)
             writer.writerow([kpis.VKT_COLUMN])
             writer.writerow([1000.0])
+        record_rows_as_written(tmp)
         return tmp
 
     def test_no_show_is_gated_on_pickup_and_ordered_after_cancellation(self):

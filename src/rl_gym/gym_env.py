@@ -57,6 +57,7 @@ from src.misc.globals import (
 from src.misc.init_modules import load_simulation_environment
 from src.rl_gym.day_rotation import day_for_episode, training_days
 from src.rl_gym.corpus import DEFAULT_CORPUS_DIR, load_manifest, verify_corpus
+from src.rl_gym.output_integrity import RowCounter, check_episode_output, refuse_synced_path
 from src.rl_gym.observers import (
     ActiveFleetSchedule,
     ArrivalBaseline,
@@ -189,6 +190,15 @@ class SDPDPAssignmentEnv(gym.Env):
         self.scenario_parameters = self._build_scenario_parameters()
         self._configure_days(cfg)
 
+        # P2.20: refuse, before any episode runs, to write simulation output into a cloud-synced
+        # folder. The results directory, not one episode's: every episode's directory is a child
+        # of it with a fresh name (P1.9), so this one check covers them all. Nothing is checked
+        # with output off -- nothing is written then.
+        if not self.skip_output:
+            refuse_synced_path(
+                os.path.dirname(get_directory_dict(dict(self.scenario_parameters))[G_DIR_OUTPUT]),
+                "simulation output")
+
         # trap 16, at construction and unconditionally: P2.6's baseline, its weekday means and
         # its SD were computed over one particular set of days, and the request block's
         # vocabulary comes from the same manifest. A baseline read against a different corpus
@@ -285,6 +295,8 @@ class SDPDPAssignmentEnv(gym.Env):
         self._pending = None
         self._tracker: Optional[RewardTracker] = None
         self._stats: Optional[RollingStatsTracker] = None
+        #: P2.20's count of the rows this episode wrote; None with output off
+        self._row_counter: Optional[RowCounter] = None
         self._obs = np.zeros(obs_len, dtype=np.float32)
         self._mask = build_action_mask(0, self.k_max)
         self._terminated = True
@@ -310,6 +322,9 @@ class SDPDPAssignmentEnv(gym.Env):
         constant_cfg[G_STUDY_NAME] = derive_study_name(self.constant_cfg_path)
         # required: FleetControlBase reads this with [] and has no default
         constant_cfg["n_cpu_per_sim"] = 1
+        # never read (P2.20): nothing in FleetPy reads this key. `run_generator`, like `run`,
+        # calls `evaluate()` whenever output is on, so an output-on episode writes
+        # standard_eval.csv regardless. Left as it is; it changes nothing.
         constant_cfg["evaluate"] = 0
         constant_cfg["keep_old"] = False
         # quiet by default; raise it only to inspect a run's log (P1.11 uses this to verify
@@ -571,6 +586,10 @@ class SDPDPAssignmentEnv(gym.Env):
         self._apply_episode_scenario_name(scenario_parameters)
 
         self.sim = load_simulation_environment(scenario_parameters)
+        # P2.20: count every row this episode writes, so the files can be checked against it
+        # when the episode ends. Output on only -- with output off the buffers are cleared
+        # without writing, and there is no file to check.
+        self._row_counter = None if self.skip_output else RowCounter.attach(self.sim)
         self._tracker = RewardTracker(
             self.reward_weights,
             track_events=self.track_events,
@@ -609,6 +628,7 @@ class SDPDPAssignmentEnv(gym.Env):
             # a day with no actionable request; degenerate but not an error
             self._pending = None
             self._terminated = True
+            self._check_episode_output()
             info = self._episode_info()
             self._write_episode_summary(info.get("episode_summary"))
             self._set_terminal_observation()
@@ -638,6 +658,8 @@ class SDPDPAssignmentEnv(gym.Env):
             self._pending = None
             self._terminated = True
             reward = self._tracker.flush()      # captures the post-end_time tail (D6)
+            # P2.20: every flush is done once the generator returns, so the files are final
+            self._check_episode_output()
             info = self._episode_info()
             info["reward_events"] = self._tracker.flush_events()
             # written before close() drops the simulation: the output directory and
@@ -677,6 +699,7 @@ class SDPDPAssignmentEnv(gym.Env):
                 LOG.warning("closing the simulation generator raised", exc_info=True)
             self._generator = None
         self.sim = None
+        self._row_counter = None
         self._pending = None
         self._terminated = True
 
@@ -820,6 +843,22 @@ class SDPDPAssignmentEnv(gym.Env):
         if self._tracker is not None:
             info["episode_summary"] = self.episode_summary()
         return info
+
+    def _check_episode_output(self) -> Optional[str]:
+        """P2.20's post-episode check: each output file holds every row this episode wrote.
+
+        Raises `OutputIntegrityError` with both counts and the path otherwise, and writes
+        `rl_output_rows.json` -- the record `kpis.kpi_row` re-counts against -- only once the
+        check has passed. Called at both terminal paths, **before** the summary, while
+        `self.sim` is alive. A no-op with output off.
+
+        Not wrapped in `try/except`, for the reason `_write_episode_summary` gives: a file that
+        silently lost rows would make a KPI table quietly wrong rather than absent. Inside a
+        `SubprocVecEnv` the raise ends the worker, and the message is in its traceback.
+        """
+        if self.skip_output or self.sim is None or self._row_counter is None:
+            return None
+        return check_episode_output(self.sim.dir_names[G_DIR_OUTPUT], self._row_counter)
 
     def _write_episode_summary(self, summary: Optional[Dict[str, Any]]) -> Optional[str]:
         """Write `episode_summary()` into the run's own output directory (P2.14).

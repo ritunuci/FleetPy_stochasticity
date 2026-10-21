@@ -7,6 +7,7 @@ full rollout is P1.10.
 
 import gc
 import json
+import logging
 import os
 import shutil
 import sys
@@ -38,6 +39,7 @@ from src.rl_gym.day_rotation import (  # noqa: E402
 )
 from src.rl_gym.policies import greedy_action as policy_greedy_action  # noqa: E402,F401
 from src.rl_gym.observers import CandidateObserver  # noqa: E402
+from src.rl_gym import output_integrity  # noqa: E402
 from src.rl_gym.gym_env import (  # noqa: E402
     MAX_EPISODE_SEED,
     SDPDPAssignmentEnv,
@@ -1498,6 +1500,133 @@ class TestEpisodeSummaryFile(unittest.TestCase):
         with self.assertRaises(TypeError):
             _json_default(object())
 
+    # P2.20's end-of-episode check, on a real episode. The counts against the two committed
+    # baselines (445 and 1140) are a check of `evaluate --verify`, which runs the full day.
+
+    def test_an_output_on_episode_records_the_rows_it_wrote_and_its_files_match(self):
+        env, _summary, out_dir, _steps = self.run_short_episode(skip_output=False)
+        try:
+            # re-counts both files against the record, and raises on any difference
+            recorded = output_integrity.verify_output_dir(out_dir)
+            self.assertEqual(set(recorded), {"1_user-stats.csv", "2-0_op-stats.csv"})
+            for name, rows in recorded.items():
+                with self.subTest(name):
+                    self.assertGreater(rows, 0, "a short window still writes rows")
+        finally:
+            env.close()
+
+    def test_an_output_off_episode_counts_nothing_and_writes_no_record(self):
+        env, _summary, out_dir, _steps = self.run_short_episode(skip_output=True)
+        try:
+            self.assertIsNone(env._row_counter)
+            # out_dir is the reference run's directory in this mode (trap 1): only read here
+            self.assertFalse(os.path.isfile(
+                os.path.join(out_dir, output_integrity.ROWS_RECORD_FILE)))
+        finally:
+            env.close()
+
+    def test_the_episode_end_raises_when_a_file_holds_fewer_rows_than_were_written(self):
+        """The check runs at the terminal step, names the path, and writes no record."""
+        env = SDPDPAssignmentEnv(make_cfg(skip_output=False))
+        env.scenario_parameters["end_time"] = self.SHORT_END_TIME
+        try:
+            obs, _info = env.reset()
+            out_dir = env.sim.dir_names["output"]
+            self.register_cleanup(env, out_dir)
+            # as if one row the simulation wrote had vanished from the file
+            env._row_counter.rows[output_integrity.USER_STATS_FILE] += 1
+            with self.assertRaises(output_integrity.OutputIntegrityError) as cm:
+                terminated = False
+                while not terminated:
+                    obs, _r, terminated, _t, _info = env.step(greedy_action(env, obs))
+            self.assertIn(os.path.join(out_dir, "1_user-stats.csv"), str(cm.exception))
+            self.assertIn("1 row(s) missing", str(cm.exception))
+            self.assertFalse(os.path.isfile(
+                os.path.join(out_dir, output_integrity.ROWS_RECORD_FILE)))
+        finally:
+            env.close()
+
+
+class TestOneSimulationLogPerEpisode(unittest.TestCase):
+    """P2.20: with output on, each episode writes its own `00_simulation.log`.
+
+    Through P2.19, P1.2's once-per-process logging sent every later episode's records into the
+    first episode's log and gave the later episodes none. `RLImmediateDecisionsSimulation`'s
+    `__init__` now re-runs the base's handler setup when output is on, and closes the handlers
+    it replaces. Output off after output off keeps P1.2's once-only `NullHandler` -- training --
+    and output off after output on stops writing into the earlier episode's file.
+    """
+
+    SHORT_END_TIME = 28800
+    MARKER_LOGGER = "tests.p2_20"
+
+    def start(self, env):
+        env.scenario_parameters["end_time"] = self.SHORT_END_TIME
+        return env.reset()[0]
+
+    def finish(self, env, obs):
+        terminated = env._terminated
+        while not terminated:
+            obs, _r, terminated, _t, _info = env.step(greedy_action(env, obs))
+
+    def own_output_dir(self, env):
+        """This episode's directory, removed afterwards -- only because it is its own (trap 1)."""
+        out_dir = env.sim.dir_names["output"]
+        self.assertNotEqual(env.sim.scenario_name, env.scenario_parameters["scenario_name"],
+                            "an output-on episode must have its own directory (P1.9)")
+        self.addCleanup(shutil.rmtree, out_dir, ignore_errors=True)
+        return out_dir
+
+    def read_log(self, out_dir):
+        with open(os.path.join(out_dir, "00_simulation.log")) as fh:
+            return fh.read()
+
+    def test_each_output_on_episode_writes_its_own_log_and_closes_the_last(self):
+        env = SDPDPAssignmentEnv(make_cfg(skip_output=False))
+        self.addCleanup(env.close)
+        obs = self.start(env)
+        first_dir = self.own_output_dir(env)
+        first_handlers = [h for h in logging.root.handlers
+                          if isinstance(h, logging.FileHandler)]
+        logging.getLogger(self.MARKER_LOGGER).warning("P2.20 marker: episode 1")
+        self.finish(env, obs)
+
+        obs = self.start(env)
+        second_dir = self.own_output_dir(env)
+        logging.getLogger(self.MARKER_LOGGER).warning("P2.20 marker: episode 2")
+        self.finish(env, obs)
+
+        first, second = self.read_log(first_dir), self.read_log(second_dir)
+        self.assertIn("episode 1", first)
+        self.assertNotIn("episode 2", first, "episode 2 logged into episode 1's file")
+        self.assertIn("episode 2", second)
+        self.assertNotIn("episode 1", second)
+
+        # one file handler at a time, and the replaced one closed rather than leaked
+        self.assertEqual(len(first_handlers), 1)
+        self.assertEqual(first_handlers[0].baseFilename,
+                         os.path.abspath(os.path.join(first_dir, "00_simulation.log")))
+        self.assertNotIn(first_handlers[0], logging.root.handlers)
+        self.assertIsNone(first_handlers[0].stream, "the replaced handler was not closed")
+        self.assertEqual(
+            sum(isinstance(h, logging.FileHandler) for h in logging.root.handlers), 1)
+
+    def test_an_output_off_episode_after_an_output_on_one_logs_into_no_file(self):
+        on = SDPDPAssignmentEnv(make_cfg(skip_output=False))
+        self.addCleanup(on.close)
+        obs = self.start(on)
+        on_dir = self.own_output_dir(on)
+        self.finish(on, obs)
+        on.close()
+
+        off = SDPDPAssignmentEnv(make_cfg(skip_output=True))
+        self.addCleanup(off.close)
+        self.start(off)
+        logging.getLogger(self.MARKER_LOGGER).warning("P2.20 marker: output off")
+        self.assertNotIn("output off", self.read_log(on_dir))
+        self.assertFalse(any(isinstance(h, logging.FileHandler) for h in logging.root.handlers),
+                         "an output-off episode still holds a file handler")
+
 
 class TestNonFiniteObservationGuard(unittest.TestCase):
     """The env raises `ValueError` on any non-finite observation value (P2.12).
@@ -1795,7 +1924,15 @@ class TestObservationContract(unittest.TestCase):
     def test_the_committed_run_folders_are_refused(self):
         """The three pre-P2.18 run folders, by name: this is what P2.18 decided to give up."""
         import train_sdpdp
-        for folder in ("runs/p215", "runs/p215b", "runs/p216_gate"):
+        folders = ("runs/p215", "runs/p215b", "runs/p216_gate")
+        # P2.20: `runs/` is git-ignored, so a fresh clone has none of them, and this test then
+        # asserted nothing while passing. Skipped, visibly, instead -- the refusal itself is
+        # covered by the synthetic no-record tests above.
+        present = [f for f in folders if os.path.isdir(os.path.join(REPO_ROOT, f, "checkpoints"))]
+        if not present:
+            self.skipTest(f"none of {', '.join(folders)} exists in this checkout (runs/ is "
+                          f"git-ignored), so there is no committed run folder to refuse")
+        for folder in folders:
             checkpoints = os.path.join(REPO_ROOT, folder, "checkpoints")
             if not os.path.isdir(checkpoints):
                 continue

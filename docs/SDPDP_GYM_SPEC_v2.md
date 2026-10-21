@@ -1570,6 +1570,18 @@ the remaining output directories with no log file at all. It would not change
 
 In RL mode with `G_SKIP_OUTPUT`, force `log_level` to warning with a `NullHandler`.
 
+*(Corrected in P2.20. Once per process was right with output off and wrong with output on: every
+later episode's records went into the **first** episode's `00_simulation.log` and the later
+episodes had none -- the same defect as FleetPy's own `# TODO # log of subsequent simulations is
+saved in first simulation log`. `RLImmediateDecisionsSimulation.__init__` now clears
+`_logging_configured` before the
+base runs whenever the episode writes output, or whenever a file handler from an earlier
+output-on episode is still attached; the base's own handler code then gives the episode its own
+log, or the `NullHandler`. The base removes the handlers it replaces **without closing them** --
+the descriptor leak this rule was avoiding -- so the subclass closes them afterwards. Output off
+after output off is untouched, so training still configures once. `FleetSimulationBase` is not
+edited; no parameter is added (P1.4).)*
+
 **How Ritun verifies:** the greedy scenario with default config still matches
 `baseline_user_stats.csv` exactly; the same scenario with `skip_output = 1` produces no files
 and does not erase an existing results directory; constructing the sim object twice in one
@@ -2993,6 +3005,16 @@ it needs no `torch`.)*
   run a fresh interpreter, which is what "one process per run" is for: `__init__` seeds the
   global RNG and reconfigures process-global logging.)*
 
+  *(Changed in P2.20. `run_greedy_pair` no longer calls `run_examples.run_single_simulation`: it
+  runs that function's two lines itself -- `load_simulation_environment(params)`, then `.run()`
+  -- so P2.20's row counter can be attached to the simulation object between them, and checks
+  the output against it afterwards. The function's `bugfix` branch, which wraps `run()` in a
+  `try/except` that prints and carries on, is left out: **an exception in a greedy run now
+  propagates** instead of being swallowed, which would have handed the half-written directory to
+  the KPI table as if it were a finished run. That this is
+  still stock FleetPy is proved by `evaluate --verify`, whose stock run of the reference pair
+  must reproduce both committed baselines byte for byte. `Pool(maxtasksperchild=1)` stays.)*
+
   **Where the output goes, and git:** `studies/<study>/results/<scenario_name>/` for both
   policies. `.gitignore` line 1 is already `studies/example_study/results/` and nothing under it
   is tracked, so **no `.gitignore` entry is needed** — verified in P2.14 with
@@ -3000,6 +3022,10 @@ it needs no `torch`.)*
   directory is about 1.2 MB, so a full 26-day × 10-seed sweep of both policies is roughly
   600 MB inside a OneDrive-synced folder. Ignored by git, but it will sync — which is why the
   CLI takes an explicit `--days` / `--seeds` pair list rather than defaulting to all 260.
+  *(Superseded by P2.20. Syncing turned out to be the hazard, not the volume: OneDrive dropped
+  rows from the files it was syncing (trap 17). The repository has left OneDrive, and every run
+  is refused before it starts if its output would land in a cloud-synced folder. The explicit
+  pair list stays, for the run time.)*
 - **RL policy.** The env with `day_dir` the day's own half (P2.17), `day` and `episode_seed` (P2.3) set to
   the pair, `skip_output = False`, the checkpoint and its `VecNormalize` statistics
   (`training = False`), deterministic actions. Keep the log level at `warning` (the P1.11
@@ -3020,6 +3046,15 @@ it needs no `torch`.)*
   directories the harness returns. It is deliberately not deleted — identifying it would mean
   reconstructing P1.9's name by string surgery to then `rmtree` a results directory, which is
   the one thing trap 1 says not to write.)*
+
+  *(Corrected in P2.20: **the abandoned directory can hold a partial `1_user-stats.csv`.** A
+  worker that has finished its slice is still stepped -- `eval_pairs` wraps -- until the slowest
+  worker finishes, so its abandoned episode runs and flushes rows at every time step until
+  `close()`. The measurement above was of a single-pair run, where it was abandoned at once;
+  P2.20's diagnosis of P2.19's ten-pair harness found partial files of 290 of 425, 310 of 413,
+  271 of 445 and 179 of 485 rows. What keeps such a directory from being read as a finished run
+  is now P2.20's record: the abandoned episode never reaches its end-of-episode check, so it has
+  no `rl_output_rows.json`, and `kpi_row` refuses a directory without one.)*
 
   **The env-driven greedy driver is separate from both**, `evaluate.run_env_greedy_pair`: it
   exists to test D9's premise and is never the baseline (D9). It drives the **raw** env
@@ -3056,6 +3091,15 @@ it needs no `torch`.)*
   (`evaluate = 0`) — reading it would give the two policies different treatment, the one thing
   this script exists to prevent. The standard error is `sd/√n` with `ddof = 1`, so a single seed
   prints the mean alone rather than `± 0.00`.)*
+
+  *(Corrected in P2.20: **`standard_eval.csv` exists for env runs too.** Nothing in FleetPy reads
+  the `evaluate` key -- `run_examples.py`, `gym_env.py` and `evaluate.py` each set it and nothing
+  consults it -- and both `run()` and `run_generator()` call `evaluate()` whenever output is on.
+  The env's `evaluate = 0` therefore changes nothing; it carries a comment saying so and is left
+  in place. The decision not to read the file stands: it is FleetPy's own aggregate over the
+  same CSVs, and reading figures out of it would give the KPI script a second definition of
+  each. And since P2.20 the KPI script reads a fourth file first, `rl_output_rows.json`, and
+  refuses a directory whose CSVs do not hold the rows recorded there -- see §8 P2.20.)*
 
 **How Ritun verifies:** the P1.10 gate, byte for byte (this item edits `gym_env.py`); the greedy
 baseline on (2024-06-20, seed 42) writes a `1_user-stats.csv` byte-identical to
@@ -3223,7 +3267,8 @@ observation contract. The commands above now stop with that refusal, which is th
 intended behaviour; the figures they produced stand as the record of what this item
 verified when it ran. No replacement md5 is pinned until after P2.19. **Still none after it**:
 P2.19 recorded a figure from its own gate run and then found the RL half of that table does not
-reproduce, which is P2.20. A re-runnable md5 becomes possible once P2.20 lands.)*
+reproduce, which is P2.20. A re-runnable md5 becomes possible once P2.20 lands. **P2.20 pinned
+it:** `7f39b75e88e95f23b332b1ca24f7c170`, against `runs/p220_gate/`'s checkpoint; see §8 P2.20.)*
 
 **Commit:** `RL-GYM: one VecNormalize statistics file per checkpoint, with a pairing check`
 
@@ -3426,6 +3471,8 @@ be retired immediately. New reference figures are produced and pinned once, afte
 not work out that way. P2.19 ran the gate and **recorded** its md5, then found that the RL half of
 the table does not reproduce run to run — three runs, three md5s. No reference figure exists yet;
 one becomes possible after P2.20 fixes that; P2.20 has no entry here yet. See §8 P2.19.)*
+*(P2.20 has its entry, and the reference: `kpi_report.txt` md5
+`7f39b75e88e95f23b332b1ca24f7c170`, reproduced by three runs. See §8 P2.20.)*
 
 **Figures, all measured over `corpus/` and `corpus_val/` only — `corpus_eval/` was not read:**
 
@@ -3570,6 +3617,15 @@ anything. **Ritun made it its own work item, P2.20**, and the gate is re-run aft
 which is when its md5 becomes a real reference. The November-data item that was to be P2.20 moves
 to **P2.21**.
 
+*(P2.20 found the cause, and it is not the one described above; see §8 P2.20. Nothing leaked
+between episodes and no rider-side draw flipped. **`1_user-stats.csv` lost whole rows to the
+OneDrive file provider**, which silently dropped a contiguous band of appended lines from a file
+the repository's synced folder held -- the simulation was deterministic throughout. Rids 7 and 29
+are not no-shows: `BasicRequest_no_show` is the `rq_type` of every row, the traveler class's name,
+and both riders have `no_show_stat` False and were served; they were simply among the rows the
+file lost. "The second episode of its worker" was a correlation -- exposure is the wall-clock time
+spent appending on a synced path -- not the mechanism.)*
+
 **How Ritun verifies:**
 - the full suite, with the new count;
 - **the P1.10 gate, byte for byte.** Greedy reads only `delta_cfv` and `is_valid`, both before
@@ -3588,8 +3644,172 @@ to **P2.21**.
   checks. **Do not expect its `kpi_report.txt` md5 to match the one recorded above, and do not
   treat a mismatch as a failure of this item** — the RL half of that table does not reproduce
   run to run, which is P2.20. The md5 above is an observation of one run, not a check.
+  *(Since P2.20 the gate does reproduce, and its md5 is pinned as a check there:
+  `7f39b75e88e95f23b332b1ca24f7c170`. `bcd4904d…` above stays what it was -- one run's output,
+  from a file the sync client had shortened.)*
 
 **Commit:** `RL-GYM: remove the month one-hot from the observation`
+
+---
+
+### P2.20 — Refuse cloud-synced output folders, check every run's output rows
+
+**Files:** `src/rl_gym/output_integrity.py` (new), `src/rl_gym/sim_env_rl.py`,
+`src/rl_gym/gym_env.py`, `src/rl_gym/evaluate.py`, `src/rl_gym/kpis.py`, `train_sdpdp.py`,
+`src/rl_gym/tools/phase2_run.py`, `src/rl_gym/README.md`;
+`tests/test_rl_gym_output_integrity.py` (new), `tests/test_rl_gym_kpis.py`,
+`tests/test_rl_gym_env.py`; `docs/SDPDP_GYM_SPEC_v2.md`, `docs/RL_GYM_PROGRESS.md`,
+`docs/RL_GYM_PHASE2_RESULTS.md`
+
+**Why P2.19's KPI table did not reproduce: the repository was inside OneDrive.** Diagnosed in
+two reports before this item began, made in the OneDrive copy; Ritun accepted the root cause.
+
+- **The simulation is deterministic.** For (2024-01-11, 1186391), gate run against a check run:
+  `2-0_op-stats.csv` and `final_state.csv` byte-identical, `3-0_op-dyn_atts.csv` differing only
+  in its `perf_counter` columns, which the KPI script already ignores (P2.14).
+- **`1_user-stats.csv` lost whole rows.** The short file is a clean subsequence of the whole
+  one: complete, well-formed lines gone from consecutive positions, every remaining row of full
+  width, no stray header, no duplicates, the file resuming exactly at the next row. A lost
+  block is exactly one or more `save_user_stats` flushes -- one time step's records each, since
+  `record_stats` runs at the end of every step with `force=True`. Losses of 2, 4, 6 and 56 rows
+  were seen. The 56 were a contiguous band of flushes 36–85, with 0–35 and 86–385 present and
+  each of the 50 having written correctly: a file that only ever receives sequential appends
+  from one thread lost its middle, which needs an external agent rewriting it.
+- **A storage test without FleetPy** -- 400 two-row appends 0.15 s apart, about 60 s, the same
+  `isfile` / `to_csv(mode="a")` path, four in parallel -- lost **4, 0, 4 and 454** rows inside
+  the repository, each as one contiguous band, and **0, 0, 0, 0** in `/private/tmp`. An earlier
+  probe of 400 appends in about 2 s had lost nothing: exposure is the wall-clock time spent
+  appending to a synced path. "The second episode of its worker" was a correlation with that
+  exposure, not the mechanism.
+- **Ruled out:** the policy, torch, `VecNormalize` and `SubprocVecEnv` (the loss reproduces with
+  greedy-by-name in the main process); a second `Demand` instance (one per episode, each writing
+  its own directory); `src/evaluation/standard.py` (it only reads); truncation by mode `"w"`
+  (that would lose a prefix, not a middle band).
+- **Training and rewards were not affected.** Training runs with `skip_output = True`, so the
+  write is skipped entirely, and the reward comes from the `_exit_callback` inside `record_user`,
+  which fires before any flush. The KPI table was the only victim.
+
+**The fix is the move, by Ritun's decision.** The repository is now a fresh clone at
+`~/code/FleetPy_stochasticity`, outside any synced folder, on the same branch. Results, `runs/`
+(TensorBoard event files are appended to for hours), logs and `.git` were all exposed, and GitHub
+is the backup. No `results_root` key was added and no "one write per episode" restructuring was
+needed. **This item makes the move hold**, in three parts:
+
+**1. The guard -- a run that would write inside a cloud-synced folder is refused before it
+starts.** `output_integrity.refuse_synced_path` resolves the path (`realpath`, so a symlink is
+judged by where the bytes go) and refuses it when, case-insensitively, two consecutive components
+are `Library/CloudStorage` (the macOS File Provider root), a component contains `onedrive`,
+`dropbox`, `google drive` or `googledrive`, or a component is `Mobile Documents` (iCloud Drive).
+The message names the path as given, the resolved path, the rule that matched, and the fix.
+There is no override. `~/Desktop` and `~/Documents`, which iCloud's "Desktop & Documents Folders"
+option syncs with no marker in the path, are **not** refused, by Ritun's decision (trap 17).
+Where it runs, each time before anything is created:
+
+| Call site | Checks |
+|---|---|
+| `SDPDPAssignmentEnv.__init__`, output on only | the results directory -- every env path that writes: the harness's RL workers, `run_env_greedy_pair`, the P1.10 gate, `train_sdpdp.py --output`, `reward_trace --output` |
+| `evaluate.run_greedy_pairs`, `run_rl_pairs` (first statement, ahead of the torch imports), `verify` | the results directory, in the parent, so a refusal orphans no worker |
+| `evaluate.build_greedy_scenario_parameters` | each run's own directory: the backstop |
+| `evaluate.main` | `--out`'s directory, before any run -- the report is written last |
+| `train_sdpdp.train()`, first statement | `out_dir`: `--train`, `--verify-run --keep`, and `phase2_run`'s training |
+| `phase2_run.main` | `--out-dir`, and the results directory unless `--skip-harness` |
+
+`run_examples.py` launched directly is not covered: it is stock FleetPy, and this item edits no
+FleetPy file.
+
+**2. The check -- every finished run's two CSVs hold every row the simulation wrote.**
+`RowCounter.attach(sim)` wraps `sim.demand.save_user_stats` and `sim.record_stats` **on the
+simulation object**, the only write sites of `1_user-stats.csv` and `2-<op>_op-stats.csv`, and
+counts each flush by its effect: a buffer non-empty before the call and empty after it. Every
+flush reaches them through `self.`, `record_remaining_users`' trailing one included. When the run
+ends, `check_episode_output` counts the data rows of each file with `csv.reader` -- refusing a
+repeated header or a row of the wrong width as well -- raises `OutputIntegrityError` with the
+path, the rows written, the rows found and the difference, and **only then** writes
+`rl_output_rows.json`, the counts. It runs:
+
+- **in the env** at both terminal paths, output on only, before the summary;
+- **for stock greedy** in `run_greedy_pair`, which now constructs and runs the simulation itself
+  instead of calling `run_examples.run_single_simulation`, so the counter can be attached; an
+  exception in a greedy run now propagates instead of being swallowed (§8 P2.14's note).
+  `Pool(maxtasksperchild=1)` stays.
+
+`kpis.kpi_row` calls `verify_output_dir` before reading anything: it **refuses a directory with no
+record** -- an abandoned auto-reset episode, a pre-P2.20 run, a run that stopped early -- and
+**re-counts both files against the record**, refusing a mismatch. The re-count is not redundant:
+P2.19's 56-row band went missing from flushes that had written correctly, so a file can pass at
+the end of its run and be short when it is read. Both policies go through the same function, so
+P2.14's "measured identically" holds.
+
+**3. One simulation log per episode.** `RLImmediateDecisionsSimulation.__init__` clears P1.2's
+`_logging_configured` before the base runs whenever the episode writes output (or a file handler
+from an earlier output-on episode is still attached), so the base's own handler code gives each
+episode its own `00_simulation.log`; it closes the handlers the base replaces, which the base
+removes without closing. Output off after output off is untouched. `FleetSimulationBase` is not
+edited and no parameter is added -- see §8 P1.2's note.
+
+**4. Absolute paths into OneDrive in tracked files: none.** `git grep` over the tracked files,
+`corpus_eval/` excluded, for `onedrive`, `cloudstorage`, `dropbox`, `google drive` and
+`mobile documents`, found only two prose mentions of "~600 MB in(side) a OneDrive-synced folder":
+§8 P2.14's, corrected there, and the progress log's P2.14 DONE entry, corrected in P2.20's DONE
+entry. Unrelated and untouched: five old scripts hard-code a Windows interpreter path
+`C:/Users/ritun_uci/.conda/...` (`MOBO_for_micro.py`, `SOBO_for_micro.py`, and two
+`calibration_script_final_sc_3_claude_*.py`) -- not OneDrive, not RL code.
+
+**5. Corrections, each an italic note in place:** §8 P2.19 (the cause); §8 P2.14 (the abandoned
+auto-reset directory can hold a partial `1_user-stats.csv`; `standard_eval.csv` exists for env
+runs because nothing reads the `evaluate` key; the 600 MB sync note; the greedy run no longer
+going through `run_single_simulation`); §8 P1.2 and trap 3 (logging); and trap 17, new. The
+progress log is append-only (§0), so its corrections are in P2.20's DONE entry, citing each line.
+
+**Two checks that passed on nothing in a fresh clone.** `studies/example_study/results/` and
+`runs/` are git-ignored, so the clone had neither. `evaluate --verify`'s "reference directory
+byte-unchanged" compared only the files it found, and passed with none; it now **FAILs** when the
+directory or either CSV is missing, naming `evaluate.REFERENCE_RERUN_COMMAND`, and so does the
+byte-unchanged check (measured: 15/17 with the reference path pointed at a missing directory).
+`test_the_committed_run_folders_are_refused` skipped past each missing folder and asserted
+nothing; it now `skipTest`s, naming the three. The reference directory was **regenerated in the
+clone** with that command -- not copied from the OneDrive copy, whose files were written by the
+same sustained-append path -- and both CSVs came out byte-identical to the committed baselines
+(`53879ea7…`, `ded74ef3…`).
+
+**Byte-gate references and committed data: no new guard** (Ritun's decision). The P1.10 gate
+re-proves its references on every run, `corpus_hash` covers `corpus/`, and request ids are
+contiguous in every committed demand file outside `corpus_eval/`.
+
+**Reference: `kpi_report.txt` md5 `7f39b75e88e95f23b332b1ca24f7c170`**, pinned. Three runs,
+three identical files: `runs/p220_gate/` (the full gate, 23/23 checks in 22.4 min, final
+checkpoint `model_ep00047.zip`) and `--harness-only` from that checkpoint into the fresh folders
+`runs/p220_check1/` and `runs/p220_check2/` (3/3 each, 5.6 and 5.7 min). It fills the slot
+P2.18 emptied by retiring `db34f5ae…`. The harness days are **validation** days (P2.17) and
+nothing is tuned from them.
+
+**It is also one of P2.19's three md5s** -- `7f39b75e…`, its second `--harness-only` run. Training
+reproduced exactly across the move, and that run was the one whose files the sync client left
+whole. The two pairs that moved in P2.19 now read **273** served for (2024-01-11, 1186391) and
+**236** for (2024-03-19, 2483245) in every run; P2.19 had 273 / 271 / 273 and 235 / 236 / 236, so
+each of its two bad tables was short in exactly one pair.
+
+Measured on disk across the three runs: all 30 finished RL episode directories and all 10 greedy
+directories carry their own `00_simulation.log` and an `rl_output_rows.json`; the 15 abandoned
+auto-reset directories carry their own log and **no record**, holding partial `1_user-stats.csv`
+files of 179, 271, 290 and 310 rows -- identical in every run -- and one with none.
+
+**How Ritun verifies:**
+- step 0, in a clone without `studies/example_study/results/`: run
+  `evaluate.REFERENCE_RERUN_COMMAND` from the repository root, and confirm
+  `1_user-stats.csv` and `2-0_op-stats.csv` byte-identical to `docs/baseline_user_stats.csv` and
+  `docs/baseline_op_stats.csv`;
+- the full suite: **699 tests, 1 skipped** (the run-folders test, in a clone without `runs/`);
+- the P1.10 gate, byte for byte;
+- `python -m src.rl_gym.evaluate --verify`: **17/17** -- its stock-greedy byte comparisons are the
+  proof that the baseline, now run without `run_single_simulation`, is still stock FleetPy;
+- `python train_sdpdp.py --verify-run`;
+- `caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p220_gate`, then
+  `caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p220_check1 --harness-only
+  --checkpoint runs/p220_gate/checkpoints/model_ep00047.zip` and the same into
+  `runs/p220_check2`: all three `kpi_report.txt` md5 **`7f39b75e88e95f23b332b1ca24f7c170`**.
+
+**Commit:** `RL-GYM: refuse cloud-synced output folders and check every run's output rows`
 
 ---
 
@@ -3786,7 +4006,9 @@ carries a comment saying so; keep it.
    forgot its override would otherwise hand that directory to `create_or_empty_dir`.
 2. **Global RNG.** `random.seed` / `np.random.seed` in `__init__` are process-global. This is
    why `DummyVecEnv` is forbidden.
-3. **Logging handler accumulation.** Covered by P1.2.
+3. **Logging handler accumulation.** Covered by P1.2. *(And since P2.20, with output on, by
+   `RLImmediateDecisionsSimulation.__init__`, which gives each episode its own log and closes
+   the handler it replaces; see §8 P1.2.)*
 4. **`record_boarding` does not call `record_user`.** Pickup needs its own callback. This is
    the single most likely thing to get wrong in P1.7.
 5. **`user_request` returns `None`.** The offer comes from `get_current_offer(rid)`. Do not
@@ -3842,6 +4064,19 @@ carries a comment saying so; keep it.
     feeding the policy expectations the corpus never produced. Both checks live in
     `src/rl_gym/corpus.py` alongside the hash definitions the offline builder uses, so the
     runtime check and the builder cannot disagree about what either hash is.
+17. **Never run inside a cloud-synced folder.** A sync client rewrites the files it syncs. In
+    P2.19 the repository sat inside OneDrive, and the OneDrive file provider silently dropped a
+    contiguous band of rows appended to `1_user-stats.csv` over a sustained period: no error,
+    no log line, a file that simply came back shorter, and a KPI table that differed from run to
+    run while the simulation was deterministic throughout. Every FleetPy output file is written
+    by appends of this kind, and training appends to checkpoints' folders and TensorBoard event
+    files for hours. **P2.20 refuses such a run before it starts** (`output_integrity.
+    refuse_synced_path`) and **checks every run's two CSVs against the rows the simulation wrote**
+    once it ends, refusing the KPI table any file that fails. The refusal looks at the resolved
+    path for `Library/CloudStorage`, `OneDrive`, `Dropbox`, `Google Drive` and iCloud's
+    `Mobile Documents`. **It cannot see iCloud's "Desktop & Documents Folders" option**, which
+    syncs `~/Desktop` and `~/Documents` with nothing in the path, and by decision does not
+    refuse those two folders: keep the repository out of them.
 
 ---
 

@@ -15,12 +15,16 @@ The mirrored methods must stay in step with their parents. `step_generator` is
 is `FleetSimulationBase.run` with the time loop delegating to `step_generator`. If
 either parent changes, these change with it -- the byte-for-byte test against
 `docs/baseline_user_stats.csv` is what catches a drift.
+
+`__init__` (P2.20) only arranges logging -- one `00_simulation.log` per episode when output is
+on -- and passes the parameters through untouched.
 """
 
 import datetime
 import logging
 import time
 
+from src.FleetSimulationBase import FleetSimulationBase
 from src.ImmediateDecisionsSimulation import ImmediateDecisionsSimulation
 from src.misc.globals import *
 
@@ -42,15 +46,65 @@ class RLImmediateDecisionsSimulation(ImmediateDecisionsSimulation):
 
     #: P2.7's rolling-stats tracker, attached by the env after construction. A **class-level
     #: default** rather than an `__init__` assignment, deliberately: P1.4 forbids adding a
-    #: parameter to `FleetSimulationBase.__init__`, and this class defines no `__init__` of its
-    #: own. None means the clock is never set and the tracker is never touched.
+    #: parameter to `FleetSimulationBase.__init__`, and this class's own `__init__` (P2.20)
+    #: arranges logging and assigns nothing. None means the clock is never set and the tracker
+    #: is never touched.
     _stats_tracker = None
 
     #: highest `next_time` `update_sim_state_fleets` has been called with, for `tail_seconds`
-    #: (P2.13). A class-level default for the same reason as `_stats_tracker`: this class
-    #: defines no `__init__`, and P1.4 forbids adding a parameter to
-    #: `FleetSimulationBase.__init__`. Shadowed per instance on the first call.
+    #: (P2.13). A class-level default for the same reason as `_stats_tracker`: P1.4 forbids
+    #: adding a parameter to `FleetSimulationBase.__init__`, and this class's `__init__` assigns
+    #: nothing. Shadowed per instance on the first call.
     _max_sim_time = None
+
+    def __init__(self, scenario_parameters):
+        """`FleetSimulationBase.__init__`, with one `00_simulation.log` per episode (P2.20).
+
+        P1.2 configures process logging **once** in RL mode -- `_logging_configured`, a class
+        attribute of `FleetSimulationBase` -- so that a long-lived training worker does not open
+        a file handler per episode. With output off that is exactly right and is left alone.
+        With output on it sent every later episode's log records into the **first** episode's
+        `00_simulation.log` and gave the later episodes none (32 of 32 first episodes had one,
+        no later episode did); FleetPy's own `# TODO # log of subsequent simulations is saved
+        in first simulation log` is the same defect.
+
+        So, before the base runs: when this episode writes output -- or when a file handler from
+        an earlier output-on episode is still attached, which would otherwise receive this
+        episode's records -- the flag is cleared, and the base's own handler code runs as it does
+        for every non-RL scenario: it removes the old handlers and opens this episode's log, or
+        installs the `NullHandler` when output is off. Output off after output off changes
+        nothing, so training is untouched.
+
+        **The base removes the old handlers without closing them**, which leaks one open file
+        per episode -- what P1.2's once-only rule was avoiding. They are closed here after the
+        base has replaced them. Records logged in the base's `__init__` before it reaches its
+        handler setup still go to the previous handler, as they do between stock FleetPy's
+        sequential scenarios.
+
+        No parameter is added and nothing is assigned, so P1.4 holds and `FleetSimulationBase`
+        is not edited.
+        """
+        replaced = self._release_process_logging(scenario_parameters)
+        try:
+            super().__init__(scenario_parameters)
+        finally:
+            for handler in replaced:
+                if handler not in logging.root.handlers:
+                    handler.close()
+
+    @staticmethod
+    def _release_process_logging(scenario_parameters) -> list:
+        """Clear P1.2's once-only flag when this episode needs its own logging (P2.20).
+
+        :return: the root handlers attached now, for `__init__` to close once the base has
+            replaced them; empty when the configuration is kept
+        """
+        output_on = not scenario_parameters.get(G_SKIP_OUTPUT, False)
+        holds_a_file = any(isinstance(h, logging.FileHandler) for h in logging.root.handlers)
+        if not (output_on or holds_a_file):
+            return []
+        FleetSimulationBase._logging_configured = False
+        return list(logging.root.handlers)
 
     def set_stats_tracker(self, tracker) -> None:
         """Attach the RollingStatsTracker (P2.7). The one call site is None-guarded."""

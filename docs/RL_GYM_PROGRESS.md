@@ -4569,3 +4569,254 @@ per-check lines I truncated. P2.20 is not started.
 
 Ritun: P2.19 is done; he will verify and commit it. **P2.20 is not to be started until he sends
 its prompt.** Nothing further done here.
+
+## P2.20 — STARTED 2026-10-20 16:54
+Working in the new clone `~/code/FleetPy_stochasticity` (same branch, `1002549`); the OneDrive
+copy is neither read nor written.
+Files I will touch: src/rl_gym/output_integrity.py (new), src/rl_gym/sim_env_rl.py,
+src/rl_gym/gym_env.py, src/rl_gym/evaluate.py, src/rl_gym/kpis.py, train_sdpdp.py,
+src/rl_gym/tools/phase2_run.py, src/rl_gym/README.md, tests/test_rl_gym_output_integrity.py
+(new), tests/test_rl_gym_kpis.py, tests/test_rl_gym_env.py, docs/SDPDP_GYM_SPEC_v2.md,
+docs/RL_GYM_PROGRESS.md, docs/RL_GYM_PHASE2_RESULTS.md
+
+## P2.20 — DONE 2026-10-20 17:58 — awaiting Ritun's verification
+
+Files changed (14, all from the STARTED list):
+
+Code -- `src/rl_gym/output_integrity.py` (new: `refuse_synced_path` / `synced_folder_match`,
+`RowCounter`, `count_data_rows`, `verify_rows`, `check_episode_output`, `write_rows_record`,
+`read_rows_record`, `verify_output_dir`; standard library only);
+`src/rl_gym/sim_env_rl.py` (an `__init__` with the parent's signature that releases P1.2's
+once-only logging flag when the episode writes output, or when a file handler from an earlier
+output-on episode is still attached, and closes the handlers the base replaces; the two
+"defines no `__init__`" comments and the module docstring updated);
+`src/rl_gym/gym_env.py` (the guard at construction with output on; `RowCounter` attached at
+reset with output on; `_check_episode_output` at both terminal paths before the summary;
+`_row_counter` cleared in `close()`; a comment on `evaluate = 0` saying nothing reads it, line
+left in place);
+`src/rl_gym/evaluate.py` (`results_dir()`, `REFERENCE_RERUN_COMMAND`; the guard in
+`run_greedy_pairs`, at the top of `run_rl_pairs`, in `build_greedy_scenario_parameters`, in
+`verify` and for `--out` in `main`; `run_greedy_pair` constructs, counts, runs and checks instead of
+calling `run_single_simulation`; the abandoned-directory comment corrected; `verify` 15 -> 17
+checks);
+`src/rl_gym/kpis.py` (`kpi_row` calls `verify_output_dir` first; the file-name constants come from
+`output_integrity`; docstrings: four files read, the `standard_eval.csv` reason corrected);
+`train_sdpdp.py` (the guard as `train()`'s first statement);
+`src/rl_gym/tools/phase2_run.py` (the guard on `--out-dir` and, unless `--skip-harness`, on the
+results directory, before `makedirs`);
+`src/rl_gym/README.md` (the touch-point row and the `sim_env_rl.py` section).
+
+Tests -- `tests/test_rl_gym_output_integrity.py` (new, 25 tests, no torch): every marker refused, a
+symlink into a synced folder refused after resolving, a local path and a symlink merely named
+`OneDrive` accepted, `~/Desktop` / `~/Documents` carrying no marker, every entry point refusing
+before it creates anything, `RowCounter` on a stub with both clear styles, a 4-row band at data
+rows 120-123 raising with both counts and the path, an op-stats band, `kpi_row` refusing a banded
+directory and one with no record, extra rows, a repeated header, a torn and a blank line, a
+missing file, and the record written only after a pass.
+`tests/test_rl_gym_kpis.py` (the two fixture helpers write the record a checked run carries).
+`tests/test_rl_gym_env.py` (5 new: an output-on episode's record matches its files; an output-off
+episode counts nothing and writes no record; the terminal step raises on a short file and writes
+no record; two output-on episodes each get their own log and the replaced handler is closed; an
+output-off episode after an output-on one logs into no file. `test_the_committed_run_folders_are_
+refused` now `skipTest`s, naming the three folders, when none exists).
+
+Docs -- `docs/SDPDP_GYM_SPEC_v2.md` (new §8 P2.20; italic notes in §8 P1.2, §8 P2.14 (four), §8
+P2.16, §8 P2.18, §8 P2.19 (two) and trap 3; new trap 17); this entry;
+`docs/RL_GYM_PHASE2_RESULTS.md` (the opening block: the pin, and P2.19's defect closed).
+
+No FleetPy file is edited. No file under `corpus_eval/` was read. The OneDrive copy was neither
+read nor written.
+
+### What this item is
+
+P2.19's KPI table did not reproduce because the repository sat in a OneDrive-synced folder and
+the sync client dropped bands of appended rows from `1_user-stats.csv` (the two diagnosis reports
+Ritun accepted; summarised in §8 P2.20). Ritun moved the repository out. This item makes that
+hold: (1) a run is refused before it starts if it would write inside a cloud-synced folder; (2)
+every finished run's two CSVs are checked against the rows the simulation wrote, the counts are
+recorded beside them, and the KPI script refuses any directory without a record or whose files
+no longer match it; (3) each output-on episode gets its own `00_simulation.log`.
+
+### Corrections to earlier records (this log is append-only, §0, so they are made here)
+
+- **P1.2 DONE, lines 149-151** ("RL mode: a second construction in the same process adds no
+  handler (1 -> 1) and the only handler is a `NullHandler`"): still true **with output off**,
+  which is what was measured. With output on, a second construction now replaces the handler
+  with the new episode's own file handler, and the count still stays 1.
+- **P2.14 DONE, lines 3482-3484** ("~600 MB in a OneDrive-synced folder, which is why the CLI
+  takes an explicit pair list"): superseded. Syncing was the hazard, not the volume; the
+  repository has left OneDrive and such a run is now refused. The explicit pair list stays.
+- **P2.14 DONE, lines 3505-3510** (the abandoned auto-reset directory "holds only
+  `00_config.json`, `2_vehicle_types.csv` and `3-0_op-dyn_atts.csv` and **no
+  `1_user-stats.csv`**"): wrong for a multi-pair run. A worker that has finished its slice keeps
+  being stepped until the slowest worker finishes, so its abandoned episode flushes rows until
+  `close()`. Measured in this item: 179, 271, 290 and 310 rows, and one with none, identical in
+  three runs. It is still never read as a finished run -- it has no `rl_output_rows.json`, and
+  `kpi_row` refuses it.
+- **P2.19 DONE, lines 4512-4514** ("Each moves by exactly two riders, and they are no-shows ...
+  rids 7 and 29 are `BasicRequest_no_show`"): wrong. `BasicRequest_no_show` is the `rq_type` of
+  every row -- the traveler class's name, not an outcome. Rids 7 and 29 have `no_show_stat`
+  False and were served; they were among the rows the file lost.
+- **P2.19 DONE, lines 4515-4521** ("Both are the second episode of their worker ... a worker's
+  first episode is reproducible and its second is not"): a correlation, not the mechanism.
+  Exposure is wall-clock time spent appending to a synced path.
+- **P2.19 DONE, lines 4523-4527** ("My reading: a `SubprocVecEnv` worker's second episode is not
+  fully isolated from its first, and the leftover state occasionally flips a rider-side
+  draw"): wrong. Nothing leaked between episodes; the simulation was deterministic throughout.
+- **P2.19 DONE, line 4536, and P2.19 DECISIONS, line 4562** ("the worker-second-episode leak"):
+  that name describes a leak that does not exist; P2.20 is the storage defect.
+- The P2.14-era claim that `standard_eval.csv` exists for stock greedy and not for an env run
+  appears in no progress-log entry; it was in `kpis.py` and §8 P2.14, both corrected in place.
+
+### VERIFY findings and checks against the brief
+
+- **The handoff's report 1 placed the "no `1_user-stats.csv`" claim in P2.19**: DIFFERED -- it is
+  P2.14's (§8 P2.14, this log's P2.14 DONE at 3505-3510, `evaluate.py`'s comment). Corrected at
+  all three.
+- **`standard_eval.csv` exists for env runs**: matched, and the cause found -- `evaluate` is set
+  at `run_examples.py:79`, `gym_env.py:313` and `evaluate.py:323` and read nowhere; `run()`
+  (`FleetSimulationBase.py:1071`) and `run_generator()` (`sim_env_rl.py:207`) call `evaluate()`
+  whenever output is on. Every RL episode directory of this item's harness runs has one.
+- **The two CSVs have exactly two write sites**: matched -- `demand.py:191` and
+  `FleetSimulationBase.py:654`; grep finds no other `1_user-stats` / `op-stats` writer.
+  `save_user_stats` is reached from `record_stats` (`:637`) and `record_remaining_users`
+  (`demand.py:306`); `record_stats` from the time loop, `record_remaining_assignments` (`:633`)
+  and `run()` -- none during construction, so attaching after construction misses no row.
+- **The logging leak can be fixed in the RL subclass without editing `FleetSimulationBase`**:
+  matched. The base reads the flag through `getattr(FleetSimulationBase, ...)` (`:206-207`) and
+  removes handlers without closing them (`:210-211`); `self.log_file` is set unconditionally
+  (`:234`).
+- **The reference run's output directory and `runs/` are absent in the clone**: matched (both
+  git-ignored). `evaluate --verify`'s byte-unchanged check built its comparison only from files
+  that exist (`evaluate.py:738-740` before this item) and so passed vacuously; the run-folders
+  test `continue`d past each missing folder. Both fixed as Ritun decided.
+- **The baselines' row counts**: 445 and 1140 data rows, 32 and 24 fields, no repeated header,
+  counted with `csv.reader`.
+- **Absolute paths into OneDrive in tracked files**: none (see §8 P2.20, item 4).
+- **One figure in the handoff does not reconcile, and I did not quote it**: report 1 gives
+  "`1_user-stats.csv` 425 vs 423 rows" for the gate/check pair and, for the same comparison, "4
+  complete, well-formed lines gone". A clean subsequence missing 4 lines would be 425 vs 421.
+  §8 P2.20 states the shape of the loss without either pair of numbers.
+
+### Verification
+
+All logs are in this session's scratchpad; the lines below are copied from them.
+
+**0. Step 0: regenerate the reference directory in the clone** --
+`caffeinate -i python -c "import os, run_examples as r; s = os.path.join('studies', 'example_study',
+'scenarios'); r.run_scenarios(os.path.join(s, 'constant_config_depot_cali_sc_1.csv'),
+os.path.join(s, 'example_depot_cali_sc_1.csv'), log_level='info', n_cpu_per_sim=1,
+n_parallel_sim=1)"`: exit 0, 40 s. `1_user-stats.csv` md5 `53879ea79cf211d700f670dee1173dd5` and
+`2-0_op-stats.csv` md5 `ded74ef39a274397c921c29f128f6950`; `cmp` against
+`docs/baseline_user_stats.csv` and `docs/baseline_op_stats.csv`: **both byte-identical**.
+
+**1. The full suite** -- `python -m unittest discover -s tests`: **Ran 699 tests in 213.3 s, OK
+(skipped=1)**. 669 at P2.19 + 25 (`test_rl_gym_output_integrity.py`) + 5 (`test_rl_gym_env.py`)
+= 699. The skip is `test_the_committed_run_folders_are_refused`: "none of runs/p215, runs/p215b,
+runs/p216_gate exists in this checkout (runs/ is git-ignored), so there is no committed run
+folder to refuse".
+
+**2. The P1.10 gate** -- `python -m unittest -v tests.test_rl_gym`: **8 tests, OK**, 39.6 s,
+`test_user_stats_matches_baseline_byte_for_byte` and the op-stats one among them. The env with
+output on now attaches the counter, runs the check and opens a log per episode, and the gate is
+byte-identical through all three.
+
+**3. `python -m src.rl_gym.evaluate --verify`** -- **17/17 checks passed**, 122 s:
+
+    PASS  the reference output directory holds both CSVs
+    PASS  seed file matches its derivation
+    PASS  write_seed_file refuses to overwrite the committed file
+    PASS  the 26 committed split labels agree with the two directories
+    PASS  G3: 2024-01-11 refused in test mode and 2024-01-30 in validation mode, each accepted in its own
+    PASS  guard_output_dir refuses the reference scenario_name
+    PASS  stock greedy (2024-06-20, 42) 1_user-stats.csv == docs/baseline_user_stats.csv
+    PASS  stock greedy (2024-06-20, 42) 2-0_op-stats.csv == docs/baseline_op_stats.csv
+    PASS  two baseline runs on different pairs leave both output directories intact
+    PASS  stock greedy KPI counts reconcile with P1.10
+    PASS  D9: env-driven greedy KPI row identical to stock on (2024-06-20, 42)
+    PASS  env-driven greedy 1_user-stats.csv == docs/baseline_user_stats.csv
+    PASS  env-driven greedy 2-0_op-stats.csv == docs/baseline_op_stats.csv
+    PASS  rl_episode_summary.json written by the env run only
+    PASS  integrity record of both runs == the baselines' row counts {'1_user-stats.csv': 445, '2-0_op-stats.csv': 1140}
+    PASS  KPI report renders per run, per day, per month and overall, with its half
+    PASS  the reference output directory is byte-unchanged by every run above
+
+The stock-greedy byte checks are Ritun's condition: `run_greedy_pair` no longer goes through
+`run_single_simulation`, and stock greedy still reproduces both reference CSVs byte for byte.
+
+**3b. The missing-directory FAIL, demonstrated once** -- `verify()` with `output_dir_for` patched
+to return a nonexistent scratchpad path for the reference row only (the real directory was not
+touched): **15/17**, the two FAILs being
+
+    FAIL  the reference output directory holds both CSVs -- missing ['1_user-stats.csv', '2-0_op-stats.csv'] in <path>; recreate it, from the repository root, with: python -c "import os, run_examples as r; ..."
+    FAIL  the reference output directory is byte-unchanged by every run above -- nothing to compare: the directory or a file is missing
+
+**4. `python train_sdpdp.py --verify-run`** -- **28/28 checks passed in 7.1 min**, including the
+observation-contract checks quoting `observation_length 129` and fingerprint `1a9c1144…d96c`.
+
+**5. The P2.15 gate** -- `caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir
+runs/p220_gate`: **23/23 checks passed in 22.4 min**, load average (1.88, 2.51, 2.57) at start
+and (4.94, 4.86, 3.93) at end; 47 episodes over 4 workers in 16.6 min of training; checkpoints
+`model_ep00012/24/36/47.zip`, each with its own paired statistics; final checkpoint
+`runs/p220_gate/checkpoints/model_ep00047.zip`. Every check line, in order: 1. workers exited 0;
+1. no orphans; 2. unclassified == 0 in 47 training and 12 evaluation episodes; 3. no non-finite
+observation (~22587); 4. 22528 actions audited, 0 masked; 4. masks at all 5632 rollout steps; 5. 47
+distinct days; 5. D10's assignment in order; 5. pass 0 only; 6. reloaded checkpoint reproduces
+its actions; 8. 19 TensorBoard keys; 8. both histograms; 8. 9 slots; sizing: 3 evaluations, each
+covering all 4 pairs once, training=False / norm_reward=False, 4 checkpoints, each paired,
+metadata with base_seeds [20261015]; 7. both policies on the same 10 pairs; 7. 20 rows with every
+metric; 7. no orphans after the harness.
+
+**6 and 7. `--harness-only` from that checkpoint into two fresh folders** --
+`caffeinate -i python -m src.rl_gym.tools.phase2_run --out-dir runs/p220_check1 --harness-only
+--checkpoint runs/p220_gate/checkpoints/model_ep00047.zip`, and the same into
+`runs/p220_check2`: **3/3 checks each**, 5.6 and 5.7 min.
+
+**The three md5s:**
+
+    7f39b75e88e95f23b332b1ca24f7c170 runs/p220_gate/kpi_report.txt
+    7f39b75e88e95f23b332b1ca24f7c170 runs/p220_check1/kpi_report.txt
+    7f39b75e88e95f23b332b1ca24f7c170 runs/p220_check2/kpi_report.txt
+
+`cmp`: all three byte-identical. **Pinned**, per Ritun's condition, in §8 P2.20, the results
+file's opening block and the P2.16 / P2.18 / P2.19 pointers. It equals P2.19's `runs/p219_check2`
+md5 (line 4504 above): training reproduced across the move, and that was the intact one of P2.19's
+three tables. The two pairs that moved in P2.19 read 273 served (2024-01-11, 1186391) and 236
+(2024-03-19, 2483245) in all three runs, against P2.19's 273/271/273 and 235/236/236.
+
+**On disk, across the three harness runs:** all 30 finished RL episode directories (ep1, ep2)
+and all 10 greedy directories carry `00_simulation.log` and `rl_output_rows.json`; all 15
+abandoned auto-reset directories (ep3) carry their own `00_simulation.log` -- through P2.19 they
+would have had none -- and **no** record, with partial `1_user-stats.csv` files of 179, 271, 290
+and 310 rows and one with none, the same in every run.
+
+**Two comment-only edits after the verification chain**, held back so no file in the code path
+changed while it ran: `phase2_run.py`'s guard comment said "the results directory both halves of
+it write to" (training writes no simulation output), and `run_greedy_pair`'s docstring said an
+exception now propagates "rather than leaving a partial directory behind" (a raised exception
+still leaves one; what changed is that it is no longer swallowed and returned as a finished run).
+Both files re-compiled, and `tests.test_rl_gym_output_integrity` and `tests.test_rl_gym_kpis`
+re-run: OK.
+
+### Decisions
+
+- Asked: how to restore the reference output directory, missing in the clone, and whether
+  `--verify` should fail when it is missing.
+  Ritun: **not** copied from the OneDrive copy -- its files were written by the same
+  sustained-append path. Regenerated with the stock rerun as verification step 0, both CSVs
+  confirmed byte-identical. `--verify` FAILs when the directory or either file is missing, naming
+  the command that recreates it.
+- Asked: the run-folders test that asserts nothing without `runs/`.
+  Ritun: `skipTest` naming the missing folders; he will not copy them, the synthetic no-record
+  test covers the behaviour, and those runs are unevaluable anyway.
+- Asked: where the corrections to the P2.19 DONE record go.
+  Ritun: in this DONE entry, citing each line; no exception to append-only.
+- Asked: whether to refuse `~/Desktop` and `~/Documents`, and whether to comment `gym_env.py:313`.
+  Ritun: **do not** refuse them -- the guard keeps to the listed markers (his change to his first
+  answer). Comment the line and leave it alone.
+- Ritun's conditions: `evaluate --verify`'s stock-greedy byte checks must pass as the proof that
+  the baseline is still stock FleetPy (they did); `maxtasksperchild=1` stays (it does); the spec
+  states that an exception in a greedy run now propagates (§8 P2.14's note, §8 P2.20); pin the md5
+  only if all three are identical (they are).
+
+**Stopping here.** No commits made (§0). P2.21 is not started.
