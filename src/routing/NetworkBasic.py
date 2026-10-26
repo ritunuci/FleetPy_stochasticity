@@ -332,14 +332,22 @@ class NetworkBasic(NetworkBase):
         o_node.travel_infos_to[d_node_index] = (new_tt, dis)
         d_node.travel_infos_from[o_node_index] = (new_tt, dis)
 
+    # def _set_stoch_edge_tt(self, o_node_index, d_node_index, new_stoch_travel_time): #Don't use this anymore.
+    #     o_node = self.nodes[o_node_index]
+    #     d_node = self.nodes[d_node_index]
+    #     edge_obj = o_node.edges_to[d_node]
+    #     edge_obj.set_tt(new_stoch_travel_time)          #TODO: Ritun: Don't we need this line here? Because the edge obj does not know about the new travel time yet.
+    #     new_tt, dis = edge_obj.get_tt_distance()
+    #     o_node.travel_infos_stochastic_to[d_node_index] = (new_tt, dis)
+    #     d_node.travel_infos_stochastic_from[o_node_index] = (new_tt, dis)
+
     def _set_stoch_edge_tt(self, o_node_index, d_node_index, new_stoch_travel_time):
         o_node = self.nodes[o_node_index]
         d_node = self.nodes[d_node_index]
         edge_obj = o_node.edges_to[d_node]
-        edge_obj.set_tt(new_stoch_travel_time)          #TODO: Ritun: Don't we need this line here? Because the edge obj does not know about the new travel time yet.
-        new_tt, dis = edge_obj.get_tt_distance()
-        o_node.travel_infos_stochastic_to[d_node_index] = (new_tt, dis)
-        d_node.travel_infos_stochastic_from[o_node_index] = (new_tt, dis)
+        dis = edge_obj.get_distance()        # distance only — never touch travel_time
+        o_node.travel_infos_stochastic_to[d_node_index] = (new_stoch_travel_time, dis)
+        d_node.travel_infos_stochastic_from[o_node_index] = (new_stoch_travel_time, dis)
 
     # def _set_stoch_edge_tt(self, o_node_index, d_node_index, new_stoch_travel_time):  ## Was written for debugging only
     #     try:
@@ -360,7 +368,7 @@ class NetworkBasic(NetworkBase):
         return sample
 
     def _draw_stochastic_tt_new(self, simulation_time, mean_tt, peak_cv, off_peak_cv):
-        if 9*3600<=simulation_time<=12*3600 or 16*3600<=simulation_time<=19*3600:       #TODO: We have to parameterize this peak hour time window in the config file. For now, we are hardcoding it here.
+        if self.scenario_parameters[G_MORNING_HR_START]<=simulation_time<=self.scenario_parameters[G_MORNING_HR_END] or self.scenario_parameters[G_EVENING_HR_START]<=simulation_time<=self.scenario_parameters[G_EVENING_HR_END]:
             sigma2 = np.log(1 + peak_cv**2)
             sigma = np.sqrt(sigma2)
             mu = np.log(mean_tt) - sigma2 / 2
