@@ -11,6 +11,7 @@ from abc import abstractmethod, ABCMeta
 import numpy as np
 import pandas as pd
 import json
+from scipy.stats import gamma
 
 pd.options.mode.chained_assignment = None  # TODO # disables warning when overwriting Dataframes
 
@@ -575,6 +576,9 @@ class BasicRequest_no_show(RequestBase):
             self.duration_pudo_boarding = rq_row.get(column_boarding_name)
             if self.duration_pudo_boarding is None:
                 raise IOError(f'ERROR: {column_boarding_name} column is not specified in the input demand data!')
+        
+        elif scenario_parameters.get("draw_stochastic_PU"):
+            self.duration_pudo_boarding = self.sample_PU_duration(scenario_parameters)
 
         else:
             self.duration_pudo_boarding = scenario_parameters.get(G_OP_CONST_BT, 0)
@@ -637,6 +641,13 @@ class BasicRequest_no_show(RequestBase):
                         f'ERROR: lower_bound_black_box_PUDO_dur is {self.lower_bound_black_box_PUDO_dur}, '
                         f'but it has to be a positive value!')
 
+    def sample_PU_duration(self, scenario_parameters):
+        shape = scenario_parameters.get("PU_gamma_dist_shape")
+        loc = scenario_parameters.get("PU_gamma_dist_loc")
+        scale = scenario_parameters.get("PU_gamma_dist_scale")
+        pu_time = gamma.rvs(a=shape, loc=loc, scale=scale) * 60 # convert to seconds
+        return pu_time
+    
     def no_show_processing(self):
         if self.no_show:
             self.rq_actual_show_time = self.rq_time + LARGE_INT
