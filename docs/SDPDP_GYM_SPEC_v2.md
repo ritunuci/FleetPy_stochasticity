@@ -300,10 +300,10 @@ Callers live in `FleetSimulationBase.update_sim_state_fleets` around lines 647
 
 | Uncertainty | Implemented? | Where |
 |---|---|---|
-| Travel time | Yes | `NetworkBasic`, `stochastic_tt = TRUE` |
+| Travel time | Yes | `NetworkBasic`, `stochastic_tt = TRUE`. Every edge is redrawn at `start_time` and every `sto_tt_update_interval` seconds (600) after it, with no end, so the post-`end_time` tail is redrawn too. Vehicles move on the draws; operator routing uses `operator_exp_tt` (below). |
 | Post-match booking cancellation | Yes | `FleetSimulationBase._check_request_cancellations_diffusion_model` |
 | Rider no-show | Yes | `BasicRequest_no_show`, `PoolingIRSOnly.sim_veh_no_show_requests_cleanup` |
-| **Service duration at stops** | **Yes — empirically, already implemented** | Per-request boarding/alighting durations come from the demand file columns `actual_pudo_boarding_duration` and `pudo_alighting_duration`, read in `TravelerModels.py` (~line 561) into `duration_pudo_boarding` / `duration_pudo_alighting` and carried on `PlanRequest` as `real_duration_boarding` / `real_duration_alighting`. With `insertion_with_heterogenous_PUDO_duration = FALSE`, the **planner** assumes the constant `op_const_boarding_time = 300.0` while the **realized** duration comes from the data. That planner-versus-reality gap *is* the service duration uncertainty. Leave it exactly as it is. |
+| **Service duration at stops** | **Yes — boarding drawn per request, alighting from the data** | **Boarding:** with `draw_stochastic_PU = TRUE`, `BasicRequest_no_show.sample_PU_duration` (`TravelerModels.py`) draws each request's `duration_pudo_boarding` from a gamma fit in minutes (`PU_gamma_dist_shape` 0.800782948, `PU_gamma_dist_loc` 0, `PU_gamma_dist_scale` 1.082305279), times 60 for seconds: mean 52.0 s, median 32.6 s. **Alighting:** `duration_pudo_alighting` still comes from the demand file column `pudo_alighting_duration` (a constant 30 s on `2024-06-20.csv`). Both are carried on `PlanRequest` as `real_duration_boarding` / `real_duration_alighting` and set the stop time vehicles actually spend. With `insertion_with_heterogenous_PUDO_duration = FALSE`, the **planner** assumes the constant `op_const_boarding_time = 300.0` while the **realized** duration is the draw. That planner-versus-reality gap *is* the service duration uncertainty. The draws come from numpy's global stream right after `load_demand_file`'s `np.random.seed(1712 × seed)`, one per request in request-time order: deterministic per (day, seed) and identical for greedy and RL on the same pair, but they shift every later draw on that stream (rider decline, the diffusion term, travel time). A non-empty `column_PUDO_duration_boarding` would take precedence over the draw, so it is left empty. *(Changed after Phase 2, commit `1bcccd1`: boarding came from the demand file column `actual_pudo_boarding_duration` — mean 56 s, range 0–473 s on `2024-06-20.csv`. Ritun replaced it with the gamma draw and retired the data-column version.)* |
 
 Plus rider decline on offer (`stochastic_rider_service_decline`) and dynamic fleet size
 (`TimeBasedFS` + `op_act_fs_file`).
@@ -311,14 +311,29 @@ Plus rider decline on offer (`stochastic_rider_service_decline`) and dynamic fle
 **Do not disable, seed-freeze, or short-circuit any of these.** They are the point of the
 formulation.
 
-**Known defect, deliberately left in place through Phase 2.** `NetworkBasic._set_stoch_edge_tt`
-writes each realized travel-time draw into the edge object (`edge_obj.set_tt`). `Router.py`'s
-Dijkstra reads edge objects, so operator routing computed after a redraw uses the realized draw
-instead of `operator_exp_tt`, and `NetworkBasicWithStore` caches that result in
-`travel_time_infos` until the next operator file load (07:00, 09:00, 12:00, 16:00, 18:00).
-Ritun will correct this after P2.15 and regenerate the baselines (§8, After Phase 2). Until then
-**do not fix it** (§10): every gate depends on the current behaviour. It is also why observation
-code must leave the routing cache exactly as it found it (§5.2, trap 14).
+**Realized travel times stay out of operator routing -- fixed after Phase 2.** Through Phase 2,
+`NetworkBasic._set_stoch_edge_tt` wrote each realized draw into the edge object
+(`edge_obj.set_tt`). `Router.py`'s Dijkstra reads edge objects, so operator routing computed
+after a redraw used the realized draw instead of `operator_exp_tt`, and `NetworkBasicWithStore`
+cached that result in `travel_time_infos` until the next operator file load (07:00, 09:00,
+12:00, 16:00, 18:00). It was left in place deliberately while every gate depended on it.
+**Ritun fixed it after Phase 2** (commit `c3a8f36`): `_set_stoch_edge_tt` now writes the draw
+only into the nodes' `travel_infos_stochastic_*`, which `move_along_route` reads, and never into
+the edge, so the edges -- and Dijkstra, and the cache -- carry `operator_exp_tt` alone. The
+operator plans on expected travel times; vehicles drive on realized ones.
+
+**The redraw schedule** followed: `sto_tt_update_interval` (600 s) from `start_time`, open-ended,
+replacing the explicit `sto_time_stamps` list. That list sat two minutes off the ten-minute grid
+by mistake (07:00, then 07:02, 07:12, …) and ended at a fixed time, so a change of `end_time`
+needed a hand edit; `sto_time_stamps` is no longer read. `stochastic_tt` alone now decides
+whether vehicles move on the draws -- the schedule used to double as that switch. With the
+uniform grid every operator file load coincides with a redraw, which is harmless now that draws
+never touch the edges.
+
+**Both changes moved simulation output**, so the byte-gate baselines predate them and are
+re-established once the remaining simulation changes are in (§8, After Phase 2, step 1). The
+routing-cache restoration in observation code (§5.2 (b), trap 14) stays: it is now the
+"unnecessary but harmless" case §5.2 (b) anticipated.
 
 ### 2.6 Constructor side effects — the reset problem
 
@@ -801,12 +816,15 @@ short test training run (§8). The reward weight sweep and full-length training 
 
 ### Gaps that need decisions from Ritun
 
-1. **Service duration uncertainty is already implemented and must not be touched.** It is
-   data-driven rather than distribution-driven: realized boarding durations come from the
-   demand file (mean ~56 s, range 0–473 s on `2024-06-20.csv`) while the planner assumes
-   `op_const_boarding_time = 300.0`. All four of the proposal's uncertainties are therefore
-   present. Do not add stochastic draws, do not add related globals or config keys, and do
-   not propose replacing the empirical mechanism. See §10.
+1. **Service duration uncertainty is implemented and must not be touched.** Realized boarding
+   durations are drawn per request from a gamma fit (mean 52.0 s, median 32.6 s), alighting
+   durations come from the demand file, and the planner assumes
+   `op_const_boarding_time = 300.0` (§2.5). All four of the proposal's uncertainties are
+   therefore present. The mechanism is Ritun's: do not change it, add further draws or related
+   globals or config keys, or propose replacing it. See §10. *(Updated after Phase 2: this said
+   the mechanism was data-driven, boarding durations coming from the demand file (mean ~56 s,
+   range 0–473 s on `2024-06-20.csv`). Ritun replaced that with the gamma draw in commit
+   `1bcccd1`.)*
 2. **No-show penalty asymmetry.** The proposal gives cancellation both a forfeited reward and
    an explicit penalty, but gives no-show only the forfeited reward. Operationally no-show is
    the more expensive failure — the vehicle drove to the pickup and idled for
@@ -947,7 +965,9 @@ Definitions:
 - **Re-timed copy.** Stored plan times refresh only at leg events — the vehicle finishes a leg,
   or starts boarding or alighting — because `update_sim_state_fleets` runs with
   `force_update_plan=False`. After a stochastic travel-time update they are stale until the
-  vehicle's next leg event. Candidate plans do not have this problem: `insertion.py` copies the
+  vehicle's next leg event. *(Since the §2.5 fix a redraw no longer changes the travel times
+  routing reads; stored times now drift as the vehicle drives on realized travel times, and at
+  operator file loads. Re-timing a copy remains the remedy.)* Candidate plans do not have this problem: `insertion.py` copies the
   plan (~line 45) and re-times the copy with `update_tt_and_check_plan` at decision time.
   Features 9 and 12 do the same: `copy()` the pre-insertion plan, call
   `update_tt_and_check_plan(veh_obj, sim_time, routing_engine)` on the copy exactly as
@@ -969,7 +989,8 @@ Definitions:
     keys before computing its features and deletes every key it added afterwards, leaving the
     cache exactly as it found it. VERIFY the attribute name; if the network type has no such
     cache, there is nothing to restore. Once the defect is fixed this is unnecessary but
-    harmless.
+    harmless. *(It is fixed, in `c3a8f36`: Dijkstra now runs on `operator_exp_tt` alone. The
+    restoration stays, as the harmless case.)*
 
     Four findings from P2.10, all confirmed against the source:
 
@@ -3821,6 +3842,9 @@ In this order:
    regenerate **both** byte-gate baselines (`docs/baseline_user_stats.csv` and
    `docs/baseline_op_stats.csv`, §2.8) and the stock-greedy KPI baselines, re-run the gates and
    P2.4's sweep, and run a short training on the corrected simulator to size the weight sweep.
+   *(The fix is done -- commit `c3a8f36`, followed by the uniform 600 s redraw schedule; §2.5.
+   The rest of this step waits until the remaining simulation changes are in, so that the
+   baselines, gates, sweep and short training are re-run once.)*
 2. **Reward weight sweep** over `w_pickup`, `w_wait`, `w_reject`, `w_cancel` and `w_decline`,
    with repositioning off, to set the weights for full-length training. Its design — the rule
    for choosing a winner, the validation days being `corpus_val/`'s 12 (P2.17), never the 14
@@ -4050,7 +4074,8 @@ carries a comment saying so; keep it.
     `t_pu_latest`, to compute a feature: that changes insertion feasibility for every later
     request. Leave no new entries in the routing cache either (§5.2, exception (b)): until the
     §2.5 defect is fixed, a cached route changes what later planning reads. The P1.10 gate re-run
-    in each observation item is what catches a violation.
+    in each observation item is what catches a violation. *(The §2.5 defect is fixed since
+    `c3a8f36`; the cache rule stays, harmlessly.)*
 15. **`crs.info` carries no comment.** It is read raw into `self.crs` and handed to pyproj, so
     §0's `# RL-GYM:` rule cannot apply to it. The change is recorded in §2.10 and its commit
     message instead.
@@ -4100,11 +4125,15 @@ decision point can be added without touching `SDPDPAssignmentEnv`.
 - Multi-agent formulations
 - Charging and depot decisions
 - Any modification to the diffusion cancellation, no-show, or stochastic travel time models
-- **Anything touching service / PUDO durations.** The empirical per-request mechanism in
-  `TravelerModels.py`, `PlanRequest.py`, and `insertion.py` is already the intended model of
-  service duration uncertainty. Do not add stochastic draws, do not add globals or config
-  keys for them, do not change `insertion_with_heterogenous_PUDO_duration`, and do not raise
-  it as a suggestion. This is settled.
+- **Anything touching service / PUDO durations.** The mechanism in `TravelerModels.py`,
+  `PlanRequest.py`, and `insertion.py` -- boarding drawn per request from the gamma fit,
+  alighting from the demand file, the planner on the constant `op_const_boarding_time` (§2.5)
+  -- is the intended model of service duration uncertainty, and changes to it are Ritun's.
+  Do not add further draws, do not add globals or config keys for them, do not change
+  `insertion_with_heterogenous_PUDO_duration`, and do not raise it as a suggestion. This is
+  settled. *(Updated after Phase 2: this named the empirical per-request mechanism, boarding
+  from the demand file, and forbade stochastic draws. Ritun replaced the boarding column with
+  the gamma draw himself, in commit `1bcccd1`.)*
 - **Add no other reward term beyond what is mentioned in §6.1**. Specifically: no fleet-distance 
   or operating-cost term, no in-vehicle
   detour term at alighting, no planned-ride-time term charged at assignment or pickup, and

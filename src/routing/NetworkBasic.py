@@ -179,7 +179,11 @@ class NetworkBasic(NetworkBase):
         """
         self.nodes = []            # list of all nodes in network (index == node.node_index)
         self.network_name_dir = network_name_dir
-        self.time_stamps = []
+        # stochastic travel times: whether vehicles move on the realized draws, and when they are redrawn
+        # (set by _configure_stochastic_tt_schedule)
+        self.stochastic_tt = bool(stochastic_tt)
+        self.sto_tt_start_time = None
+        self.sto_tt_update_interval = None
         self.travel_time_file_folders = self._load_tt_folder_path(network_dynamics_file_name=network_dynamics_file_name)
         self.scenario_parameters = scenario_parameters
         self.hourly_tt_dict = {}  # This for storing hourly travel times from the network edge file
@@ -241,8 +245,36 @@ class NetworkBasic(NetworkBase):
                     for i in range(7, 21):            # This 7 and 21 is for the operation period in our current study
                         self.hourly_tt_dict[(from_node, to_node, f"hr_{i}")] = float(data[f"hr_{i}"])
 
-            stamps = scenario_parameters[G_STO_TIME_STAMPS]       #Ritun: This part is for loading the stochastic time stamps
-            self.time_stamps = stamps
+            self._configure_stochastic_tt_schedule(scenario_parameters)
+
+    def _configure_stochastic_tt_schedule(self, scenario_parameters):
+        """Travel times are redrawn at start_time and every sto_tt_update_interval seconds after it.
+
+        Open-ended: redraws continue through the post-end_time tail for as long as the simulation runs, so a
+        change of end_time needs no schedule change. The redraw at start_time fills the stochastic travel
+        infos before any vehicle moves. The interval must be a multiple of time_step, or redraw times off the
+        simulation's time grid would silently never fire.
+        """
+        interval = scenario_parameters.get(G_STO_TT_UPDATE_INTERVAL)
+        if interval is None:
+            raise IOError(f"ERROR: {G_NW_STOCHASTIC_F} is on but {G_STO_TT_UPDATE_INTERVAL} is not set: give the "
+                          f"seconds between travel-time redraws (e.g. 600). {G_STO_TIME_STAMPS}, the explicit list "
+                          f"of redraw times, is no longer read.")
+        time_step = scenario_parameters.get(G_SIM_TIME_STEP, 1)
+        try:
+            interval_s = float(interval)
+        except (TypeError, ValueError):
+            interval_s = None
+        if interval_s is None or not interval_s.is_integer() or interval_s <= 0 or interval_s % time_step != 0:
+            raise ValueError(f"ERROR: {G_STO_TT_UPDATE_INTERVAL} is {interval!r}, but it has to be a positive whole "
+                             f"number of seconds and a multiple of {G_SIM_TIME_STEP} ({time_step}).")
+        self.sto_tt_start_time = scenario_parameters[G_SIM_START_TIME]
+        self.sto_tt_update_interval = int(interval_s)
+
+    def _is_stochastic_tt_update_time(self, simulation_time):
+        """True at start_time and every sto_tt_update_interval seconds after it, with no end."""
+        offset = simulation_time - self.sto_tt_start_time
+        return offset >= 0 and offset % self.sto_tt_update_interval == 0
 
     def _load_tt_folder_path(self, network_dynamics_file_name=None):
         """ this method searches in the network-folder for travel_times folder. the name of the folder is defined by the simulation time from which these travel times are valid
@@ -279,8 +311,8 @@ class NetworkBasic(NetworkBase):
         LOG.debug(f"update network {simulation_time}")
         self.sim_time = simulation_time
         new_tt_flag = False    # Track if new travel times are updated
-        if self.time_stamps:
-            if simulation_time in self.time_stamps:
+        if self.stochastic_tt:
+            if self._is_stochastic_tt_update_time(simulation_time):
                 LOG.info(f"STOCHASTIC NETWORK UPDATE HAPPENED HERE FOR SIMULATION TIME {simulation_time}")
                 simulation_hr = int(round(simulation_time / 3600))
                 clamped_hr = min(max(simulation_hr, 7), 20)
@@ -940,7 +972,7 @@ class NetworkBasic(NetworkBase):
                 c_pos = (c_pos[0], route[i], 0)
             rel_factor = (1 - c_pos[2] ) # Santi: this indicates what relative length of the edge is left
             # tt, td = self.nodes[c_pos[0]].get_travel_infos_to(c_pos[1]) # SANTI_UCI: the magic should happen here!
-            if self.time_stamps:
+            if self.stochastic_tt:
                 tt, td = self.nodes[c_pos[0]].get_travel_stochastic_infos_to(c_pos[1])
             else:
                 tt, td = self.nodes[c_pos[0]].get_travel_infos_to(c_pos[1])
