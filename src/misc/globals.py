@@ -122,8 +122,14 @@ G_AR_MAX_CDT = "user_max_constant_detour_time"
 G_AR_MAX_DTF = "user_max_detour_time_factor"
 G_AR_MAX_DEC_T = "user_max_decision_time"
 G_AR_PRICE_F = "user_price_sensitivity_func_dict"
-G_OP_STO_RIDER_DECLINE = "stochastic_rider_service_decline" # Ritun added for stochastic rider decline model
-G_RIDER_MAX_WT = "rider_decline_max_wait_time" # Ritun added for stochastic rider decline model
+#------------------------------------------------------- #
+# Ritun added: stochastic rider decline on a single offer (BasicRequest_no_show.choose_offer)
+G_RIDER_DECLINE_MODEL = "rider_decline_model"   # "none" (default), "ramp" or "logit"
+# ramp: decline probability rises linearly from waiting_time_lower_bound (G_WAIT_LOWER_BOUND) to this wait
+G_RIDER_MAX_WT = "rider_decline_max_wait_time"
+# logit: P(decline) = expit((offered_wait - w50) / scale), both in seconds
+G_RIDER_ACCEPT_W50 = "rider_accept_w50"
+G_RIDER_ACCEPT_SCALE = "rider_accept_scale"
 
 # traveler mode choice attributes
 G_MC_VOT = "value_of_time"

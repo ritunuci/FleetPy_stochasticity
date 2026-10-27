@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import json
 from scipy.stats import gamma
+from scipy.special import expit
 
 pd.options.mode.chained_assignment = None  # TODO # disables warning when overwriting Dataframes
 
@@ -545,6 +546,18 @@ class BasicRequest(RequestBase):
 
 
 # -------------------------------------------------------------------------------------------------------------------- #
+#: values of G_RIDER_DECLINE_MODEL; "none" (the default) means every rider accepts a single offer
+RIDER_DECLINE_MODELS = ("none", "ramp", "logit")
+#: the earlier on/off switches, replaced by G_RIDER_DECLINE_MODEL. Refused when set, so a config still using one
+#: cannot silently fall back to "none"
+RETIRED_RIDER_DECLINE_KEYS = ("stochastic_rider_service_decline", "stochastic_rider_service_decline_ramp_model",
+                              "stochastic_rider_service_decline_logit_model")
+
+
+def _is_real_number(value):
+    return isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, (bool, np.bool_))
+
+
 class BasicRequest_no_show(RequestBase):
     """This is a subclass of BasicRequest class to to take care of the requests who do not/will not show up.
                 # Ritun added"""
@@ -558,6 +571,7 @@ class BasicRequest_no_show(RequestBase):
             self.no_show = False
         # self.no_show_processing(rq_row)
         self.no_show_processing()
+        self._check_rider_decline_config(scenario_parameters)
 
         column_boarding_name = scenario_parameters.get("column_PUDO_duration_boarding")
         column_alighting_name = scenario_parameters.get("column_PUDO_duration_alighting")
@@ -654,6 +668,62 @@ class BasicRequest_no_show(RequestBase):
         else:
             self.rq_actual_show_time = self.rq_time
 
+    @staticmethod
+    def _rider_decline_model(sc_parameters):
+        """The configured rider decline model, "none" when G_RIDER_DECLINE_MODEL is not set."""
+        model = sc_parameters.get(G_RIDER_DECLINE_MODEL)
+        if model is None:
+            return "none"
+        model = str(model).strip().lower()
+        if model not in RIDER_DECLINE_MODELS:
+            raise ValueError(f"ERROR: {G_RIDER_DECLINE_MODEL} is {sc_parameters.get(G_RIDER_DECLINE_MODEL)!r}, but it "
+                             f"has to be one of {RIDER_DECLINE_MODELS}!")
+        return model
+
+    @staticmethod
+    def _check_rider_decline_config(sc_parameters):
+        """Refuse a rider decline configuration that could not be applied, with the key named.
+
+        Checked at construction, so a bad configuration fails while the demand is loaded rather than at the
+        first offer.
+        """
+        retired = [key for key in RETIRED_RIDER_DECLINE_KEYS if sc_parameters.get(key)]
+        if retired:
+            raise IOError(f"ERROR: {retired} no longer select the rider decline model. Set {G_RIDER_DECLINE_MODEL} "
+                          f"to one of {RIDER_DECLINE_MODELS} instead.")
+        model = BasicRequest_no_show._rider_decline_model(sc_parameters)
+        if model == "ramp":
+            lower, upper = sc_parameters.get(G_WAIT_LOWER_BOUND), sc_parameters.get(G_RIDER_MAX_WT)
+            if not (_is_real_number(lower) and _is_real_number(upper)) or upper <= lower:
+                raise ValueError(f"ERROR: the ramp decline model needs {G_WAIT_LOWER_BOUND} < {G_RIDER_MAX_WT}, both "
+                                 f"in seconds, but they are {lower!r} and {upper!r}!")
+        elif model == "logit":
+            w50, scale = sc_parameters.get(G_RIDER_ACCEPT_W50), sc_parameters.get(G_RIDER_ACCEPT_SCALE)
+            if not (_is_real_number(w50) and _is_real_number(scale)) or scale <= 0:
+                raise ValueError(f"ERROR: the logit decline model needs {G_RIDER_ACCEPT_W50} and a positive "
+                                 f"{G_RIDER_ACCEPT_SCALE}, both in seconds, but they are {w50!r} and {scale!r}!")
+
+    @staticmethod
+    def _rider_decline_probability(offered_wait_time, sc_parameters):
+        """The probability that the rider declines a single offer, or None to accept without a random draw.
+
+        - "ramp": no draw up to G_WAIT_LOWER_BOUND, then a decline probability rising linearly to 1 at
+          G_RIDER_MAX_WT (above it, beyond 1: a certain decline).
+        - "logit": expit((offered_wait - w50) / scale), i.e. 1 - 1 / (1 + exp((offered_wait - w50) / scale)): one half
+          at w50, falling as the wait shortens; a draw on every offer. expit is the numerically stable form.
+        - "none": every rider accepts, without a draw.
+        Which offers take a draw is part of the model: it decides how far the global random stream advances.
+        """
+        model = BasicRequest_no_show._rider_decline_model(sc_parameters)
+        if model == "ramp":
+            lower, upper = sc_parameters[G_WAIT_LOWER_BOUND], sc_parameters[G_RIDER_MAX_WT]
+            if offered_wait_time <= lower:
+                return None
+            return 1 - (upper - offered_wait_time) / (upper - lower)
+        if model == "logit":
+            return expit((offered_wait_time - sc_parameters[G_RIDER_ACCEPT_W50]) / sc_parameters[G_RIDER_ACCEPT_SCALE])
+        return None
+
     def choose_offer(self, sc_parameters, simulation_time):
         test_all_decline = super().choose_offer(sc_parameters, simulation_time)
         if test_all_decline is not None and test_all_decline < 0:
@@ -666,37 +736,18 @@ class BasicRequest_no_show(RequestBase):
         if len(opts) == 0:
             return None
         elif len(opts) == 1:
-            # -------------- Stochastic Rider Decline ---------------
-            if sc_parameters[G_OP_STO_RIDER_DECLINE]:
-                if not self.no_show:
-                    offered_wait_time = self.offer[opts[0]][G_OFFER_WAIT]
-                    if offered_wait_time <= sc_parameters[G_WAIT_LOWER_BOUND]:
-                        LOG.debug(f" -> accept")
-                        self.fare = self.offer[opts[0]].get(G_OFFER_FARE, 0)
-                        self.chosen_operator_id = opts[0]
-                        return opts[0]
-                    else:
-                        prob_decline = 1 - ((sc_parameters[G_RIDER_MAX_WT]-offered_wait_time)/(sc_parameters[G_RIDER_MAX_WT]-sc_parameters[G_WAIT_LOWER_BOUND]))  # This is the probability that a person declines
-                        r = np.random.random()
-                        if r < prob_decline:
-                            LOG.debug(f" -> decline")
-                            self.rider_declined = True
-                            return -1
-                        else:
-                            LOG.debug(f" -> accept")
-                            self.fare = self.offer[opts[0]].get(G_OFFER_FARE, 0)
-                            self.chosen_operator_id = opts[0]
-                            return opts[0]
-                else:
-                    LOG.debug(f" -> accept")
-                    self.fare = self.offer[opts[0]].get(G_OFFER_FARE, 0)
-                    self.chosen_operator_id = opts[0]
-                    return opts[0]
-            # --------------------------------------------------------
-            else:
-                self.fare = self.offer[opts[0]].get(G_OFFER_FARE, 0)
-                self.chosen_operator_id = opts[0]
-                return opts[0]
+            # -------------- Stochastic rider decline (G_RIDER_DECLINE_MODEL) ---------------
+            # a rider who will not show up books regardless: the no-show is the uncertainty they carry
+            if not self.no_show:
+                prob_decline = self._rider_decline_probability(self.offer[opts[0]][G_OFFER_WAIT], sc_parameters)
+                if prob_decline is not None and np.random.random() < prob_decline:
+                    LOG.debug(f" -> decline")
+                    self.rider_declined = True
+                    return -1
+            LOG.debug(f" -> accept")
+            self.fare = self.offer[opts[0]].get(G_OFFER_FARE, 0)
+            self.chosen_operator_id = opts[0]
+            return opts[0]
         else:
             LOG.error(f"not implemented {offer_str(self.offer)}")
 

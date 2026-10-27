@@ -246,12 +246,50 @@ parameter ever changes, this analysis must be redone.
 
 ### 2.3 After the offer
 
-`_rid_chooses_offer` → `rq_obj.choose_offer(...)`. With `rq_type = BasicRequest_no_show` and
-`stochastic_rider_service_decline = TRUE`, the rider declines with probability
+`_rid_chooses_offer` → `rq_obj.choose_offer(...)`. With `rq_type = BasicRequest_no_show`, a rider
+offered a single offer declines it with a probability set by **`rider_decline_model`**. Two models
+are implemented; `none`, the default, accepts every offer. A rider flagged as a no-show always
+accepts under either model: the no-show is the uncertainty they carry.
 
-```
-1 - (rider_decline_max_wait_time - offered_wait_time) / (rider_decline_max_wait_time - waiting_time_lower_bound)
-```
+- **`ramp`** -- the original model. No random draw up to `waiting_time_lower_bound`; above it the
+  rider declines with probability
+
+  ```
+  1 - (rider_decline_max_wait_time - offered_wait_time) / (rider_decline_max_wait_time - waiting_time_lower_bound)
+  ```
+
+  rising linearly to 1 at `rider_decline_max_wait_time`. Its lower bound is the same key the
+  diffusion cancellation model uses (below).
+- **`logit`** -- added after Phase 2. Every offer takes a draw, and the rider declines with
+  probability
+
+  ```
+  expit((offered_wait_time - rider_accept_w50) / rider_accept_scale)
+  ```
+
+  which is one half at `rider_accept_w50` and rises with the wait; `rider_accept_scale > 0` sets
+  how sharply (the slope at the midpoint is `1 / (4 * rider_accept_scale)` per second).
+
+The offered wait is expected pickup time minus request time, in seconds, and all four parameters
+are in seconds. Both models draw from numpy's global stream, but the ramp only above its lower
+bound and the logit on every offer, so switching models moves every later draw on that stream.
+`BasicRequest_no_show._check_rider_decline_config` refuses, at demand load, an unknown model,
+logit parameters that are not numbers or a scale that is not positive, a ramp whose maximum is not
+above its lower bound, and the retired on/off switches (`stochastic_rider_service_decline`,
+`stochastic_rider_service_decline_ramp_model`, `stochastic_rider_service_decline_logit_model`) when
+set.
+
+**Which model: Ritun plans to use `logit` instead of `ramp` going forward, but the decision is not
+final.** Both stay implemented and selectable until it is. The reference config currently selects
+`logit` with `rider_accept_w50 = 1100` and `rider_accept_scale = 200`. The midpoint is the
+diffusion cancellation model's neutral wait: `TravelerModels.decision_model` gives an offer quality
+of +1 up to `waiting_time_lower_bound` (700 s), −1 from `waiting_time_upper_bound` (1500 s) and
+zero halfway, at 1100 s, so only riders accepting waits around there or longer can drift to a
+post-match cancellation. The slope at the midpoint, 1/800 per second, equals the ramp's. Over five
+seeds on the reference day these values gave about 123 declines and 30 post-match cancellations a
+day, against the ramp's 121 and 25. The first values tried, 600 / 120, gave about 240 declines and
+2 cancellations: a midpoint well below 1100 s screens out the riders who would later cancel, and
+so all but removes post-match cancellation as an uncertainty.
 
 Accepted → `user_confirms_booking` → `assign_vehicle_plan` commits the plan from
 `tmp_assignment`. Declined → `user_cancels_request`, `tmp_assignment` discarded.
@@ -305,7 +343,7 @@ Callers live in `FleetSimulationBase.update_sim_state_fleets` around lines 647
 | Rider no-show | Yes | `BasicRequest_no_show`, `PoolingIRSOnly.sim_veh_no_show_requests_cleanup` |
 | **Service duration at stops** | **Yes — boarding drawn per request, alighting from the data** | **Boarding:** with `draw_stochastic_PU = TRUE`, `BasicRequest_no_show.sample_PU_duration` (`TravelerModels.py`) draws each request's `duration_pudo_boarding` from a gamma fit in minutes (`PU_gamma_dist_shape` 0.800782948, `PU_gamma_dist_loc` 0, `PU_gamma_dist_scale` 1.082305279), times 60 for seconds: mean 52.0 s, median 32.6 s. **Alighting:** `duration_pudo_alighting` still comes from the demand file column `pudo_alighting_duration` (a constant 30 s on `2024-06-20.csv`). Both are carried on `PlanRequest` as `real_duration_boarding` / `real_duration_alighting` and set the stop time vehicles actually spend. With `insertion_with_heterogenous_PUDO_duration = FALSE`, the **planner** assumes the constant `op_const_boarding_time = 300.0` while the **realized** duration is the draw. That planner-versus-reality gap *is* the service duration uncertainty. The draws come from numpy's global stream right after `load_demand_file`'s `np.random.seed(1712 × seed)`, one per request in request-time order: deterministic per (day, seed) and identical for greedy and RL on the same pair, but they shift every later draw on that stream (rider decline, the diffusion term, travel time). A non-empty `column_PUDO_duration_boarding` would take precedence over the draw, so it is left empty. *(Changed after Phase 2, commit `1bcccd1`: boarding came from the demand file column `actual_pudo_boarding_duration` — mean 56 s, range 0–473 s on `2024-06-20.csv`. Ritun replaced it with the gamma draw and retired the data-column version.)* |
 
-Plus rider decline on offer (`stochastic_rider_service_decline`) and dynamic fleet size
+Plus rider decline on offer (`rider_decline_model`: `ramp` or `logit`, §2.3) and dynamic fleet size
 (`TimeBasedFS` + `op_act_fs_file`).
 
 **Do not disable, seed-freeze, or short-circuit any of these.** They are the point of the
@@ -382,7 +420,9 @@ Key parameters:
 | `op_fleet_composition` | **`default_vehtype:12`** |
 | `op_max_wait_time` | **1500.0** |
 | `waiting_time_lower_bound` | 700.0 |
-| `rider_decline_max_wait_time` | 1500.0 |
+| `rider_decline_model` | **`logit`** (§2.3; `ramp` still selectable) |
+| `rider_accept_w50` / `rider_accept_scale` | 1100 / 200 (logit only) |
+| `rider_decline_max_wait_time` | 1500.0 (ramp only) |
 | `op_max_detour_time_factor` | 20.0 |
 | `op_const_boarding_time` | 300.0 (planner assumption only, see §2.5) |
 | `no_show_wait_time` | 180.0 |
@@ -392,9 +432,12 @@ Key parameters:
 Demand `2024-06-20.csv` has **445 requests**. Expect **fewer than 445 gym steps** — requests
 resolved internally generate no step (§1), and on the baseline that was about 9 empty-candidate cases plus any reservation-branch requests. Two of the 445 carry `no_show_status = True`.
 
-Because `rider_decline_max_wait_time = 1500` and `waiting_time_lower_bound = 700`, the rider-decline
-window from §2.3 is only 800 s wide: decline probability is 0 at an offered wait of 700 s and
-1 at 1500 s. Every observation normalizer must read these from `scenario_parameters`.
+Under the **ramp** model, because `rider_decline_max_wait_time = 1500` and
+`waiting_time_lower_bound = 700`, the rider-decline window from §2.3 is only 800 s wide: decline
+probability is 0 at an offered wait of 700 s and 1 at 1500 s. The **logit** model, which the
+reference config currently selects, has no such window: with `rider_accept_w50 = 1100` and
+`rider_accept_scale = 200` the decline probability is 0.4% at 0 s, 12% at 700 s, 50% at 1100 s and
+88% at 1500 s. Every observation normalizer must read these from `scenario_parameters`.
 
 The research proposal specifies a 5-second time step, which would double simulation steps to ~9,000
 per episode and roughly double wall-clock, while leaving the gym step count unchanged.

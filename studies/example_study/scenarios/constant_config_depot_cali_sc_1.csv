@@ -86,5 +86,8 @@ afternoon_hr_start,
 afternoon_hr_end,
 evening_hr_start,57600
 evening_hr_end,68400
-stochastic_rider_service_decline,TRUE
+##11,"Rider decline model: none, ramp (waiting_time_lower_bound to rider_decline_max_wait_time) or logit (rider_accept_w50, rider_accept_scale), in seconds"
+rider_decline_model,logit
 rider_decline_max_wait_time,1500
+rider_accept_w50,1100
+rider_accept_scale,200
